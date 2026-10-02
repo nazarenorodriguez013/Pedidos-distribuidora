@@ -132,6 +132,8 @@ function cleanCliente(b, prev, admin, yo) {
 
 // Arma un pedido nuevo/editado con las líneas y su precio.
 function armarPedido(b, viejo, quien, admin) {
+  // una vez cargado el pedido, el vendedor ya no puede cambiar la nota
+  const nota = !admin && viejo && viejo.estado === 'cargado' ? viejo.nota || '' : String(b.nota || '').trim();
   let cli = null;
   if (b.clienteId) {
     cli = state.clientes.find(c => c.id === Number(b.clienteId));
@@ -184,13 +186,13 @@ function armarPedido(b, viejo, quien, admin) {
     if (admin) extra = { agregar: false, agregadoEn: undefined, cargadoItems: items.map(i => ({ pid: i.pid, nombre: i.nombre, cant: i.cant })) };   // lo que edita el admin queda como cargado
     else {
       const igual = items.length === viejo.items.length && items.every(i => { const o = viejas.get(i.pid); return o && o.cant === i.cant && !!o.promo === !!i.promo && o.comboId === i.comboId; })
-        && (dia || '') === (viejo.dia || '') && (turno || '') === (viejo.turno || '') && String(b.nota || '').trim() === (viejo.nota || '') && (cli ? cli.id : undefined) === viejo.clienteId;
+        && (dia || '') === (viejo.dia || '') && (turno || '') === (viejo.turno || '') && nota === (viejo.nota || '') && (cli ? cli.id : undefined) === viejo.clienteId;
       if (!igual) extra = { agregar: true, agregadoEn: new Date().toISOString() };
     }
   }
   const subtotal = Math.round(items.reduce((s, i) => s + i.precio * i.cant, 0) * 100) / 100;
   const total = redondear(subtotal);
-  return { ...extra, cliente, nota: String(b.nota || '').trim(), items, subtotal, redondeo: Math.round((total - subtotal) * 100) / 100, total, clienteId: cli ? cli.id : undefined, dia: dia || undefined, turno: turno || undefined, vendedorId: vend ? vend.id : viejo ? viejo.vendedorId : quien.id, vendedor: vend ? vend.nombre : viejo ? viejo.vendedor : quien.nombre };
+  return { ...extra, cliente, nota, items, subtotal, redondeo: Math.round((total - subtotal) * 100) / 100, total, clienteId: cli ? cli.id : undefined, dia: dia || undefined, turno: turno || undefined, vendedorId: vend ? vend.id : viejo ? viejo.vendedorId : quien.id, vendedor: vend ? vend.nombre : viejo ? viejo.vendedor : quien.nombre };
 }
 
 // ---- sesiones: token firmado con el usuario; el rol se lee de la base en cada pedido ----

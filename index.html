@@ -281,6 +281,7 @@ const diaTxt = d => d ? new Date(d + 'T00:00').toLocaleDateString('es-AR', { wee
 /* estado del pedido: pendiente → cargado (por el administrador). Cargado: el vendedor solo puede agregar, y lo agregado queda marcado. */
 const hayAgregados = p => p.estado === 'cargado' && !!p.agregar;   // el vendedor lo modificó después de que el admin lo cargó
 const estadoTag = p => hayAgregados(p) ? '<span class="tag bad">⚠ Agregar</span>' : p.estado === 'cargado' ? '<span class="tag ok">✓ Cargado</span>' : '<span class="tag warn">Pendiente</span>';
+const cargadoParaVendedor = () => !esAdmin() && !!draft.id && draft.estado === 'cargado';   // el vendedor no edita la nota ni elimina un pedido cargado
 const cargadaDe = pid => (draft.estado === 'cargado' && draft.cargada[pid]) || 0;
 // qué cambió respecto de lo que el administrador cargó
 function cambiosDe(ped) {
@@ -337,7 +338,7 @@ function vPedido() {
     <div id="detalle" class="card detalle"></div>
     <div id="notaBox" style="margin-top:10px"></div>
     ${esAdmin() && draft.id && draft.estado === 'cargado' ? '<div style="margin-top:14px"><button class="btn sec" data-estado="pendiente">Volver a pendiente</button></div>' : ''}
-    ${draft.id ? '<div style="margin:24px 0 80px"><button class="btn bad" data-act="borrarPedido">Eliminar pedido</button></div>' : '<div style="height:80px"></div>'}
+    ${draft.id && !cargadoParaVendedor() ? '<div style="margin:24px 0 80px"><button class="btn bad" data-act="borrarPedido">Eliminar pedido</button></div>' : '<div style="height:80px"></div>'}
     <div class="bar"><div class="tot" id="tot"></div><button class="btn" id="btnGuardar" data-act="guardarPedido">${etiquetaBoton()}</button></div>`;
   editNota = false; pintarNota(); actualizarBoton();
   $('#dia').onchange = e => { draft.dia = e.target.value; if (!draft.id && draft.dia) ss('pd_dia', draft.dia); actualizarBoton(); };
@@ -398,8 +399,8 @@ function pintarNota() {
   if (editNota) {
     box.innerHTML = `<textarea id="nota" placeholder="Ej: entregar el jueves" style="min-height:90px">${esc(draft.nota)}</textarea><button class="btn sec" data-act="cerrarNota" style="margin-top:8px">Listo</button>`;
     $('#nota').oninput = e => { draft.nota = e.target.value; actualizarBoton(); }; $('#nota').focus();
-  } else if (draft.nota) box.innerHTML = `<div class="card"><span class="mut">Nota</span><br>${esc(draft.nota)}</div><button class="btn sec" data-act="editarNota">Editar nota</button>`;
-  else box.innerHTML = '<button class="btn sec" data-act="editarNota">📝 Agregar nota</button>';
+  } else if (draft.nota) box.innerHTML = `<div class="card"><span class="mut">Nota</span><br>${esc(draft.nota)}</div>${cargadoParaVendedor() ? '' : '<button class="btn sec" data-act="editarNota">Editar nota</button>'}`;
+  else box.innerHTML = cargadoParaVendedor() ? '' : '<button class="btn sec" data-act="editarNota">📝 Agregar nota</button>';
 }
 const cantTxt = () => { const k = Object.keys(draft.items).length, n = Object.values(draft.items).reduce((a, b) => a + b, 0); return `${k} ${k === 1 ? 'producto' : 'productos'} · ${n} u.`; };
 function pintarTotal() {
