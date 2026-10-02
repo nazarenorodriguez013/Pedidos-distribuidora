@@ -110,7 +110,7 @@ const promoDesc = p => promoPorCant(p) ? `${promoQue(p)} llevando ${promoCantDe(
 let token = localStorage.getItem('pd_token'), user = null;
 try { user = JSON.parse(localStorage.getItem('pd_user')); } catch {}
 if (!user || !user.rol) token = null;
-let productos = [], pedidos = [], usuarios = [], clientes = [], dbOk = true;
+let productos = [], pedidos = [], usuarios = [], clientes = [], combos = [], dbOk = true;
 const esAdmin = () => user && user.rol === 'admin';
 let view = 'menu', draft = null, q = '', filtro = 'todos';
 
@@ -128,10 +128,10 @@ async function api(method, url, data) {
 /* ---------- sin señal: datos en el teléfono y cola de pedidos pendientes ---------- */
 const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } };
-const cacheDatos = () => lsSet('pd_cache', { productos, clientes, pedidos: pedidos.slice(0, 200) });
+const cacheDatos = () => lsSet('pd_cache', { productos, clientes, combos, pedidos: pedidos.slice(0, 200) });
 const leerCola = () => lsGet('pd_cola', []);
 const colaMia = () => leerCola().filter(x => x.u === user.id);
-function usarCache() { const c = lsGet('pd_cache', null); if (c) { productos = c.productos; pedidos = c.pedidos; clientes = c.clientes || []; } else toast('Sin señal y sin datos guardados todavía'); }
+function usarCache() { const c = lsGet('pd_cache', null); if (c) { productos = c.productos; pedidos = c.pedidos; clientes = c.clientes || []; combos = c.combos || []; } else toast('Sin señal y sin datos guardados todavía'); }
 function estado() {
   const el = $('#estado'); if (!el) return;
   const n = colaMia().filter(x => !x.error).length, rech = colaMia().filter(x => x.error).length;
@@ -161,8 +161,8 @@ window.addEventListener('offline', estado);
 setInterval(sincronizar, 30000);
 
 async function cargar() {
-  const [a, b, c, y, cl] = await Promise.all([api('GET', 'p/productos'), api('GET', 'p/pedidos'), esAdmin() ? api('GET', 'p/usuarios') : { usuarios: [] }, api('GET', 'p/yo'), api('GET', 'p/clientes')]);
-  clientes = cl.clientes;
+  const [a, b, c, y, cl, cb] = await Promise.all([api('GET', 'p/productos'), api('GET', 'p/pedidos'), esAdmin() ? api('GET', 'p/usuarios') : { usuarios: [] }, api('GET', 'p/yo'), api('GET', 'p/clientes'), api('GET', 'p/combos')]);
+  clientes = cl.clientes; combos = cb.combos;
   dbOk = y.db;
   productos = a.productos.sort((x, y) => x.nombre.localeCompare(y.nombre));
   pedidos = b.pedidos;
@@ -276,19 +276,34 @@ function cambiosDe(ped) {
   for (const o of ped.cargadoItems || []) if (!ped.items.some(i => i.pid === o.pid)) out.push(`Quitado: ${o.nombre}`);
   return out;
 }
-const snapDraft = () => JSON.stringify([Object.entries(draft.items).sort(), draft.nota, draft.dia, draft.turno, draft.clienteId, Object.entries(draft.promos).sort()]);
+const snapDraft = () => JSON.stringify([Object.entries(draft.items).sort(), draft.nota, draft.dia, draft.turno, draft.clienteId, Object.entries(draft.promos).sort(), Object.entries(draft.combos).sort()]);
 const hayCambios = () => !!draft.id && draft.snap !== snapDraft();   // el que mira el pedido lo modificó en pantalla
 const etiquetaBoton = () => !draft.id ? 'Guardar pedido' : !esAdmin() ? 'Guardar cambios' : hayCambios() ? 'Guardar cambios' : (draft.estado !== 'cargado' || draft.agregar) ? 'Cargar' : '✓ Cargado';
 function actualizarBoton() { const b = $('#btnGuardar'); if (b) { b.textContent = etiquetaBoton(); b.disabled = esAdmin() && draft.id && !hayCambios() && draft.estado === 'cargado' && !draft.agregar; } }
 function nuevoDraft(ped) {
-  draft = ped ? { id: ped.id, cargadoPor: ped.cargadoPor, agregar: !!ped.agregar, cambios: cambiosDe(ped), cargadoItems: ped.cargadoItems || [], estado: ped.estado || 'pendiente', cargada: Object.fromEntries(ped.items.map(i => [i.pid, i.cantCargada ?? i.cant])), promos: Object.fromEntries(ped.items.filter(i => i.promo).map(i => [i.pid, 'si'])), avisado: {}, dia: ped.dia || diaSesion(), turno: ped.turno || '', clienteId: ped.clienteId || null, legacy: !ped.clienteId, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])) }
-              : { id: null, estado: 'pendiente', cargada: {}, promos: {}, avisado: {}, dia: diaSesion(), turno: ss('pd_turno') || '', clienteId: null, uid: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)), cliente: '', nota: '', items: {}, orig: {} };
+  draft = ped ? { id: ped.id, combos: Object.fromEntries(ped.items.filter(i => i.comboId).map(i => [i.comboId, 'si'])), avisadoC: {}, cargadoPor: ped.cargadoPor, agregar: !!ped.agregar, cambios: cambiosDe(ped), cargadoItems: ped.cargadoItems || [], estado: ped.estado || 'pendiente', cargada: Object.fromEntries(ped.items.map(i => [i.pid, i.cantCargada ?? i.cant])), promos: Object.fromEntries(ped.items.filter(i => i.promo).map(i => [i.pid, 'si'])), avisado: {}, dia: ped.dia || diaSesion(), turno: ped.turno || '', clienteId: ped.clienteId || null, legacy: !ped.clienteId, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])) }
+              : { id: null, combos: {}, avisadoC: {}, estado: 'pendiente', cargada: {}, promos: {}, avisado: {}, dia: diaSesion(), turno: ss('pd_turno') || '', clienteId: null, uid: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)), cliente: '', nota: '', items: {}, orig: {} };
   if (ped) draft.snap = snapDraft();
+}
+// promos combinadas (ver servidor): grupos de productos con una cantidad cada uno; si se cumple todo y el vendedor acepta, baja el precio
+const sumaGrupo = g => g.pids.reduce((t, pid) => t + (draft.items[pid] || 0), 0);
+const comboCumple = c => c.activa && c.grupos.every(g => sumaGrupo(g) >= g.cant);
+const comboIncluye = (c, pid) => c.grupos.some(g => g.pids.includes(pid));
+const precioComboDe = (c, p) => (c.tipo === 'precio' ? c.precio : Math.round(p.precio * (100 - c.pct)) / 100);
+const nombresGrupo = g => { const n = g.pids.map(pid => (productos.find(p => p.id === pid) || {}).nombre || '?'); return n.slice(0, 3).join(' / ') + (n.length > 3 ? ` y ${n.length - 3} más` : ''); };
+const comboBeneficio = c => (c.tipo === 'precio' ? money(c.precio) + ' c/u' : c.pct + '% de descuento');
+const comboTxt = c => c.grupos.map(g => `${g.cant} ${nombresGrupo(g)}`).join(' + ') + ' → ' + comboBeneficio(c);
+function comboDeLinea(p) {   // promo combinada aceptada y cumplida que alcanza a este producto (la de menor precio)
+  let best = null;
+  for (const c of combos) if (draft.combos[c.id] === 'si' && comboCumple(c) && comboIncluye(c, p.id) && (!best || precioComboDe(c, p) < precioComboDe(best, p))) best = c;
+  return best;
 }
 const promoAplicada = p => hayPromo(p) && (promoCantDe(p) <= 1 || (draft.promos[p.id] === 'si' && (draft.items[p.id] || 0) >= promoCantDe(p)));
 const precioLinea = p => {
-  const o = draft.orig[p.id], ap = promoAplicada(p);
-  if (o && !!o.promo === ap && (o.promo !== undefined || !ap)) return o.precio;   // en pedidos ya cargados se respeta el precio con que se vendió
+  const o = draft.orig[p.id], cb = comboDeLinea(p);
+  if (cb) return o && o.comboId === cb.id ? o.precio : precioComboDe(cb, p);
+  const ap = promoAplicada(p);
+  if (o && !o.comboId && !!o.promo === ap && (o.promo !== undefined || !ap)) return o.precio;   // en pedidos ya cargados se respeta el precio con que se vendió
   return ap ? precioPromoDe(p) : p.precio;
 };
 const REDONDEO = 50;   // el total de cada pedido se redondea hacia arriba a múltiplo de 50
@@ -326,12 +341,27 @@ function pintarLista() {
       ${bloq ? '<span class="tag">No disponible</span>' : c ? `<span class="tag ok">✓ ${c}</span>` : '<span class="mut">+</span>'}</div>`;
   }).join('')}</div>${todos.length > lista.length ? `<p class="mut" style="text-align:center">Mostrando ${lista.length} de ${todos.length}: seguí escribiendo para afinar</p>` : ''}` : vacio('Sin resultados');
 }
+function limpiarCombos() {
+  for (const id of Object.keys(draft.combos)) { const c = combos.find(x => x.id == id); if (!c || !comboCumple(c)) { delete draft.combos[id]; delete draft.avisadoC[id]; } }
+}
+function bloqueCombos() {   // ofertas y avance de las promos combinadas
+  const out = [];
+  for (const c of combos) {
+    if (!c.activa || !c.grupos.some(g => sumaGrupo(g) > 0)) continue;
+    const st = draft.combos[c.id], avance = c.grupos.map(g => `${Math.min(sumaGrupo(g), g.cant)}/${g.cant} ${esc(nombresGrupo(g))}`).join(' · ');
+    if (!comboCumple(c)) out.push(`<div class="promo-hint" style="padding:4px 0">🏷️ <b>${esc(c.nombre)}</b>: ${avance} → ${esc(comboBeneficio(c))}</div>`);
+    else if (st === 'si') out.push(`<div class="promo-ok" style="margin:6px 0" data-cid="${c.id}"><span>✓ Promo aplicada: <b>${esc(c.nombre)}</b> (${esc(comboBeneficio(c))})</span><button class="btn sec" data-combo="no">Quitar</button></div>`);
+    else if (st === 'no') out.push(`<div class="promo-hint" style="padding:4px 0" data-cid="${c.id}">Promo ${esc(c.nombre)} no aplicada <button class="btn sec" data-combo="ask">Aplicar</button></div>`);
+    else out.push(`<div class="promo-offer" style="margin:6px 0" data-cid="${c.id}"><b>🏷️ ¡Hay una promo!</b> ${esc(c.nombre)}: ${esc(comboBeneficio(c))} en ${esc(c.grupos.map(g => nombresGrupo(g)).join(' + '))}. ¿La aplicás?<div class="row" style="border:0;padding:8px 0 0"><button class="btn" data-combo="si">Aceptar</button><button class="btn sec" data-combo="no">No, gracias</button></div></div>`);
+  }
+  return out.join('');
+}
 function limpiarPromos() {   // si la cantidad baja del mínimo, la decisión sobre la promo se reinicia
   for (const pid of Object.keys(draft.promos)) { const p = productos.find(x => x.id == pid); if (!p || !promoPorCant(p) || (draft.items[pid] || 0) < promoCantDe(p)) { delete draft.promos[pid]; delete draft.avisado[pid]; } }
   for (const pid of Object.keys(draft.avisado)) if (!(draft.items[pid] > 0)) delete draft.avisado[pid];
 }
 function bloquePromo(p) {
-  if (!promoPorCant(p)) return '';
+  if (!promoPorCant(p) || comboDeLinea(p)) return '';
   const c = draft.items[p.id], min = promoCantDe(p), st = draft.promos[p.id];
   if (c < min) return `<div class="promo-hint">🏷️ Promo: ${esc(promoDesc(p))}</div>`;
   if (st === 'si') return `<div class="promo-ok"><span>✓ Promo aplicada: ${esc(promoQue(p))}</span><button class="btn sec" data-promo="no">Quitar</button></div>`;
@@ -339,10 +369,11 @@ function bloquePromo(p) {
   return `<div class="promo-offer"><b>🏷️ ¡Hay una promo!</b> ${esc(promoDesc(p))}. ¿La aplicás?<div class="row" style="border:0;padding:8px 0 0"><button class="btn" data-promo="si">Aceptar</button><button class="btn sec" data-promo="no">No, gracias</button></div></div>`;
 }
 function pintarDetalle() {
-  limpiarPromos();
+  limpiarPromos(); limpiarCombos();
   const sel = productos.filter(enPed);
   for (const p of sel) if (promoPorCant(p) && draft.items[p.id] >= promoCantDe(p) && !draft.promos[p.id] && !draft.avisado[p.id]) { draft.avisado[p.id] = true; toast(`🏷️ Promo disponible en ${p.nombre}`); }
-  $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + sel.map(p => { const pl = precioLinea(p); return `<div class="row" data-pid="${p.id}" style="flex-wrap:wrap"><div class="nm"><b>${esc(p.nombre)}</b>${draft.estado === 'cargado' && draft.items[p.id] > cargadaDe(p.id) ? `<span class="tag bad">Agregar${cargadaDe(p.id) ? ' +' + (draft.items[p.id] - cargadaDe(p.id)) : ''}</span> ` : draft.estado === 'cargado' && draft.items[p.id] < cargadaDe(p.id) ? `<span class="tag warn">−${cargadaDe(p.id) - draft.items[p.id]}</span> ` : ''}<span class="mut">${pl < p.precio ? `<s>${money(p.precio)}</s> ` : ''}${money(pl)} c/u${multiploDe(p) > 1 ? ' · de a ' + multiploDe(p) : ''} · subtotal <b data-sub>${money(draft.items[p.id] * pl)}</b></span></div>
+  for (const c of combos) if (comboCumple(c) && !draft.combos[c.id] && !draft.avisadoC[c.id]) { draft.avisadoC[c.id] = true; toast(`🏷️ Promo disponible: ${c.nombre}`); }
+  $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + bloqueCombos() + sel.map(p => { const pl = precioLinea(p); return `<div class="row" data-pid="${p.id}" style="flex-wrap:wrap"><div class="nm"><b>${esc(p.nombre)}</b>${draft.estado === 'cargado' && draft.items[p.id] > cargadaDe(p.id) ? `<span class="tag bad">Agregar${cargadaDe(p.id) ? ' +' + (draft.items[p.id] - cargadaDe(p.id)) : ''}</span> ` : draft.estado === 'cargado' && draft.items[p.id] < cargadaDe(p.id) ? `<span class="tag warn">−${cargadaDe(p.id) - draft.items[p.id]}</span> ` : ''}<span class="mut">${pl < p.precio ? `<s>${money(p.precio)}</s> ` : ''}${money(pl)} c/u${multiploDe(p) > 1 ? ' · de a ' + multiploDe(p) : ''} · subtotal <b data-sub>${money(draft.items[p.id] * pl)}</b></span></div>
       <div class="qty"><button data-q="-1">−</button><input class="qin" type="number" inputmode="numeric" min="0" step="${multiploDe(p)}" data-qin="${p.id}" value="${draft.items[p.id]}"><button data-q="1">+</button></div><button class="btn sec" data-quitar="${p.id}" aria-label="Quitar del pedido" style="width:38px;min-height:38px;padding:0;color:var(--bad);flex:none">✕</button>${bloquePromo(p)}</div>`; }).join('') + (draft.estado === 'cargado' ? (draft.cargadoItems || []).filter(o => !(draft.items[o.pid] > 0)).map(o => `<div class="row" style="border:0"><span class="tag warn">Quitado</span><span class="mut">${esc(o.nombre)} ×${o.cant}</span></div>`).join('') : '') + '<div id="dtotales"></div>' : '<span class="mut">Tocá un producto de la lista para agregarlo con cantidad 1. Después ajustás la cantidad acá.</span>';
 }
 let editNota = false;
@@ -375,7 +406,7 @@ async function cargarPedido() {   // el administrador da el pedido por cargado
 }
 async function guardarPedido() {
   if (esAdmin() && draft.id && !hayCambios()) { if (draft.estado === 'cargado' && !draft.agregar) return; return cargarPedido(); }   // sin cambios: el botón dice "Cargar"
-  const items = Object.entries(draft.items).map(([pid, cant]) => { const p = productos.find(x => x.id == pid); return { pid: Number(pid), cant, promo: !!(p && promoPorCant(p) && promoAplicada(p)) }; });
+  const items = Object.entries(draft.items).map(([pid, cant]) => { const p = productos.find(x => x.id == pid); return { pid: Number(pid), cant, promo: !!(p && !comboDeLinea(p) && promoPorCant(p) && promoAplicada(p)), combo: p && comboDeLinea(p) ? comboDeLinea(p).id : undefined }; });
   const body = { clienteId: draft.clienteId, cliente: draft.cliente, nota: draft.nota, dia: draft.dia, turno: draft.turno, items };
   if (!draft.clienteId && !draft.legacy) return toast('Elegí un cliente');
   const mal = items.find(i => { const p = productos.find(x => x.id === i.pid); return p && i.cant % multiploDe(p); });
@@ -550,6 +581,52 @@ function abrirProducto(p) {
     } catch (er) { toast(er.message); }
   };
 }
+/* ventana para crear/editar una promo combinada (administrador) */
+let comboEd = null;
+function abrirCombo(c) {
+  comboEd = c ? JSON.parse(JSON.stringify(c)) : { nombre: '', activa: true, tipo: 'pct', pct: '', precio: '', grupos: [{ cant: 10, pids: [] }] };
+  const el = document.createElement('div'); el.id = 'modal'; el.className = 'modal';
+  el.innerHTML = `<div class="modal-card"><div class="row" style="border:0;padding:0 0 4px"><h2 style="flex:1;margin:0;font-size:19px">${c ? 'Editar promo combinada' : 'Nueva promo combinada'}</h2><button class="btn sec" data-modal="cerrar" aria-label="Cerrar" style="width:40px;min-height:40px;padding:0;flex:none">✕</button></div><div id="cform"></div></div>`;
+  document.body.appendChild(el);
+  try { history.pushState({ v: view, d: pila.length - 1, modal: 1 }, ''); } catch {}
+  el.addEventListener('click', e => { if (e.target === el) cerrarModal(); });
+  pintarCombo();
+}
+function pintarCombo() {
+  const c = comboEd, f = $('#cform'); if (!f) return;
+  f.innerHTML = `<label>Nombre de la promo</label><input id="cn" value="${esc(c.nombre)}" placeholder="Ej: Harinas x10 + x19" autocomplete="off">
+    <div class="row" style="border:0"><div class="nm"><b>Activa</b></div><label class="sw" style="margin:0"><input type="checkbox" id="ca" ${c.activa ? 'checked' : ''}><i></i></label></div>
+    <h3 style="margin:10px 0 2px;font-size:16px">¿Qué tiene que llevar?</h3>
+    <p class="mut" style="margin:0 0 6px">Cada grupo pide una cantidad. Un grupo puede ser <b>un producto</b> (10 harina común) o <b>varios</b> "de cualquier sabor" (6 gelatinas surtidas: cuentan juntas). Tiene que cumplir todos los grupos.</p>
+    ${c.grupos.map((g, i) => `<div class="card" style="background:var(--bg)"><div class="row" style="border:0;padding:0;align-items:flex-end"><div style="flex:none;width:96px"><label>Cantidad</label><input class="gc" data-gi="${i}" inputmode="numeric" value="${g.cant}"></div>
+      <div class="nm"><label>Grupo ${i + 1}</label><input class="gb" data-gi="${i}" placeholder="Buscar producto…" autocomplete="off"></div>${c.grupos.length > 1 ? `<button type="button" class="btn sec" data-gdelg="${i}" style="width:40px;min-height:46px;padding:0;flex:none;color:var(--bad)">✕</button>` : ''}</div>
+      <div id="gres${i}"></div>
+      <div style="margin-top:8px">${g.pids.length ? g.pids.map(pid => `<span class="tag" style="margin:2px 4px 2px 0;padding:4px 8px">${esc((productos.find(p => p.id === pid) || {}).nombre || '?')} <button type="button" data-gdel="${i}:${pid}" style="border:0;background:none;color:var(--bad);font-size:16px">×</button></span>`).join('') : '<span class="mut">Sin productos todavía</span>'}</div></div>`).join('')}
+    <button type="button" class="btn sec" data-gnuevo>+ Otro grupo (otro producto u otros sabores)</button>
+    <h3 style="margin:14px 0 4px;font-size:16px">Beneficio</h3>
+    <div class="chips" style="margin:0"><button type="button" data-ctipo="pct" class="${c.tipo === 'pct' ? 'on' : ''}">Descuento %</button><button type="button" data-ctipo="precio" class="${c.tipo === 'precio' ? 'on' : ''}">Precio por unidad</button></div>
+    <label>${c.tipo === 'pct' ? 'Porcentaje de descuento' : 'Precio por unidad (para todos los productos de la promo)'}</label><input id="cv" inputmode="decimal" value="${c.tipo === 'pct' ? c.pct || '' : c.precio || ''}" placeholder="${c.tipo === 'pct' ? 'Ej: 5' : 'Ej: 450'}">
+    <div style="height:14px"></div><button type="button" class="btn" data-csave>Guardar</button>
+    <div class="row" style="border:0;padding:10px 0 0"><button type="button" class="btn sec" data-modal="cerrar">Cancelar</button>${c.id ? '<button type="button" class="btn bad" data-cdel>Eliminar</button>' : ''}</div>`;
+  $('#cn').oninput = e => { c.nombre = e.target.value; };
+  $('#ca').onchange = e => { c.activa = e.target.checked; };
+  $('#cv').oninput = e => { c[c.tipo === 'pct' ? 'pct' : 'precio'] = e.target.value; };
+  f.querySelectorAll('.gc').forEach(inp => { inp.oninput = e => { c.grupos[+e.target.dataset.gi].cant = e.target.value; }; });
+  f.querySelectorAll('.gb').forEach(inp => {
+    inp.oninput = e => {
+      const i = +e.target.dataset.gi, n = norm(e.target.value), g = c.grupos[i];
+      const l = n ? productos.filter(p => p.activo && !g.pids.includes(p.id) && (norm(p.nombre).includes(n) || norm(p.codigo).includes(n))).slice(0, 8) : [];
+      $('#gres' + i).innerHTML = l.map(p => `<button type="button" class="btn sec" data-gadd="${i}:${p.id}" style="text-align:left;margin-top:4px;min-height:40px;padding:6px 10px">${esc(p.nombre)}</button>`).join('');
+    };
+  });
+}
+async function guardarCombo() {
+  const c = comboEd, d = { nombre: c.nombre, activa: c.activa, tipo: c.tipo, pct: c.pct, precio: c.precio, grupos: c.grupos.map(g => ({ cant: g.cant, pids: g.pids })) };
+  try {
+    if (c.id) await api('PUT', 'p/combos/' + c.id, d); else await api('POST', 'p/combos', d);
+    await cargar(); toast('Promo guardada'); cerrarModal();
+  } catch (e) { toast(e.message); }
+}
 function cerrarModal() {
   if (history.state && history.state.modal) history.back();   // el popstate cierra la ventana y refresca la pantalla
   else { const m = $('#modal'); if (m) m.remove(); render(); }
@@ -561,7 +638,10 @@ async function setProd(id, campos) {
 
 /* ---------- promociones ---------- */
 function vPromos() {
-  $('#main').innerHTML = `${esAdmin() ? '<button class="btn" data-act="agregarPromo" style="margin-bottom:10px">+ Agregar promoción</button>' : ''}<div id="lista"></div>`;
+  $('#main').innerHTML = `${esAdmin() ? '<button class="btn" data-act="agregarPromo" style="margin-bottom:10px">+ Agregar promoción</button>' : ''}<div id="lista"></div>
+    <h2 style="margin-top:16px">Promociones combinadas</h2>
+    ${esAdmin() ? '<button class="btn sec" data-act="nuevoCombo" style="margin-bottom:10px">+ Nueva promo combinada</button>' : ''}<div id="combos"></div>`;
+  $('#combos').innerHTML = combos.length ? `<div class="card">${combos.map(c => `<div class="row ${c.activa ? '' : 'off'}" ${esAdmin() ? `data-editcombo="${c.id}"` : ''}><div class="nm"><b>${esc(c.nombre)}</b><span class="mut" style="white-space:normal">${esc(comboTxt(c))}${c.activa ? '' : ' · desactivada'}</span></div>${esAdmin() ? '<span class="mut">›</span>' : ''}</div>`).join('')}</div>` : '<p class="mut">No hay promociones combinadas.</p>';
   const l = productos.filter(p => p.promo);
   $('#lista').innerHTML = l.length ? `<div class="card">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" ${esAdmin() ? `data-promoprecio="${p.id}"` : ''}><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · ${hayPromo(p) ? esc(promoDesc(p)) : 'incompleta: falta descuento o precio'}${esAdmin() ? ' · tocar para editar' : ''}</span></div><span class="price">${money(p.precio)}</span>${esAdmin() ? `<button class="btn sec" style="width:auto;min-height:40px;padding:0 12px" data-quitarpromo="${p.id}">✕</button>` : ''}</div>`).join('')}</div>` : vacio('No hay promociones cargadas');
 }
@@ -701,7 +781,7 @@ function exportarExcel() {
 
 /* ---------- eventos ---------- */
 document.addEventListener('click', async e => {
-  const t = e.target.closest('button, [data-go], [data-sel], [data-ped], [data-edit], [data-edituser], [data-editcli], [data-cli], [data-precio], [data-promoprecio], [data-nuevapromo]');
+  const t = e.target.closest('button, [data-go], [data-sel], [data-editcombo], [data-ped], [data-edit], [data-edituser], [data-editcli], [data-cli], [data-precio], [data-promoprecio], [data-nuevapromo]');
   if (!t || e.target.closest('[data-stop]')) return;
   const d = t.dataset, row = t.closest('[data-pid]');
   if (d.tab) {
@@ -715,6 +795,7 @@ document.addEventListener('click', async e => {
   }
   else if (d.festado !== undefined && !d.tab) { festado = d.festado; render(); }
   else if (d.quitar) { delete draft.items[d.quitar]; const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); }
+  else if (d.combo) { const cid = t.closest('[data-cid]').dataset.cid; if (d.combo === 'ask') delete draft.combos[cid]; else draft.combos[cid] = d.combo; const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); }
   else if (d.promo && row) { if (d.promo === 'ask') delete draft.promos[row.dataset.pid]; else draft.promos[row.dataset.pid] = d.promo; const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); }
   else if (d.sel) { q = ''; $('#q').value = ''; cambiarCant(+d.sel, 1); }   // tocar el producto lo agrega con cantidad 1; después se ajusta en el detalle
   else if (d.go) { if (d.nuevo) nuevoDraft(); go(d.go); }
@@ -725,6 +806,18 @@ document.addEventListener('click', async e => {
   else if (d.act === 'salir') salir();
   else if (d.act === 'guardarPedido') guardarPedido();
   else if (d.modal) cerrarModal();
+  else if (d.act === 'nuevoCombo') abrirCombo(null);
+  else if (d.editcombo) abrirCombo(combos.find(c => c.id == d.editcombo));
+  else if (d.gnuevo !== undefined) { comboEd.grupos.push({ cant: 6, pids: [] }); pintarCombo(); }
+  else if (d.gdelg !== undefined) { comboEd.grupos.splice(+d.gdelg, 1); pintarCombo(); }
+  else if (d.gadd) { const [i, pid] = d.gadd.split(':').map(Number); comboEd.grupos[i].pids.push(pid); pintarCombo(); }
+  else if (d.gdel) { const [i, pid] = d.gdel.split(':').map(Number); comboEd.grupos[i].pids = comboEd.grupos[i].pids.filter(x => x !== pid); pintarCombo(); }
+  else if (d.ctipo) { comboEd.tipo = d.ctipo; pintarCombo(); }
+  else if (d.csave !== undefined) guardarCombo();
+  else if (d.cdel !== undefined) {
+    if (!t.dataset.seguro) { t.dataset.seguro = 1; t.textContent = 'Tocá de nuevo para confirmar'; return; }
+    try { await api('DELETE', 'p/combos/' + comboEd.id); await cargar(); toast('Promo eliminada'); cerrarModal(); } catch (er) { toast(er.message); }
+  }
   else if (d.act === 'nuevoProd') abrirProducto({ activo: true });
   else if (d.act === 'borrarProd') {
     if (!t.dataset.seguro) { t.dataset.seguro = 1; t.textContent = 'Tocá de nuevo para confirmar'; return; }   // doble toque en vez de cuadro del navegador
