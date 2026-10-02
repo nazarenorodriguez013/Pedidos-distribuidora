@@ -20,6 +20,8 @@ async function load(pool) {
   state.usuarios = state.usuarios || [];
   state.clientes = state.clientes || [];
   state.seq.c = state.seq.c || 1;
+  state.combos = state.combos || [];
+  state.seq.k = state.seq.k || 1;
   for (const p of state.productos) delete p.stock;   // ya no se maneja stock
   for (const o of state.pedidos) if (o.subtotal === undefined) {   // pedidos anteriores al redondeo: se les aplica solo
     o.subtotal = o.total; o.total = redondear(o.subtotal); o.redondeo = Math.round((o.total - o.subtotal) * 100) / 100;
@@ -81,6 +83,28 @@ function cleanProducto(b, prev = {}) {
   };
 }
 
+// Promos combinadas: la promo pide una cantidad por grupo de productos (un grupo puede ser un solo producto o varios "de cualquier sabor").
+// Si el pedido cumple todos los grupos y el vendedor la acepta, cada unidad de los productos de la promo va con descuento % o con precio fijo.
+const sumaGrupo = (g, cant) => g.pids.reduce((t, pid) => t + (cant.get(pid) || 0), 0);
+const comboCumple = (c, cant) => c.activa && c.grupos.every(g => sumaGrupo(g, cant) >= g.cant);
+const comboIncluye = (c, pid) => c.grupos.some(g => g.pids.includes(pid));
+const precioComboDe = (c, p) => (c.tipo === 'precio' ? c.precio : Math.round(p.precio * (100 - c.pct)) / 100);
+function cleanCombo(b) {
+  const nombre = String(b.nombre || '').trim();
+  if (!nombre) throw { code: 400, msg: 'Falta el nombre de la promo' };
+  const grupos = (Array.isArray(b.grupos) ? b.grupos : []).map(g => ({ cant: Math.floor(num(g.cant)), pids: [...new Set((Array.isArray(g.pids) ? g.pids : []).map(Number))] }));
+  if (!grupos.length) throw { code: 400, msg: 'Agregá al menos un grupo de productos' };
+  for (const g of grupos) {
+    if (!(g.cant >= 1)) throw { code: 400, msg: 'Cada grupo necesita una cantidad de 1 o más' };
+    if (!g.pids.length || g.pids.some(pid => !state.productos.some(p => p.id === pid))) throw { code: 400, msg: 'Cada grupo necesita al menos un producto' };
+  }
+  const tipo = b.tipo === 'precio' ? 'precio' : 'pct';
+  const pct = Math.min(100, num(b.pct)), precio = num(b.precio);
+  if (tipo === 'pct' && !(pct > 0)) throw { code: 400, msg: 'Poné el porcentaje de descuento' };
+  if (tipo === 'precio' && !(precio > 0)) throw { code: 400, msg: 'Poné el precio por unidad' };
+  return { nombre, activa: b.activa === undefined ? true : !!b.activa, grupos, tipo, pct: tipo === 'pct' ? pct : 0, precio: tipo === 'precio' ? precio : 0 };
+}
+
 const REDONDEO = 50;   // el total de cada pedido se redondea hacia arriba a múltiplo de 50
 const redondear = x => Math.ceil(Math.round(x * 100) / (REDONDEO * 100)) * REDONDEO;
 const nombreCliente = c => [c.nombre, c.apellido].filter(Boolean).join(' ');
@@ -121,8 +145,8 @@ function armarPedido(b, viejo, quien, admin) {
     if (cant > 0) nuevas.set(Number(it.pid), (nuevas.get(Number(it.pid)) || 0) + cant);
   }
   if (!nuevas.size) throw { code: 400, msg: 'El pedido no tiene productos' };
-  const quierePromo = new Map();
-  for (const it of Array.isArray(b.items) ? b.items : []) if (it.promo) quierePromo.set(Number(it.pid), true);
+  const quierePromo = new Map(), quiereCombo = new Map();
+  for (const it of Array.isArray(b.items) ? b.items : []) { if (it.promo) quierePromo.set(Number(it.pid), true); if (it.combo) quiereCombo.set(Number(it.pid), Number(it.combo)); }
   const items = [];
   for (const [pid, cant] of nuevas) {
     const p = state.productos.find(x => x.id === pid);
@@ -137,8 +161,15 @@ function armarPedido(b, viejo, quien, admin) {
       if (!hayPromo(p) || promoCantDe(p) <= 1 || cant < promoCantDe(p)) throw { code: 409, msg: `La promo de "${p.nombre}" no aplica (hay que llevar ${promoCantDe(p)} o más)` };
       aplica = true;
     }
-    const unit = aplica ? precioPromoDe(p) : p.precio;
-    items.push({ pid, codigo: p.codigo, nombre: p.nombre, precio: old && !!old.promo === aplica ? old.precio : unit, precioLista: p.precio, promo: aplica || undefined, cant });
+    let combo = null;
+    if (quiereCombo.get(pid)) {   // promo combinada aceptada por el vendedor
+      combo = state.combos.find(c => c.id === quiereCombo.get(pid));
+      if (!combo || !comboIncluye(combo, pid) || !comboCumple(combo, nuevas)) throw { code: 409, msg: `La promo "${combo ? combo.nombre : ''}" no aplica con las cantidades del pedido` };
+      aplica = false;
+    }
+    const unit = combo ? precioComboDe(combo, p) : aplica ? precioPromoDe(p) : p.precio;
+    const mismo = old && (combo ? old.comboId === combo.id : !old.comboId && !!old.promo === aplica);
+    items.push({ pid, codigo: p.codigo, nombre: p.nombre, precio: mismo ? old.precio : unit, precioLista: p.precio, promo: aplica || undefined, comboId: combo ? combo.id : undefined, comboNombre: combo ? combo.nombre : undefined, cant });
   }
   // Pedido ya cargado por administración: si lo edita el vendedor queda marcado "agregar" para que el admin lo vea
   let extra = {};
@@ -146,7 +177,7 @@ function armarPedido(b, viejo, quien, admin) {
     for (const i of items) { const o = viejas.get(i.pid); i.cantCargada = admin ? i.cant : (o ? o.cantCargada ?? o.cant : 0); }
     if (admin) extra = { agregar: false, agregadoEn: undefined, cargadoItems: items.map(i => ({ pid: i.pid, nombre: i.nombre, cant: i.cant })) };   // lo que edita el admin queda como cargado
     else {
-      const igual = items.length === viejo.items.length && items.every(i => { const o = viejas.get(i.pid); return o && o.cant === i.cant && !!o.promo === !!i.promo; })
+      const igual = items.length === viejo.items.length && items.every(i => { const o = viejas.get(i.pid); return o && o.cant === i.cant && !!o.promo === !!i.promo && o.comboId === i.comboId; })
         && (dia || '') === (viejo.dia || '') && (turno || '') === (viejo.turno || '') && String(b.nota || '').trim() === (viejo.nota || '') && (cli ? cli.id : undefined) === viejo.clienteId;
       if (!igual) extra = { agregar: true, agregadoEn: new Date().toISOString() };
     }
@@ -324,6 +355,22 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         s.usuarios.splice(s.usuarios.indexOf(u), 1); await save(pool);
         return send(res, 200, { ok: true });
       }
+      throw { code: 405, msg: 'Método no permitido' };
+    }
+
+    if (rec === 'combos') {
+      if (!id && req.method === 'GET') return send(res, 200, { combos: s.combos });
+      soloAdmin();
+      if (!id && req.method === 'POST') {
+        const datos = cleanCombo(await body(req, 1e5));
+        const c = { id: s.seq.k++, ...datos };
+        s.combos.push(c); await save(pool);
+        return send(res, 200, c);
+      }
+      const c = s.combos.find(x => x.id === id);
+      if (!c) throw { code: 404, msg: 'No existe' };
+      if (req.method === 'PUT') { Object.assign(c, cleanCombo({ ...c, ...(await body(req, 1e5)) })); await save(pool); return send(res, 200, c); }
+      if (req.method === 'DELETE') { s.combos.splice(s.combos.indexOf(c), 1); await save(pool); return send(res, 200, { ok: true }); }
       throw { code: 405, msg: 'Método no permitido' };
     }
 
