@@ -70,6 +70,11 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .tabs button span{font-size:22px;line-height:1}
 .tabs button.on{color:var(--pri);border-top:3px solid var(--pri);padding-top:5px}
 .card h2{font-size:17px;margin:0 0 4px}
+.promo-offer{flex-basis:100%;background:#fef3c7;color:#78350f;border:1px solid #fcd34d;border-radius:10px;padding:10px}
+.promo-offer .row{gap:8px}.promo-offer .btn{width:auto;flex:1;min-height:42px;padding:8px}
+.promo-ok{flex-basis:100%;background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok);border-radius:10px;padding:8px 10px;font-weight:600;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.promo-ok .btn,.promo-hint .btn{width:auto;min-height:32px;padding:2px 10px;font-size:13px}
+.promo-hint{flex-basis:100%;font-size:13px;color:var(--warn)}
 .login{max-width:360px;margin:12vh auto 0;padding:0 16px}
 .login h1{text-align:center;color:var(--pri)}
 </style>
@@ -89,7 +94,15 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = n => Number(n || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
 const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-const efectivo = p => (p.promo && p.precioPromo > 0 ? p.precioPromo : p.precio);
+// Promos: precio fijo (precioPromo) o descuento % (promoPct). Con cantidad mínima > 1 se le ofrece al vendedor cuando llega a esa cantidad.
+const hayPromo = p => !!p.promo && (p.precioPromo > 0 || p.promoPct > 0);
+const promoCantDe = p => Math.max(1, p.promoCant || 1);
+const promoPorCant = p => hayPromo(p) && promoCantDe(p) > 1;
+const precioPromoDe = p => Math.round((p.precioPromo > 0 ? p.precioPromo : p.precio * (100 - (p.promoPct || 0)) / 100) * 100) / 100;
+const efectivo = p => (hayPromo(p) && promoCantDe(p) <= 1 ? precioPromoDe(p) : p.precio);   // precio de la promo automática
+const promoQue = p => p.precioPromo > 0 ? money(precioPromoDe(p)) + ' c/u' : (p.promoPct || 0) + '% de descuento';
+const promoTxt = p => promoPorCant(p) ? `${promoCantDe(p)}+ · ${promoQue(p)}` : promoQue(p);
+const promoDesc = p => promoPorCant(p) ? `${promoQue(p)} llevando ${promoCantDe(p)} o más` : promoQue(p);
 
 let token = localStorage.getItem('pd_token'), user = null;
 try { user = JSON.parse(localStorage.getItem('pd_user')); } catch {}
@@ -235,7 +248,8 @@ function filtrar(arr) { const n = norm(q); return n ? arr.filter(p => norm(p.nom
 function enlazarBuscador(pintar) { $('#q').oninput = e => { q = e.target.value; pintar(); }; pintar(); }
 const vacio = t => `<p class="mut" style="text-align:center;padding:24px 0">${t}</p>`;
 const sinPrecio = p => !(p.precio > 0);
-const precioHtml = p => sinPrecio(p) && !(p.promo && p.precioPromo > 0) ? '<span class="tag">Sin precio</span>' : p.promo && p.precioPromo > 0 ? `<span class="price"><s>${money(p.precio)}</s>${money(p.precioPromo)}</span>` : `<span class="price">${money(p.precio)}</span>`;
+const promoAuto = p => hayPromo(p) && promoCantDe(p) <= 1;
+const precioHtml = p => sinPrecio(p) && !promoAuto(p) ? '<span class="tag">Sin precio</span>' : promoAuto(p) ? `<span class="price"><s>${money(p.precio)}</s>${money(precioPromoDe(p))}</span>` : `<span class="price">${money(p.precio)}</span>`;
 
 /* ---------- cargar / editar pedido ---------- */
 /* día y turno: quedan fijados para los pedidos de la sesión hasta que se cambien */
@@ -245,10 +259,15 @@ const diaSesion = () => ss('pd_dia') || hoy();
 const TURNOS = { manana: 'Mañana', tarde: 'Tarde' };
 const diaTxt = d => d ? new Date(d + 'T00:00').toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit' }) : '';
 function nuevoDraft(ped) {
-  draft = ped ? { id: ped.id, dia: ped.dia || diaSesion(), turno: ped.turno || '', clienteId: ped.clienteId || null, legacy: !ped.clienteId, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])) }
-              : { id: null, dia: diaSesion(), turno: ss('pd_turno') || '', clienteId: null, uid: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)), cliente: '', nota: '', items: {}, orig: {} };
+  draft = ped ? { id: ped.id, promos: Object.fromEntries(ped.items.filter(i => i.promo).map(i => [i.pid, 'si'])), avisado: {}, dia: ped.dia || diaSesion(), turno: ped.turno || '', clienteId: ped.clienteId || null, legacy: !ped.clienteId, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])) }
+              : { id: null, promos: {}, avisado: {}, dia: diaSesion(), turno: ss('pd_turno') || '', clienteId: null, uid: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)), cliente: '', nota: '', items: {}, orig: {} };
 }
-const precioLinea = p => draft.orig[p.id] ? draft.orig[p.id].precio : efectivo(p);
+const promoAplicada = p => hayPromo(p) && (promoCantDe(p) <= 1 || (draft.promos[p.id] === 'si' && (draft.items[p.id] || 0) >= promoCantDe(p)));
+const precioLinea = p => {
+  const o = draft.orig[p.id], ap = promoAplicada(p);
+  if (o && !!o.promo === ap && (o.promo !== undefined || !ap)) return o.precio;   // en pedidos ya cargados se respeta el precio con que se vendió
+  return ap ? precioPromoDe(p) : p.precio;
+};
 const REDONDEO = 50;   // el total de cada pedido se redondea hacia arriba a múltiplo de 50
 const redondear50 = x => Math.ceil(Math.round(x * 100) / (REDONDEO * 100)) * REDONDEO;
 const multiploDe = p => p.multiplo || 1;
@@ -275,14 +294,28 @@ function pintarLista() {
   const todos = filtrar(base), lista = todos.slice(0, 30);   // orden fijo: lo elegido no sube, queda en el detalle
   $('#lista').innerHTML = lista.length ? `<div class="card">${lista.map(p => {
     const c = draft.items[p.id] || 0, bloq = !p.activo && !c;   // sin precio / desactivado: se ve pero no se puede pedir
-    return `<div class="row ${bloq ? 'off' : ''}" ${bloq ? '' : `data-sel="${p.id}"`} style="${c ? 'background:color-mix(in srgb,var(--pri) 10%,transparent)' : ''}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · </span>${multiploDe(p) > 1 ? `<span class="tag">de a ${multiploDe(p)}</span> ` : ''}${p.promo && p.precioPromo > 0 ? '<span class="tag promo">PROMO</span> ' : ''}${precioHtml({ ...p, precio: p.precio, precioPromo: draft.orig[p.id] ? 0 : p.precioPromo, promo: !draft.orig[p.id] && p.promo })}</div>
+    return `<div class="row ${bloq ? 'off' : ''}" ${bloq ? '' : `data-sel="${p.id}"`} style="${c ? 'background:color-mix(in srgb,var(--pri) 10%,transparent)' : ''}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · </span>${multiploDe(p) > 1 ? `<span class="tag">de a ${multiploDe(p)}</span> ` : ''}${hayPromo(p) ? `<span class="tag promo">PROMO ${esc(promoTxt(p))}</span> ` : ''}${precioHtml({ ...p, promo: !draft.orig[p.id] && p.promo })}</div>
       ${bloq ? '<span class="tag">No disponible</span>' : c ? `<span class="tag ok">✓ ${c}</span>` : '<span class="mut">+</span>'}</div>`;
   }).join('')}</div>${todos.length > lista.length ? `<p class="mut" style="text-align:center">Mostrando ${lista.length} de ${todos.length}: seguí escribiendo para afinar</p>` : ''}` : vacio('Sin resultados');
 }
+function limpiarPromos() {   // si la cantidad baja del mínimo, la decisión sobre la promo se reinicia
+  for (const pid of Object.keys(draft.promos)) { const p = productos.find(x => x.id == pid); if (!p || !promoPorCant(p) || (draft.items[pid] || 0) < promoCantDe(p)) { delete draft.promos[pid]; delete draft.avisado[pid]; } }
+  for (const pid of Object.keys(draft.avisado)) if (!(draft.items[pid] > 0)) delete draft.avisado[pid];
+}
+function bloquePromo(p) {
+  if (!promoPorCant(p)) return '';
+  const c = draft.items[p.id], min = promoCantDe(p), st = draft.promos[p.id];
+  if (c < min) return `<div class="promo-hint">🏷️ Promo: ${esc(promoDesc(p))}</div>`;
+  if (st === 'si') return `<div class="promo-ok"><span>✓ Promo aplicada: ${esc(promoQue(p))}</span><button class="btn sec" data-promo="no">Quitar</button></div>`;
+  if (st === 'no') return `<div class="promo-hint">Promo no aplicada <button class="btn sec" data-promo="ask">Aplicar</button></div>`;
+  return `<div class="promo-offer"><b>🏷️ ¡Hay una promo!</b> ${esc(promoDesc(p))}. ¿La aplicás?<div class="row" style="border:0;padding:8px 0 0"><button class="btn" data-promo="si">Aceptar</button><button class="btn sec" data-promo="no">No, gracias</button></div></div>`;
+}
 function pintarDetalle() {
+  limpiarPromos();
   const sel = productos.filter(enPed);
-  $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + sel.map(p => `<div class="row" data-pid="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${money(precioLinea(p))} c/u${multiploDe(p) > 1 ? ' · de a ' + multiploDe(p) : ''} · subtotal <b data-sub>${money(draft.items[p.id] * precioLinea(p))}</b></span></div>
-      <div class="qty"><button data-q="-1">−</button><input class="qin" type="number" inputmode="numeric" min="0" step="${multiploDe(p)}" data-qin="${p.id}" value="${draft.items[p.id]}"><button data-q="1">+</button></div><button class="btn sec" data-quitar="${p.id}" aria-label="Quitar del pedido" style="width:38px;min-height:38px;padding:0;color:var(--bad);flex:none">✕</button></div>`).join('') + '<div id="dtotales"></div>' : '<span class="mut">Tocá un producto de la lista para agregarlo con cantidad 1. Después ajustás la cantidad acá.</span>';
+  for (const p of sel) if (promoPorCant(p) && draft.items[p.id] >= promoCantDe(p) && !draft.promos[p.id] && !draft.avisado[p.id]) { draft.avisado[p.id] = true; toast(`🏷️ Promo disponible en ${p.nombre}`); }
+  $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + sel.map(p => { const pl = precioLinea(p); return `<div class="row" data-pid="${p.id}" style="flex-wrap:wrap"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${pl < p.precio ? `<s>${money(p.precio)}</s> ` : ''}${money(pl)} c/u${multiploDe(p) > 1 ? ' · de a ' + multiploDe(p) : ''} · subtotal <b data-sub>${money(draft.items[p.id] * pl)}</b></span></div>
+      <div class="qty"><button data-q="-1">−</button><input class="qin" type="number" inputmode="numeric" min="0" step="${multiploDe(p)}" data-qin="${p.id}" value="${draft.items[p.id]}"><button data-q="1">+</button></div><button class="btn sec" data-quitar="${p.id}" aria-label="Quitar del pedido" style="width:38px;min-height:38px;padding:0;color:var(--bad);flex:none">✕</button>${bloquePromo(p)}</div>`; }).join('') + '<div id="dtotales"></div>' : '<span class="mut">Tocá un producto de la lista para agregarlo con cantidad 1. Después ajustás la cantidad acá.</span>';
 }
 let editNota = false;
 function pintarNota() {
@@ -309,7 +342,7 @@ function cambiarCant(pid, d, fijo) {
   const y = window.scrollY; pintarPedido(); window.scrollTo(0, y);
 }
 async function guardarPedido() {
-  const items = Object.entries(draft.items).map(([pid, cant]) => ({ pid: Number(pid), cant }));
+  const items = Object.entries(draft.items).map(([pid, cant]) => { const p = productos.find(x => x.id == pid); return { pid: Number(pid), cant, promo: !!(p && promoPorCant(p) && promoAplicada(p)) }; });
   const body = { clienteId: draft.clienteId, cliente: draft.cliente, nota: draft.nota, dia: draft.dia, turno: draft.turno, items };
   if (!draft.clienteId && !draft.legacy) return toast('Elegí un cliente');
   const mal = items.find(i => { const p = productos.find(x => x.id === i.pid); return p && i.cant % multiploDe(p); });
@@ -454,7 +487,10 @@ function vProducto() {
     <p class="mut" style="margin:4px 0 0">1 = por unidad. Con 5, las cantidades del pedido van de 5 en 5 (5, 10, 15…).</p>
     <div class="row" style="border:0"><div class="nm"><b>Activo</b><span class="mut">Si está apagado no se puede pedir ni sale en el PDF</span></div><label class="sw" style="margin:0"><input type="checkbox" name="activo" ${p.activo ? 'checked' : ''}><i></i></label></div>
     <div class="row" style="border:0"><div class="nm"><b>En promoción</b></div><label class="sw" style="margin:0"><input type="checkbox" name="promo" ${p.promo ? 'checked' : ''}><i></i></label></div>
-    <label>Precio promo</label><input name="precioPromo" inputmode="decimal" value="${p.precioPromo || ''}">
+    <label>Cantidad mínima para la promo</label><input name="promoCant" inputmode="numeric" value="${p.promoCant || 1}" placeholder="1">
+    <p class="mut" style="margin:4px 0 0">1 = la promo se aplica siempre y sola. Con 10, al vendedor se le ofrece cuando carga 10 o más y decide si la acepta.</p>
+    <label>Descuento %</label><input name="promoPct" inputmode="decimal" value="${p.promoPct || ''}" placeholder="Ej: 5">
+    <label>O precio promo por unidad</label><input name="precioPromo" inputmode="decimal" value="${p.precioPromo || ''}">
     <div style="height:14px"></div><button class="btn">Guardar</button>
     ${p.id ? '<div style="height:10px"></div><button type="button" class="btn bad" data-act="borrarProd">Eliminar producto</button>' : ''}</form>`;
   $('#f').onsubmit = async e => {
@@ -463,7 +499,7 @@ function vProducto() {
     d.activo = !!f.get('activo'); d.promo = !!f.get('promo');
     try {
       if (p.id) await api('PUT', 'p/productos/' + p.id, d); else await api('POST', 'p/productos', d);
-      await cargar(); toast('Guardado'); volverA('productos');
+      await cargar(); toast('Guardado'); pila.length > 1 ? history.back() : go('productos', true);
     } catch (er) { toast(er.message); }
   };
 }
@@ -476,7 +512,7 @@ async function setProd(id, campos) {
 function vPromos() {
   $('#main').innerHTML = `${esAdmin() ? '<button class="btn" data-act="agregarPromo" style="margin-bottom:10px">+ Agregar promoción</button>' : ''}<div id="lista"></div>`;
   const l = productos.filter(p => p.promo);
-  $('#lista').innerHTML = l.length ? `<div class="card">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" ${esAdmin() ? `data-promoprecio="${p.id}"` : ''}><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}${esAdmin() ? ' · toque para cambiar el precio' : ''}</span></div>${precioHtml(p)}${esAdmin() ? `<button class="btn sec" style="width:auto;min-height:40px;padding:0 12px" data-quitarpromo="${p.id}">✕</button>` : ''}</div>`).join('')}</div>` : vacio('No hay promociones cargadas');
+  $('#lista').innerHTML = l.length ? `<div class="card">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" ${esAdmin() ? `data-promoprecio="${p.id}"` : ''}><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · ${hayPromo(p) ? esc(promoDesc(p)) : 'incompleta: falta descuento o precio'}${esAdmin() ? ' · tocar para editar' : ''}</span></div><span class="price">${money(p.precio)}</span>${esAdmin() ? `<button class="btn sec" style="width:auto;min-height:40px;padding:0 12px" data-quitarpromo="${p.id}">✕</button>` : ''}</div>`).join('')}</div>` : vacio('No hay promociones cargadas');
 }
 let eligiendoPromo = false;
 function vElegirPromo() {
@@ -505,9 +541,9 @@ function exportarPdf() {
   doc.setFontSize(10); doc.text(hoy, 196, 16, { align: 'right' });
   doc.autoTable({
     startY: 22, head: [['Código', 'Producto', 'Precio']],
-    body: l.map(p => [p.codigo, p.nombre + (p.promo && p.precioPromo > 0 ? '  (PROMO)' : ''), money(efectivo(p))]),
+    body: l.map(p => [p.codigo, p.nombre + (hayPromo(p) ? '  (PROMO: ' + promoDesc(p) + ')' : ''), money(efectivo(p))]),
     headStyles: { fillColor: [15, 118, 110] }, columnStyles: { 2: { halign: 'right' } }, styles: { fontSize: 10 },
-    didParseCell: h => { if (h.section === 'body' && l[h.row.index].promo && l[h.row.index].precioPromo > 0) h.cell.styles.fontStyle = 'bold'; },
+    didParseCell: h => { if (h.section === 'body' && hayPromo(l[h.row.index])) h.cell.styles.fontStyle = 'bold'; },
   });
   doc.save('lista-de-precios-' + new Date().toISOString().slice(0, 10) + '.pdf');
 }
@@ -623,6 +659,7 @@ document.addEventListener('click', async e => {
     else go(d.tab, view !== 'menu');
   }
   else if (d.quitar) { delete draft.items[d.quitar]; const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); }
+  else if (d.promo && row) { if (d.promo === 'ask') delete draft.promos[row.dataset.pid]; else draft.promos[row.dataset.pid] = d.promo; const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); }
   else if (d.sel) { q = ''; $('#q').value = ''; cambiarCant(+d.sel, 1); }   // tocar el producto lo agrega con cantidad 1; después se ajusta en el detalle
   else if (d.go) { if (d.nuevo) nuevoDraft(); go(d.go); }
   else if (d.act === 'atras') {
@@ -671,8 +708,8 @@ document.addEventListener('click', async e => {
   else if (d.f) { filtro = d.f; render(); }
   else if (d.q && row) cambiarCant(+row.dataset.pid, +d.q, d.q === 'set' ? +(prompt('Cantidad', draft.items[row.dataset.pid] || 0) ?? NaN) : undefined);
   else if (d.quitarpromo) { await setProd(+d.quitarpromo, { promo: false }); render(); }
-  else if (d.promoprecio) { const p = productos.find(x => x.id == d.promoprecio), v = prompt('Precio promo', p.precioPromo || ''); if (v !== null) { await setProd(p.id, { precioPromo: v }); render(); } }
-  else if (d.nuevapromo) { const p = productos.find(x => x.id == d.nuevapromo), v = prompt('Precio promo para ' + p.nombre); if (v) { await setProd(p.id, { promo: true, precioPromo: v }); eligiendoPromo = false; render(); } }
+  else if (d.promoprecio) { editando = { ...productos.find(x => x.id == d.promoprecio) }; go('producto'); }
+  else if (d.nuevapromo) { editando = { ...productos.find(x => x.id == d.nuevapromo), promo: true }; go('producto'); }
   else if (d.precio) { const p = productos.find(x => x.id == d.precio), v = prompt('Precio de ' + p.nombre, p.precio); if (v !== null && v !== '') { await setProd(p.id, { precio: v }); render(); } }
 });
 // cantidad escrita con el teclado en el detalle
