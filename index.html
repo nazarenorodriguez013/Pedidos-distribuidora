@@ -494,6 +494,7 @@ const vendNombre = id => { const u = usuarios.find(x => x.id === id); return u ?
 const filtrarC = l => { const n = norm(q); return l.filter(c => (!n || [c.nombre, c.apellido, c.codigo, c.telefono, c.direccion].some(x => norm(x).includes(n))) && (!vendC || String(c.vendedorId) === vendC)); };
 const fechaHora = iso => new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
 function listaClientes(l, attr) {
+  l = [...l].sort((a, b) => nombreC(a).localeCompare(nombreC(b), 'es', { sensitivity: 'base' }));   // orden alfabético
   return l.length ? `<div class="card">${l.map(c => `<div class="row" ${attr}="${c.id}"><div class="nm"><b>${esc(nombreC(c))}</b><span class="mut">${[c.codigo ? esc(c.codigo) : '', esc(c.direccion), esc(c.telefono), esAdmin() ? esc(vendNombre(c.vendedorId)) : ''].filter(Boolean).join(' · ')}${c.editadoEn ? `<br>✎ ${esc(fechaHora(c.editadoEn))} · ${esc(c.editadoPor || '')}` : ''}</span></div>${esAdmin() && !c.codigo ? '<span class="tag warn">Sin código</span>' : ''}<span class="mut">›</span></div>`).join('')}</div>` : vacio('No hay clientes');
 }
 const selVend = () => esAdmin() ? `<select id="vendc" style="width:100%;margin:8px 0;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Todos los vendedores</option>${usuarios.filter(u => clientes.some(c => c.vendedorId === u.id)).map(u => `<option value="${u.id}" ${String(u.id) === vendC ? 'selected' : ''}>${esc(u.nombre)}</option>`).join('')}</select>` : '';
