@@ -521,7 +521,7 @@ function vCliente() {
     ${c.id ? `<p class="mut" style="margin:0 0 6px">✎ Última edición: <b>${c.editadoEn ? esc(fechaHora(c.editadoEn)) + ' · ' + esc(c.editadoPor || '') : 'sin registro'}</b></p>` : ''}
     ${a ? campo('codigo', 'Código (lo asigna el administrador)') : `<p class="mut">${c.codigo ? 'Código: ' + esc(c.codigo) : 'Sin código: lo asigna el administrador.'}<br>Este cliente queda asignado a vos.</p>`}
     ${a ? `<label>Vendedor</label><select name="vendedorId" required style="width:100%;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Elegir vendedor…</option>${usuarios.filter(u => u.activo || u.id === c.vendedorId).map(u => `<option value="${u.id}" ${u.id === c.vendedorId ? 'selected' : ''}>${esc(u.nombre)} (${u.rol === 'admin' ? 'admin' : 'vendedor'})</option>`).join('')}</select>` : ''}
-    ${campo('nombre', 'Nombre', 'required')}${campo('apellido', 'Apellido')}${campo('direccion', 'Dirección')}${campo('telefono', 'Teléfono', 'inputmode="tel"')}
+    ${campo('nombre', 'Nombre y apellido', 'required')}${campo('direccion', 'Dirección')}${campo('telefono', 'Teléfono', 'inputmode="tel"')}
     <div style="height:14px"></div><button class="btn">Guardar</button>
     ${a && c.id ? '<div style="height:10px"></div><button type="button" class="btn bad" data-act="borrarCliente">Eliminar cliente</button>' : ''}</form>`;
   $('#f').onsubmit = async e => {
