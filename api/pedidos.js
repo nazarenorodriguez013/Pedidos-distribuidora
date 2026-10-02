@@ -122,7 +122,7 @@ function cleanUsuario(b, prev) {
   const o = { usuario, nombre, rol, activo: b.activo === undefined ? prev?.activo ?? true : !!b.activo };
   if (b.password !== undefined && b.password !== '') {
     if (String(b.password).length < 4) throw { code: 400, msg: 'La contraseña debe tener al menos 4 caracteres' };
-    Object.assign(o, hashPass(b.password));
+    Object.assign(o, hashPass(String(b.password).trim()));
   } else if (!prev) throw { code: 400, msg: 'Falta la contraseña' };
   return o;
 }
@@ -173,7 +173,9 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       const f = (fallos.get(usuario) || []).filter(t => ahora - t < 10 * 60 * 1000);
       if (f.length >= 10) throw { code: 429, msg: 'Demasiados intentos. Probá en unos minutos.' };
       const u = s.usuarios.find(x => x.usuario === usuario);
-      if (!u || !u.activo || !passOk(u, b.pass || '')) { fallos.set(usuario, [...f, ahora]); throw { code: 401, msg: 'Usuario o contraseña incorrectos' }; }
+      const clave = String(b.pass || '');
+      if (!u || !u.activo || !(passOk(u, clave) || passOk(u, clave.trim()))) {
+        console.log('Login fallido:', usuario, !u ? '(el usuario no existe)' : !u.activo ? '(desactivado)' : '(contraseña)'); fallos.set(usuario, [...f, ahora]); throw { code: 401, msg: 'Usuario o contraseña incorrectos' }; }
       fallos.delete(usuario);
       return send(res, 200, { token: makeToken(u, secret), user: pub(u) });
     }
@@ -182,7 +184,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     const admin = yo.rol === 'admin';
     const soloAdmin = () => { if (!admin) throw { code: 403, msg: 'Solo el administrador puede hacer esto' }; };
 
-    if (rec === 'yo' && req.method === 'GET') return send(res, 200, pub(yo));
+    if (rec === 'yo' && req.method === 'GET') return send(res, 200, { ...pub(yo), db: !!pool });
     if (rec === 'clave' && req.method === 'PUT') {
       const b = await body(req, 1e4);
       if (!passOk(yo, b.actual || '')) throw { code: 403, msg: 'La contraseña actual no es correcta' };
