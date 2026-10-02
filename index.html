@@ -63,6 +63,7 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .detalle{max-height:34vh;overflow:auto;margin-top:10px}
 .detalle .row{padding:6px 0}
 .detalle .qty button{width:34px;height:34px;font-size:18px}
+.dtot{position:sticky;bottom:-12px;background:var(--card);border-top:1px solid var(--bd)!important}
 .qin{width:68px;text-align:center;font-size:18px;font-weight:700;padding:6px;min-height:42px}
 .login{max-width:360px;margin:12vh auto 0;padding:0 16px}
 .login h1{text-align:center;color:var(--pri)}
@@ -216,11 +217,11 @@ function vPedido() {
   $('#main').innerHTML = `<label>Cliente</label><button class="btn sec" data-act="cambiarCliente" style="text-align:left;display:flex;justify-content:space-between"><span>${draft.cliente ? '👤 ' + esc(draft.cliente) : 'Elegir cliente…'}</span><span class="mut">${draft.cliente ? 'Cambiar' : '›'}</span></button>
     <div class="row" style="border:0;align-items:flex-end"><div style="flex:1.2"><label>Día de entrega</label><input id="dia" type="date" value="${esc(draft.dia)}"></div>
       <div style="flex:1"><label>Turno</label><div class="chips" style="margin:0" id="turnos">${Object.entries(TURNOS).map(([k, v]) => `<button type="button" data-turno="${k}" class="${draft.turno === k ? 'on' : ''}" style="flex:1;min-height:46px">${v}</button>`).join('')}</div></div></div>
-    <label>Nota (opcional)</label><input id="nota" value="${esc(draft.nota)}" placeholder="Ej: entregar el jueves">
     <div id="detalle" class="card detalle"></div>
+    <div id="notaBox" style="margin-top:10px"></div>
     <div style="height:10px"></div>${buscador()}
     <div class="bar"><div class="tot" id="tot"></div><button class="btn" data-act="guardarPedido">${draft.id ? 'Guardar cambios' : 'Guardar pedido'}</button></div>`;
-  $('#nota').oninput = e => draft.nota = e.target.value;
+  editNota = false; pintarNota();
   $('#dia').onchange = e => { draft.dia = e.target.value; if (!draft.id && draft.dia) ss('pd_dia', draft.dia); };
   enlazarBuscador(() => { verLista = true; pintarPedido(); });
   $('#q').onfocus = () => { if (!verLista) { verLista = true; pintarLista(); } };
@@ -241,11 +242,21 @@ function pintarLista() {
 function pintarDetalle() {
   const sel = productos.filter(enPed);
   $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + sel.map(p => `<div class="row" data-pid="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${money(precioLinea(p))} c/u · subtotal <b data-sub>${money(draft.items[p.id] * precioLinea(p))}</b></span></div>
-      <div class="qty"><button data-q="-1">−</button><input class="qin" type="number" inputmode="numeric" min="0" data-qin="${p.id}" value="${draft.items[p.id]}"><button data-q="1">+</button></div><button class="btn sec" data-quitar="${p.id}" aria-label="Quitar del pedido" style="width:38px;min-height:38px;padding:0;color:var(--bad);flex:none">✕</button></div>`).join('') : '<span class="mut">Tocá un producto de la lista para agregarlo con cantidad 1. Después ajustás la cantidad acá.</span>';
+      <div class="qty"><button data-q="-1">−</button><input class="qin" type="number" inputmode="numeric" min="0" data-qin="${p.id}" value="${draft.items[p.id]}"><button data-q="1">+</button></div><button class="btn sec" data-quitar="${p.id}" aria-label="Quitar del pedido" style="width:38px;min-height:38px;padding:0;color:var(--bad);flex:none">✕</button></div>`).join('') + `<div class="row dtot" style="border:0"><div class="nm"><b>Total</b></div><span class="price" data-dtot style="font-size:18px">${money(totalDraft())}</span></div>` : '<span class="mut">Tocá un producto de la lista para agregarlo con cantidad 1. Después ajustás la cantidad acá.</span>';
+}
+let editNota = false;
+function pintarNota() {
+  const box = $('#notaBox'); if (!box) return;
+  if (editNota) {
+    box.innerHTML = `<textarea id="nota" placeholder="Ej: entregar el jueves" style="min-height:90px">${esc(draft.nota)}</textarea><button class="btn sec" data-act="cerrarNota" style="margin-top:8px">Listo</button>`;
+    $('#nota').oninput = e => draft.nota = e.target.value; $('#nota').focus();
+  } else if (draft.nota) box.innerHTML = `<div class="card"><span class="mut">Nota</span><br>${esc(draft.nota)}</div><button class="btn sec" data-act="editarNota">Editar nota</button>`;
+  else box.innerHTML = '<button class="btn sec" data-act="editarNota">📝 Agregar nota</button>';
 }
 function pintarTotal() {
   const n = Object.values(draft.items).reduce((a, b) => a + b, 0);
   $('#tot').textContent = `${money(totalDraft())} · ${n} u.`;
+  const dt = $('[data-dtot]'); if (dt) dt.textContent = money(totalDraft());
 }
 function cambiarCant(pid, d, fijo) {
   const p = productos.find(x => x.id === pid); if (!p || Number.isNaN(fijo) || (!p.activo && !draft.items[pid])) return;
@@ -589,6 +600,8 @@ document.addEventListener('click', async e => {
   else if (d.act === 'pdf') exportarPdf();
   else if (d.act === 'nuevoCliente') { clienteVolver = view === 'elegir' ? 'elegir' : 'clientes'; editC = {}; go('cliente'); }
   else if (d.turno) { draft.turno = d.turno; if (!draft.id) ss('pd_turno', d.turno); $('#turnos').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.turno === d.turno)); }
+  else if (d.act === 'editarNota') { editNota = true; pintarNota(); }
+  else if (d.act === 'cerrarNota') { editNota = false; pintarNota(); }
   else if (d.act === 'cambiarCliente') go('elegir');
   else if (d.act === 'importarClientes') importarClientes();
   else if (d.act === 'plantillaClientes') plantillaClientes();
