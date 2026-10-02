@@ -183,14 +183,35 @@ async function cargar() {
   usuarios = c.usuarios;
   cacheDatos();
 }
-function salir() { localStorage.removeItem('pd_token'); token = null; view = 'menu'; render(); }
+function salir() { localStorage.removeItem('pd_token'); localStorage.removeItem('pd_nav'); token = null; view = 'menu'; render(); }
 /* navegación con el botón "atrás" del celular: vuelve a la sección anterior; en el menú pregunta antes de salir */
 let pila = [];   // secciones visitadas, en el mismo orden que el historial del navegador
 function go(v, reemplazar) {
   view = v; q = ''; filtro = 'todos'; eligiendoPromo = false;
   if (reemplazar && pila.length) pila[pila.length - 1] = v; else pila.push(v);
   try { history[reemplazar ? 'replaceState' : 'pushState']({ v, d: pila.length - 1 }, ''); } catch {}
-  window.scrollTo(0, 0); render();
+  window.scrollTo(0, 0); render(); guardarNav();
+}
+/* al recargar la página (o si Android cierra la app) se vuelve a la pantalla donde se estaba, con el pedido en curso */
+const NAV_VISTAS_CON_DATOS = { pedido: () => draft, elegir: () => draft, cliente: () => editC, usuario: () => editU };
+function guardarNav() {
+  if (!token || !user) return;
+  const conPedido = pila.some(v => v === 'pedido' || v === 'elegir');
+  try { localStorage.setItem('pd_nav', JSON.stringify({ u: user.id, t: Date.now(), pila, draft: conPedido ? draft : null, editC: pila.includes('cliente') ? editC : null, editU: pila.includes('usuario') ? editU : null, clienteVolver, filtros: { vend, fdia, fturno, festado } })); } catch {}
+}
+function restaurarNav() {
+  let n; try { n = JSON.parse(localStorage.getItem('pd_nav')); } catch { n = null; }
+  if (!n || n.u !== user.id || Date.now() - n.t > 12 * 3600e3 || !Array.isArray(n.pila) || !n.pila.length) return false;
+  const v = n.pila[n.pila.length - 1];
+  if (!(v in TITULOS) || v === 'menu' && n.pila.length === 1) return false;
+  if (n.draft) draft = n.draft; if (n.editC) editC = n.editC; if (n.editU) editU = n.editU;
+  if (NAV_VISTAS_CON_DATOS[v] && !NAV_VISTAS_CON_DATOS[v]()) return false;
+  clienteVolver = n.clienteVolver || clienteVolver;
+  ({ vend, fdia, fturno, festado } = { ...{ vend, fdia, fturno, festado }, ...(n.filtros || {}) });
+  pila = []; view = v;
+  for (const x of n.pila) { pila.push(x); try { history.pushState({ v: x, d: pila.length - 1 }, ''); } catch {} }
+  render(); guardarNav();
+  return true;
 }
 const volverA = v => { if (pila.length > 1 && pila[pila.length - 2] === v) history.back(); else go(v, true); };
 window.addEventListener('popstate', e => {
@@ -205,7 +226,7 @@ window.addEventListener('popstate', e => {
   pila.length = st.d + 1; pila[st.d] = st.v;
   view = st.v; eligiendoPromo = false;
   if (habiaModal) { const y = window.scrollY; render(); window.scrollTo(0, y); return; }   // se cerró la ventana: se queda donde estaba, con su búsqueda
-  q = ''; filtro = 'todos'; render(); window.scrollTo(0, 0);
+  q = ''; filtro = 'todos'; render(); window.scrollTo(0, 0); guardarNav();
 });
 
 /* ---------- vistas ---------- */
@@ -294,7 +315,7 @@ function cambiosDe(ped) {
 const snapDraft = () => JSON.stringify([Object.entries(draft.items).sort(), draft.nota, draft.dia, draft.turno, draft.clienteId, Object.entries(draft.promos).sort(), Object.entries(draft.combos).sort()]);
 const hayCambios = () => !!draft.id && draft.snap !== snapDraft();   // el que mira el pedido lo modificó en pantalla
 const etiquetaBoton = () => !draft.id ? 'Guardar pedido' : !esAdmin() ? 'Guardar cambios' : hayCambios() ? 'Guardar cambios' : (draft.estado !== 'cargado' || draft.agregar) ? 'Cargar' : '✓ Cargado';
-function actualizarBoton() { const b = $('#btnGuardar'); if (b) { b.textContent = etiquetaBoton(); b.disabled = esAdmin() && draft.id && !hayCambios() && draft.estado === 'cargado' && !draft.agregar; } }
+function actualizarBoton() { guardarNav(); const b = $('#btnGuardar'); if (b) { b.textContent = etiquetaBoton(); b.disabled = esAdmin() && draft.id && !hayCambios() && draft.estado === 'cargado' && !draft.agregar; } }
 function nuevoDraft(ped) {
   draft = ped ? { id: ped.id, orden: ped.items.map(i => i.pid), clienteCodigo: ped.clienteCodigo ?? (clientes.find(c => c.id === ped.clienteId) || {}).codigo, combos: Object.fromEntries(ped.items.filter(i => i.comboId).map(i => [i.comboId, 'si'])), avisadoC: {}, cargadoPor: ped.cargadoPor, agregar: !!ped.agregar, cambios: cambiosDe(ped), cargadoItems: ped.cargadoItems || [], estado: ped.estado || 'pendiente', cargada: Object.fromEntries(ped.items.map(i => [i.pid, i.cantCargada ?? i.cant])), promos: Object.fromEntries(ped.items.filter(i => i.promo).map(i => [i.pid, 'si'])), avisado: {}, dia: ped.dia || diaSesion(), turno: ped.turno || '', clienteId: ped.clienteId || null, legacy: !ped.clienteId, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])) }
               : { id: null, orden: [], combos: {}, avisadoC: {}, estado: 'pendiente', cargada: {}, promos: {}, avisado: {}, dia: diaSesion(), turno: ss('pd_turno') || '', clienteId: null, uid: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)), cliente: '', nota: '', items: {}, orig: {} };
@@ -927,7 +948,7 @@ document.addEventListener('change', async e => {
   const id = e.target.dataset.activo;
   if (id) { await setProd(+id, { activo: e.target.checked }); render(); }
 });
-(async () => { if (token) { try { await cargar(); } catch (e) { if (e.offline) usarCache(); else token = null; } } try { history.replaceState({ d: -1 }, ''); go('menu'); sincronizar(); } catch (e) { $('#app').innerHTML = '<p style="padding:24px;color:#b91c1c">Error: ' + esc(e.message) + '</p>'; } })();
+(async () => { if (token) { try { await cargar(); } catch (e) { if (e.offline) usarCache(); else token = null; } } try { history.replaceState({ d: -1 }, ''); if (!restaurarNav()) go('menu'); sincronizar(); } catch (e) { $('#app').innerHTML = '<p style="padding:24px;color:#b91c1c">Error: ' + esc(e.message) + '</p>'; } })();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 </script>
 </body>
