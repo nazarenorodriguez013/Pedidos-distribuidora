@@ -24,6 +24,7 @@ async function load(pool) {
   state.seq.k = state.seq.k || 1;
   for (const c of state.combos) if (c.tipo === 'precio' && !c.precios) { c.precios = {}; for (const g of c.grupos) for (const pid of g.pids) c.precios[pid] = c.precio; delete c.precio; }
   for (const o of state.pedidos) if (o.clienteId && o.clienteCodigo === undefined) { const c = state.clientes.find(x => x.id === o.clienteId); if (c) o.clienteCodigo = c.codigo; }
+  for (const c of state.clientes) if (c.apellido) { c.nombre = [c.nombre, c.apellido].filter(Boolean).join(' '); c.apellido = ''; }   // un solo campo: nombre y apellido
   for (const p of state.productos) { delete p.stock; if (p.multiplo > 1 && p.multiploSet === undefined) p.multiploSet = true; }   // ya no se maneja stock
   for (const o of state.pedidos) if (o.subtotal === undefined) {   // pedidos anteriores al redondeo: se les aplica solo
     o.subtotal = o.total; o.total = redondear(o.subtotal); o.redondeo = Math.round((o.total - o.subtotal) * 100) / 100;
@@ -141,8 +142,9 @@ const redondear = x => Math.ceil(Math.round(x * 100) / (REDONDEO * 100)) * REDON
 const nombreCliente = c => [c.nombre, c.apellido].filter(Boolean).join(' ');
 function cleanCliente(b, prev, admin, yo) {
   const t = k => String(b[k] ?? prev?.[k] ?? '').trim();
-  const o = { nombre: t('nombre'), apellido: t('apellido'), direccion: t('direccion'), telefono: t('telefono') };
-  if (!o.nombre) throw { code: 400, msg: 'Falta el nombre' };
+  // nombre y apellido van juntos en un solo campo
+  const o = { nombre: [String(b.nombre ?? prev?.nombre ?? '').trim(), String(b.apellido ?? '').trim()].filter(Boolean).join(' '), apellido: '', direccion: t('direccion'), telefono: t('telefono') };
+  if (!o.nombre) throw { code: 400, msg: 'Falta el nombre y apellido' };
   if (admin) {
     o.codigo = t('codigo');
     if (o.codigo && state.clientes.some(c => c.id !== prev?.id && c.codigo.toLowerCase() === o.codigo.toLowerCase())) throw { code: 409, msg: 'Ya existe un cliente con ese código' };
