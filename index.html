@@ -242,7 +242,7 @@ function pintarLista() {
 function pintarDetalle() {
   const sel = productos.filter(enPed);
   $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + sel.map(p => `<div class="row" data-pid="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${money(precioLinea(p))} c/u · subtotal <b data-sub>${money(draft.items[p.id] * precioLinea(p))}</b></span></div>
-      <div class="qty"><button data-q="-1">−</button><input class="qin" type="number" inputmode="numeric" min="0" data-qin="${p.id}" value="${draft.items[p.id]}"><button data-q="1">+</button></div><button class="btn sec" data-quitar="${p.id}" aria-label="Quitar del pedido" style="width:38px;min-height:38px;padding:0;color:var(--bad);flex:none">✕</button></div>`).join('') + `<div class="row dtot" style="border:0"><div class="nm"><b>Total</b></div><span class="price" data-dtot style="font-size:18px">${money(totalDraft())}</span></div>` : '<span class="mut">Tocá un producto de la lista para agregarlo con cantidad 1. Después ajustás la cantidad acá.</span>';
+      <div class="qty"><button data-q="-1">−</button><input class="qin" type="number" inputmode="numeric" min="0" data-qin="${p.id}" value="${draft.items[p.id]}"><button data-q="1">+</button></div><button class="btn sec" data-quitar="${p.id}" aria-label="Quitar del pedido" style="width:38px;min-height:38px;padding:0;color:var(--bad);flex:none">✕</button></div>`).join('') + `<div class="row dtot" style="border:0"><div class="nm"><b>Total</b><span class="mut" data-dcant>${cantTxt()}</span></div><span class="price" data-dtot style="font-size:18px">${money(totalDraft())}</span></div>` : '<span class="mut">Tocá un producto de la lista para agregarlo con cantidad 1. Después ajustás la cantidad acá.</span>';
 }
 let editNota = false;
 function pintarNota() {
@@ -253,9 +253,10 @@ function pintarNota() {
   } else if (draft.nota) box.innerHTML = `<div class="card"><span class="mut">Nota</span><br>${esc(draft.nota)}</div><button class="btn sec" data-act="editarNota">Editar nota</button>`;
   else box.innerHTML = '<button class="btn sec" data-act="editarNota">📝 Agregar nota</button>';
 }
+const cantTxt = () => { const k = Object.keys(draft.items).length, n = Object.values(draft.items).reduce((a, b) => a + b, 0); return `${k} ${k === 1 ? 'producto' : 'productos'} · ${n} u.`; };
 function pintarTotal() {
-  const n = Object.values(draft.items).reduce((a, b) => a + b, 0);
-  $('#tot').textContent = `${money(totalDraft())} · ${n} u.`;
+  $('#tot').innerHTML = `${money(totalDraft())}<br><small style="font-weight:600;font-size:13px">${cantTxt()}</small>`;
+  const dc = $('[data-dcant]'); if (dc) dc.textContent = cantTxt();
   const dt = $('[data-dtot]'); if (dt) dt.textContent = money(totalDraft());
 }
 function cambiarCant(pid, d, fijo) {
@@ -373,10 +374,10 @@ function vPedidos() {
     const n = norm(q), l = pedidos.filter(p => (!n || norm(p.cliente).includes(n) || String(p.id) === n) && (!vend || p.vendedor === vend) && (!fdia || p.dia === fdia) && (!fturno || p.turno === fturno));
     const tot = l.reduce((a, p) => a + p.total, 0);
     const pend = colaMia().filter(x => !n || norm(x.body.cliente).includes(n)).map(x => `<div class="card" style="border-color:${x.error ? 'var(--bad)' : 'var(--warn)'}"><div class="row" style="border:0;padding:0"><div class="nm"><b>${esc(x.body.cliente)}</b>
-      <span class="mut">${x.body.dia ? esc(diaTxt(x.body.dia)) + ' · ' + (TURNOS[x.body.turno] || '') + ' · ' : ''}${x.error ? 'Rechazado: ' + esc(x.error) : '⏳ Esperando señal para enviarse'} · ${x.body.items.reduce((s, i) => s + i.cant, 0)} u.</span></div><span class="price">${money(x.total)}</span></div>
+      <span class="mut">${x.body.dia ? esc(diaTxt(x.body.dia)) + ' · ' + (TURNOS[x.body.turno] || '') + ' · ' : ''}${x.error ? 'Rechazado: ' + esc(x.error) : '⏳ Esperando señal para enviarse'} · ${x.body.items.length} prod. · ${x.body.items.reduce((s, i) => s + i.cant, 0)} u.</span></div><span class="price">${money(x.total)}</span></div>
       <div class="row" style="border:0;padding:8px 0 0">${x.error ? `<button class="btn sec" data-reint="${esc(x.uid)}">Reintentar</button>` : ''}<button class="btn sec" data-delcola="${esc(x.uid)}">Eliminar</button></div></div>`).join('');
     $('#lista').innerHTML = pend + (l.length ? `<p class="mut">${l.length} pedidos · ${money(tot)}</p>` + l.map(p => `<div class="card" data-ped="${p.id}"><div class="row" style="border:0;padding:0"><div class="nm"><b>#${p.id} · ${esc(p.cliente)}</b>
-      <span class="mut">${p.dia ? `<b>${esc(diaTxt(p.dia))} · ${TURNOS[p.turno] || ''}</b> · ` : ''}${esAdmin() ? esc(p.vendedor || '—') + ' · ' : ''}${new Date(p.creado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })} · ${p.items.reduce((s, i) => s + i.cant, 0)} u.${p.editado !== p.creado ? ' · editado' : ''}</span></div><span class="price">${money(p.total)}</span></div></div>`).join('') : (pend ? '' : vacio('No hay pedidos')));
+      <span class="mut">${p.dia ? `<b>${esc(diaTxt(p.dia))} · ${TURNOS[p.turno] || ''}</b> · ` : ''}${esAdmin() ? esc(p.vendedor || '—') + ' · ' : ''}${new Date(p.creado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })} · ${p.items.length} prod. · ${p.items.reduce((s, i) => s + i.cant, 0)} u.${p.editado !== p.creado ? ' · editado' : ''}</span></div><span class="price">${money(p.total)}</span></div></div>`).join('') : (pend ? '' : vacio('No hay pedidos')));
   };
   $('#q').oninput = e => { q = e.target.value; pintar(); };
   $('#fdia').onchange = e => { fdia = e.target.value; pintar(); };
