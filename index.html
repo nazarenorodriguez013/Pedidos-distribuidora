@@ -223,7 +223,7 @@ function login() {
 }
 function vMenu() {
   const a = esAdmin(), hoyP = pedidos.filter(p => p.dia === hoy());
-  $('#main').innerHTML = `${a && !dbOk ? '<div class="hint" style="background:#fee2e2;color:#7f1d1d;padding:10px;border-radius:8px;margin-bottom:10px"><b>Base de datos no conectada.</b> Los usuarios y pedidos se borran en cada deploy. Revisá la variable DATABASE_URL en Railway.</div>' : ''}${a && pedidos.some(hayAgregados) ? `<button class="btn" data-tab="pedidos" data-festado="agregados" style="background:var(--bad);margin-bottom:10px">⚠️ ${pedidos.filter(hayAgregados).length} pedido(s) con productos agregados por el vendedor</button>` : ''}<p class="mut">${esc(user.nombre)}${user.nombre === 'Administrador' || !a ? '' : ' · Administrador'}${!a ? ' · Vendedor' : ''}</p>
+  $('#main').innerHTML = `${a && !dbOk ? '<div class="hint" style="background:#fee2e2;color:#7f1d1d;padding:10px;border-radius:8px;margin-bottom:10px"><b>Base de datos no conectada.</b> Los usuarios y pedidos se borran en cada deploy. Revisá la variable DATABASE_URL en Railway.</div>' : ''}${a && pedidos.some(hayAgregados) ? `<button class="btn" data-tab="pedidos" data-festado="agregados" style="background:var(--bad);margin-bottom:10px">⚠️ ${pedidos.filter(hayAgregados).length} pedido(s) modificados por el vendedor después de cargarlos (Agregar)</button>` : ''}<p class="mut">${esc(user.nombre)}${user.nombre === 'Administrador' || !a ? '' : ' · Administrador'}${!a ? ' · Vendedor' : ''}</p>
     <div class="menu"><button class="main" data-go="pedido" data-nuevo="1"><span>🛒</span>Cargar pedido</button>
     <button data-go="promos"><span>🏷️</span>Promos de la semana</button>
     <button data-tab="pedidos"><span>📋</span>Para hoy<br><small class="mut">${hoyP.length} pedidos · ${money(hoyP.reduce((t, p) => t + p.total, 0))}</small></button></div>`;
@@ -265,15 +265,25 @@ const diaSesion = () => ss('pd_dia') || hoy();
 const TURNOS = { manana: 'Mañana', tarde: 'Tarde' };
 const diaTxt = d => d ? new Date(d + 'T00:00').toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit' }) : '';
 /* estado del pedido: pendiente → cargado (por el administrador). Cargado: el vendedor solo puede agregar, y lo agregado queda marcado. */
-const hayAgregados = p => p.estado === 'cargado' && p.items.some(i => i.cant > (i.cantCargada ?? i.cant));
-const estadoTag = p => hayAgregados(p) ? '<span class="tag bad">⚠ Agregados</span>' : p.estado === 'cargado' ? '<span class="tag ok">✓ Cargado</span>' : '<span class="tag warn">Pendiente</span>';
-const hayAgregadosDraft = () => draft.estado === 'cargado' && Object.entries(draft.items).some(([pid, c]) => c > (draft.cargada[pid] ?? c));
-const minDe = pid => (bloqueado() ? cargadaDe(pid) : 0);   // lo ya cargado no baja
-const bloqueado = () => !esAdmin() && !!draft.id && draft.estado === 'cargado';   // el vendedor no puede tocar lo ya cargado
+const hayAgregados = p => p.estado === 'cargado' && !!p.agregar;   // el vendedor lo modificó después de que el admin lo cargó
+const estadoTag = p => hayAgregados(p) ? '<span class="tag bad">⚠ Agregar</span>' : p.estado === 'cargado' ? '<span class="tag ok">✓ Cargado</span>' : '<span class="tag warn">Pendiente</span>';
 const cargadaDe = pid => (draft.estado === 'cargado' && draft.cargada[pid]) || 0;
+// qué cambió respecto de lo que el administrador cargó
+function cambiosDe(ped) {
+  if (ped.estado !== 'cargado') return [];
+  const out = [];
+  for (const i of ped.items) { const cc = i.cantCargada ?? i.cant; if (i.cant > cc) out.push(`+${i.cant - cc} ${i.nombre}${cc ? '' : ' (nuevo)'}`); else if (i.cant < cc) out.push(`−${cc - i.cant} ${i.nombre}`); }
+  for (const o of ped.cargadoItems || []) if (!ped.items.some(i => i.pid === o.pid)) out.push(`Quitado: ${o.nombre}`);
+  return out;
+}
+const snapDraft = () => JSON.stringify([Object.entries(draft.items).sort(), draft.nota, draft.dia, draft.turno, draft.clienteId, Object.entries(draft.promos).sort()]);
+const hayCambios = () => !!draft.id && draft.snap !== snapDraft();   // el que mira el pedido lo modificó en pantalla
+const etiquetaBoton = () => !draft.id ? 'Guardar pedido' : !esAdmin() ? 'Guardar cambios' : hayCambios() ? 'Guardar cambios' : (draft.estado !== 'cargado' || draft.agregar) ? 'Cargar' : '✓ Cargado';
+function actualizarBoton() { const b = $('#btnGuardar'); if (b) { b.textContent = etiquetaBoton(); b.disabled = esAdmin() && draft.id && !hayCambios() && draft.estado === 'cargado' && !draft.agregar; } }
 function nuevoDraft(ped) {
-  draft = ped ? { id: ped.id, cargadoPor: ped.cargadoPor, estado: ped.estado || 'pendiente', cargada: Object.fromEntries(ped.items.map(i => [i.pid, i.cantCargada ?? i.cant])), promos: Object.fromEntries(ped.items.filter(i => i.promo).map(i => [i.pid, 'si'])), avisado: {}, dia: ped.dia || diaSesion(), turno: ped.turno || '', clienteId: ped.clienteId || null, legacy: !ped.clienteId, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])) }
+  draft = ped ? { id: ped.id, cargadoPor: ped.cargadoPor, agregar: !!ped.agregar, cambios: cambiosDe(ped), cargadoItems: ped.cargadoItems || [], estado: ped.estado || 'pendiente', cargada: Object.fromEntries(ped.items.map(i => [i.pid, i.cantCargada ?? i.cant])), promos: Object.fromEntries(ped.items.filter(i => i.promo).map(i => [i.pid, 'si'])), avisado: {}, dia: ped.dia || diaSesion(), turno: ped.turno || '', clienteId: ped.clienteId || null, legacy: !ped.clienteId, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])) }
               : { id: null, estado: 'pendiente', cargada: {}, promos: {}, avisado: {}, dia: diaSesion(), turno: ss('pd_turno') || '', clienteId: null, uid: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)), cliente: '', nota: '', items: {}, orig: {} };
+  if (ped) draft.snap = snapDraft();
 }
 const promoAplicada = p => hayPromo(p) && (promoCantDe(p) <= 1 || (draft.promos[p.id] === 'si' && (draft.items[p.id] || 0) >= promoCantDe(p)));
 const precioLinea = p => {
@@ -287,18 +297,21 @@ const multiploDe = p => p.multiplo || 1;
 function subtotalDraft() { return Math.round(productos.reduce((s, p) => s + (draft.items[p.id] || 0) * precioLinea(p), 0) * 100) / 100; }
 function totalDraft() { return redondear50(subtotalDraft()); }
 function vPedido() {
-  const bl = bloqueado(), ad = esAdmin() && draft.id;
-  $('#main').innerHTML = `${draft.id && draft.estado === 'cargado' ? `<div class="hint" style="background:${bl ? '#e0f2fe;color:#0c4a6e' : '#dcfce7;color:#166534'};padding:10px;border-radius:8px;margin-bottom:6px">${bl ? '🔒 Este pedido ya fue <b>cargado</b> por administración. Solo podés <b>agregar productos</b>: quedan marcados como "Agregado".' : '✓ Pedido <b>cargado</b>' + (draft.cargadoPor ? ' por ' + esc(draft.cargadoPor) : '') + '.'}</div>` : ''}<label>Cliente</label><button class="btn sec" ${bl ? 'disabled' : 'data-act="cambiarCliente"'} style="text-align:left;display:flex;justify-content:space-between"><span>${draft.cliente ? '👤 ' + esc(draft.cliente) : 'Elegir cliente…'}</span><span class="mut">${draft.cliente ? 'Cambiar' : '›'}</span></button>
-    <div class="row" style="border:0;align-items:flex-end"><div style="flex:1.2"><label>Día de entrega</label><input id="dia" type="date" value="${esc(draft.dia)}" ${bl ? 'disabled' : ''}></div>
-      <div style="flex:1"><label>Turno</label><div class="chips" style="margin:0" id="turnos">${Object.entries(TURNOS).map(([k, v]) => `<button type="button" data-turno="${k}" ${bl ? 'disabled' : ''} class="${draft.turno === k ? 'on' : ''}" style="flex:1;min-height:46px">${v}</button>`).join('')}</div></div></div>
+  const cargadoBanner = !draft.id || draft.estado !== 'cargado' ? '' : draft.agregar
+    ? `<div class="hint" style="background:#fee2e2;color:#7f1d1d;padding:10px;border-radius:8px;margin-bottom:6px">⚠ <b>Agregar:</b> ${esAdmin() ? 'el vendedor modificó el pedido después de cargarlo.' : 'modificaste el pedido después de que lo cargaron. Administración lo ve marcado.'}<br>${draft.cambios.map(esc).join(' · ')}</div>`
+    : esAdmin() ? `<div class="hint" style="background:#dcfce7;color:#166534;padding:10px;border-radius:8px;margin-bottom:6px">✓ Pedido <b>cargado</b>${draft.cargadoPor ? ' por ' + esc(draft.cargadoPor) : ''}.</div>`
+    : `<div class="hint" style="background:#e0f2fe;color:#0c4a6e;padding:10px;border-radius:8px;margin-bottom:6px">✓ Este pedido ya fue <b>cargado</b> por administración. Si lo modificás, queda marcado como <b>Agregar</b> para que lo vean.</div>`;
+  $('#main').innerHTML = `${cargadoBanner}<label>Cliente</label><button class="btn sec" data-act="cambiarCliente" style="text-align:left;display:flex;justify-content:space-between"><span>${draft.cliente ? '👤 ' + esc(draft.cliente) : 'Elegir cliente…'}</span><span class="mut">${draft.cliente ? 'Cambiar' : '›'}</span></button>
+    <div class="row" style="border:0;align-items:flex-end"><div style="flex:1.2"><label>Día de entrega</label><input id="dia" type="date" value="${esc(draft.dia)}"></div>
+      <div style="flex:1"><label>Turno</label><div class="chips" style="margin:0" id="turnos">${Object.entries(TURNOS).map(([k, v]) => `<button type="button" data-turno="${k}" class="${draft.turno === k ? 'on' : ''}" style="flex:1;min-height:46px">${v}</button>`).join('')}</div></div></div>
     <div style="height:10px"></div>${buscador()}
     <div id="detalle" class="card detalle"></div>
     <div id="notaBox" style="margin-top:10px"></div>
-    ${ad ? `<div style="margin-top:14px">${draft.estado !== 'cargado' ? '<button class="btn" style="background:var(--ok)" data-estado="cargado">✓ Marcar como cargado</button>' : (hayAgregadosDraft() ? '<button class="btn" style="background:var(--bad)" data-estado="visto">Ya revisé los agregados</button><div style="height:8px"></div>' : '') + '<button class="btn sec" data-estado="pendiente">Volver a pendiente</button>'}</div>` : ''}
-    ${draft.id && !bl ? '<div style="margin:24px 0 80px"><button class="btn bad" data-act="borrarPedido">Eliminar pedido</button></div>' : '<div style="height:80px"></div>'}
-    <div class="bar"><div class="tot" id="tot"></div><button class="btn" data-act="guardarPedido">${draft.id ? 'Guardar cambios' : 'Guardar pedido'}</button></div>`;
-  editNota = false; pintarNota();
-  $('#dia').onchange = e => { draft.dia = e.target.value; if (!draft.id && draft.dia) ss('pd_dia', draft.dia); };
+    ${esAdmin() && draft.id && draft.estado === 'cargado' ? '<div style="margin-top:14px"><button class="btn sec" data-estado="pendiente">Volver a pendiente</button></div>' : ''}
+    ${draft.id ? '<div style="margin:24px 0 80px"><button class="btn bad" data-act="borrarPedido">Eliminar pedido</button></div>' : '<div style="height:80px"></div>'}
+    <div class="bar"><div class="tot" id="tot"></div><button class="btn" id="btnGuardar" data-act="guardarPedido">${etiquetaBoton()}</button></div>`;
+  editNota = false; pintarNota(); actualizarBoton();
+  $('#dia').onchange = e => { draft.dia = e.target.value; if (!draft.id && draft.dia) ss('pd_dia', draft.dia); actualizarBoton(); };
   enlazarBuscador(pintarPedido);
 }
 const enPed = p => draft.items[p.id] > 0;
@@ -329,20 +342,21 @@ function pintarDetalle() {
   limpiarPromos();
   const sel = productos.filter(enPed);
   for (const p of sel) if (promoPorCant(p) && draft.items[p.id] >= promoCantDe(p) && !draft.promos[p.id] && !draft.avisado[p.id]) { draft.avisado[p.id] = true; toast(`🏷️ Promo disponible en ${p.nombre}`); }
-  $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + sel.map(p => { const pl = precioLinea(p); return `<div class="row" data-pid="${p.id}" style="flex-wrap:wrap"><div class="nm"><b>${esc(p.nombre)}</b>${draft.estado === 'cargado' && draft.items[p.id] > cargadaDe(p.id) ? `<span class="tag bad">Agregado${cargadaDe(p.id) ? ' +' + (draft.items[p.id] - cargadaDe(p.id)) : ''}</span> ` : ''}<span class="mut">${pl < p.precio ? `<s>${money(p.precio)}</s> ` : ''}${money(pl)} c/u${multiploDe(p) > 1 ? ' · de a ' + multiploDe(p) : ''} · subtotal <b data-sub>${money(draft.items[p.id] * pl)}</b></span></div>
-      <div class="qty"><button data-q="-1" ${draft.items[p.id] <= minDe(p.id) ? 'disabled' : ''}>−</button><input class="qin" type="number" inputmode="numeric" min="${minDe(p.id)}" step="${multiploDe(p)}" data-qin="${p.id}" value="${draft.items[p.id]}"><button data-q="1">+</button></div>${bloqueado() && cargadaDe(p.id) ? '' : `<button class="btn sec" data-quitar="${p.id}" aria-label="Quitar del pedido" style="width:38px;min-height:38px;padding:0;color:var(--bad);flex:none">✕</button>`}${bloquePromo(p)}</div>`; }).join('') + '<div id="dtotales"></div>' : '<span class="mut">Tocá un producto de la lista para agregarlo con cantidad 1. Después ajustás la cantidad acá.</span>';
+  $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + sel.map(p => { const pl = precioLinea(p); return `<div class="row" data-pid="${p.id}" style="flex-wrap:wrap"><div class="nm"><b>${esc(p.nombre)}</b>${draft.estado === 'cargado' && draft.items[p.id] > cargadaDe(p.id) ? `<span class="tag bad">Agregar${cargadaDe(p.id) ? ' +' + (draft.items[p.id] - cargadaDe(p.id)) : ''}</span> ` : draft.estado === 'cargado' && draft.items[p.id] < cargadaDe(p.id) ? `<span class="tag warn">−${cargadaDe(p.id) - draft.items[p.id]}</span> ` : ''}<span class="mut">${pl < p.precio ? `<s>${money(p.precio)}</s> ` : ''}${money(pl)} c/u${multiploDe(p) > 1 ? ' · de a ' + multiploDe(p) : ''} · subtotal <b data-sub>${money(draft.items[p.id] * pl)}</b></span></div>
+      <div class="qty"><button data-q="-1">−</button><input class="qin" type="number" inputmode="numeric" min="0" step="${multiploDe(p)}" data-qin="${p.id}" value="${draft.items[p.id]}"><button data-q="1">+</button></div><button class="btn sec" data-quitar="${p.id}" aria-label="Quitar del pedido" style="width:38px;min-height:38px;padding:0;color:var(--bad);flex:none">✕</button>${bloquePromo(p)}</div>`; }).join('') + (draft.estado === 'cargado' ? (draft.cargadoItems || []).filter(o => !(draft.items[o.pid] > 0)).map(o => `<div class="row" style="border:0"><span class="tag warn">Quitado</span><span class="mut">${esc(o.nombre)} ×${o.cant}</span></div>`).join('') : '') + '<div id="dtotales"></div>' : '<span class="mut">Tocá un producto de la lista para agregarlo con cantidad 1. Después ajustás la cantidad acá.</span>';
 }
 let editNota = false;
 function pintarNota() {
   const box = $('#notaBox'); if (!box) return;
   if (editNota) {
     box.innerHTML = `<textarea id="nota" placeholder="Ej: entregar el jueves" style="min-height:90px">${esc(draft.nota)}</textarea><button class="btn sec" data-act="cerrarNota" style="margin-top:8px">Listo</button>`;
-    $('#nota').oninput = e => draft.nota = e.target.value; $('#nota').focus();
-  } else if (draft.nota) box.innerHTML = `<div class="card"><span class="mut">Nota</span><br>${esc(draft.nota)}</div>${bloqueado() ? '' : '<button class="btn sec" data-act="editarNota">Editar nota</button>'}`;
-  else box.innerHTML = bloqueado() ? '' : '<button class="btn sec" data-act="editarNota">📝 Agregar nota</button>';
+    $('#nota').oninput = e => { draft.nota = e.target.value; actualizarBoton(); }; $('#nota').focus();
+  } else if (draft.nota) box.innerHTML = `<div class="card"><span class="mut">Nota</span><br>${esc(draft.nota)}</div><button class="btn sec" data-act="editarNota">Editar nota</button>`;
+  else box.innerHTML = '<button class="btn sec" data-act="editarNota">📝 Agregar nota</button>';
 }
 const cantTxt = () => { const k = Object.keys(draft.items).length, n = Object.values(draft.items).reduce((a, b) => a + b, 0); return `${k} ${k === 1 ? 'producto' : 'productos'} · ${n} u.`; };
 function pintarTotal() {
+  actualizarBoton();
   const sub = subtotalDraft(), tot = redondear50(sub), red = Math.round((tot - sub) * 100) / 100;
   $('#tot').innerHTML = `${money(tot)}<br><small style="font-weight:600;font-size:13px">${cantTxt()}</small>`;
   const d = $('#dtotales');
@@ -352,11 +366,15 @@ function cambiarCant(pid, d, fijo) {
   const p = productos.find(x => x.id === pid); if (!p || Number.isNaN(fijo) || (!p.activo && !draft.items[pid])) return;
   const m = multiploDe(p), cur = draft.items[pid] || 0;
   let c = fijo !== undefined ? Math.ceil(fijo / m) * m : d > 0 ? Math.floor(cur / m) * m + m : Math.ceil(cur / m) * m - m;   // de a múltiplos de m
-  c = Math.max(minDe(pid), Math.min(c, 99999));
+  c = Math.max(0, Math.min(c, 99999));
   if (c) draft.items[pid] = c; else delete draft.items[pid];
   const y = window.scrollY; pintarPedido(); window.scrollTo(0, y);
 }
+async function cargarPedido() {   // el administrador da el pedido por cargado
+  try { await api('PUT', 'p/cargar/' + draft.id, { accion: 'cargado' }); await cargar(); toast('Pedido cargado ✓'); volverA('pedidos'); } catch (e) { toast(e.message); }
+}
 async function guardarPedido() {
+  if (esAdmin() && draft.id && !hayCambios()) { if (draft.estado === 'cargado' && !draft.agregar) return; return cargarPedido(); }   // sin cambios: el botón dice "Cargar"
   const items = Object.entries(draft.items).map(([pid, cant]) => { const p = productos.find(x => x.id == pid); return { pid: Number(pid), cant, promo: !!(p && promoPorCant(p) && promoAplicada(p)) }; });
   const body = { clienteId: draft.clienteId, cliente: draft.cliente, nota: draft.nota, dia: draft.dia, turno: draft.turno, items };
   if (!draft.clienteId && !draft.legacy) return toast('Elegí un cliente');
@@ -367,7 +385,9 @@ async function guardarPedido() {
   if (!items.length) return toast('El pedido no tiene productos');
   try {
     if (draft.id) await api('PUT', 'p/pedidos/' + draft.id, body); else await api('POST', 'p/pedidos', { ...body, uid: draft.uid });
-    await cargar(); toast('Pedido guardado'); volverA('pedidos');
+    await cargar();
+    if (draft.id && esAdmin()) { nuevoDraft(pedidos.find(x => x.id === draft.id)); render(); toast('Cambios guardados. Ahora podés cargarlo.'); return; }   // el admin se queda en el pedido para cargarlo
+    toast('Pedido guardado'); volverA('pedidos');
   } catch (e) {
     if (!e.offline) return toast(e.message);
     if (draft.id) return toast('Sin señal: para editar un pedido ya enviado necesitás conexión');
@@ -461,7 +481,7 @@ let vend = '', fdia = '', fturno = '', festado = '';
 function vPedidos() {
   const sel = esAdmin() ? `<select id="vend" style="margin-top:8px"><option value="">Todos los vendedores</option>${[...new Set(pedidos.map(p => p.vendedor))].filter(Boolean).sort().map(v => `<option ${v === vend ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>` : '';
   $('#main').innerHTML = `<input id="q" type="search" placeholder="Buscar por cliente o número" value="${esc(q)}">${sel}
-    <div class="row" style="border:0;padding:8px 0 0"><input id="fdia" type="date" value="${esc(fdia)}" title="Filtrar por día"><select id="fturno" style="padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Todos los turnos</option>${Object.entries(TURNOS).map(([k, v]) => `<option value="${k}" ${fturno === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>${esAdmin() ? `<div class="chips" id="festados">${[['', 'Todos'], ['pendiente', 'Pendientes'], ['cargado', 'Cargados'], ['agregados', '⚠ Con agregados']].map(([k, t]) => `<button data-festado="${k}" class="${festado === k ? 'on' : ''}">${t}${k === 'agregados' && pedidos.some(hayAgregados) ? ' (' + pedidos.filter(hayAgregados).length + ')' : ''}</button>`).join('')}</div>` : ''}<div id="lista" style="margin-top:10px"></div>`;
+    <div class="row" style="border:0;padding:8px 0 0"><input id="fdia" type="date" value="${esc(fdia)}" title="Filtrar por día"><select id="fturno" style="padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Todos los turnos</option>${Object.entries(TURNOS).map(([k, v]) => `<option value="${k}" ${fturno === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>${esAdmin() ? `<div class="chips" id="festados">${[['', 'Todos'], ['pendiente', 'Pendientes'], ['cargado', 'Cargados'], ['agregados', '⚠ Agregar']].map(([k, t]) => `<button data-festado="${k}" class="${festado === k ? 'on' : ''}">${t}${k === 'agregados' && pedidos.some(hayAgregados) ? ' (' + pedidos.filter(hayAgregados).length + ')' : ''}</button>`).join('')}</div>` : ''}<div id="lista" style="margin-top:10px"></div>`;
   const pintar = () => {
     const n = norm(q), l = pedidos.filter(p => (!n || norm(p.cliente).includes(n) || String(p.id) === n) && (!vend || p.vendedor === vend) && (!fdia || p.dia === fdia) && (!fturno || p.turno === fturno) && (!festado || (festado === 'agregados' ? hayAgregados(p) : festado === 'cargado' ? p.estado === 'cargado' : p.estado !== 'cargado')));
     const tot = l.reduce((a, p) => a + p.total, 0);
@@ -691,10 +711,10 @@ document.addEventListener('click', async e => {
     else go(d.tab, view !== 'menu');
   }
   else if (d.estado) {   // el administrador marca el pedido (cargado / pendiente / agregados revisados)
-    try { await api('PUT', 'p/cargar/' + draft.id, { accion: d.estado }); await cargar(); toast(d.estado === 'pendiente' ? 'Pedido vuelto a pendiente' : 'Pedido marcado como cargado'); volverA('pedidos'); } catch (er) { toast(er.message); }
+    try { await api('PUT', 'p/cargar/' + draft.id, { accion: d.estado }); await cargar(); toast('Pedido vuelto a pendiente'); volverA('pedidos'); } catch (er) { toast(er.message); }
   }
   else if (d.festado !== undefined && !d.tab) { festado = d.festado; render(); }
-  else if (d.quitar) { if (bloqueado() && cargadaDe(d.quitar)) return; delete draft.items[d.quitar]; const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); }
+  else if (d.quitar) { delete draft.items[d.quitar]; const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); }
   else if (d.promo && row) { if (d.promo === 'ask') delete draft.promos[row.dataset.pid]; else draft.promos[row.dataset.pid] = d.promo; const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); }
   else if (d.sel) { q = ''; $('#q').value = ''; cambiarCant(+d.sel, 1); }   // tocar el producto lo agrega con cantidad 1; después se ajusta en el detalle
   else if (d.go) { if (d.nuevo) nuevoDraft(); go(d.go); }
@@ -765,7 +785,6 @@ document.addEventListener('change', e => {
   if (e.target.dataset && e.target.dataset.qin) {
     const pid = +e.target.dataset.qin, p = productos.find(x => x.id === pid), m = p ? multiploDe(p) : 1;
     if (draft.items[pid] % m) draft.items[pid] = Math.ceil(draft.items[pid] / m) * m;
-    if (draft.items[pid] < minDe(pid)) draft.items[pid] = minDe(pid);
     const y = window.scrollY; pintarPedido(); window.scrollTo(0, y);
   }
 });
