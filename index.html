@@ -149,7 +149,26 @@ async function cargar() {
   cacheDatos();
 }
 function salir() { localStorage.removeItem('pd_token'); token = null; view = 'menu'; render(); }
-function go(v) { view = v; q = ''; filtro = 'todos'; window.scrollTo(0, 0); render(); }
+/* navegación con el botón "atrás" del celular: vuelve a la sección anterior; en el menú pregunta antes de salir */
+let pila = [];   // secciones visitadas, en el mismo orden que el historial del navegador
+function go(v, reemplazar) {
+  view = v; q = ''; filtro = 'todos'; eligiendoPromo = false;
+  if (reemplazar && pila.length) pila[pila.length - 1] = v; else pila.push(v);
+  try { history[reemplazar ? 'replaceState' : 'pushState']({ v, d: pila.length - 1 }, ''); } catch {}
+  window.scrollTo(0, 0); render();
+}
+const volverA = v => { if (pila.length > 1 && pila[pila.length - 2] === v) history.back(); else go(v, true); };
+window.addEventListener('popstate', e => {
+  const st = e.state;
+  if (!st || !(st.d >= 0)) {   // se llegó a la base del historial: el siguiente "atrás" cierra la app
+    if (!token) return;
+    if (confirm('¿Seguro que querés salir de la app?')) { history.back(); setTimeout(() => { try { window.close(); } catch {} }, 150); }
+    else { pila = []; go('menu'); }
+    return;
+  }
+  pila.length = st.d + 1; pila[st.d] = st.v;
+  view = st.v; q = ''; filtro = 'todos'; eligiendoPromo = false; render(); window.scrollTo(0, 0);
+});
 
 /* ---------- vistas ---------- */
 const TITULOS = { menu: 'Distribuidora', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', producto: 'Producto', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', clave: 'Mi contraseña', promos: 'Promociones de la semana', precios: 'Lista de precios' };
@@ -172,7 +191,7 @@ function login() {
     try {
       const j = await api('POST', 'p/login', { user: $('#u').value.trim(), pass: $('#pw').value });
       token = j.token; user = j.user; localStorage.setItem('pd_token', token); localStorage.setItem('pd_user', JSON.stringify(user));
-      await cargar(); go('menu');
+      await cargar(); go('menu', true);
     } catch (er) { $('#err').textContent = er.message; }
   };
 }
@@ -220,6 +239,7 @@ function vPedido() {
     <div id="detalle" class="card detalle"></div>
     <div id="notaBox" style="margin-top:10px"></div>
     <div style="height:10px"></div>${buscador()}
+    ${draft.id ? '<div style="margin:24px 0 80px"><button class="btn bad" data-act="borrarPedido">Eliminar pedido</button></div>' : ''}
     <div class="bar"><div class="tot" id="tot"></div><button class="btn" data-act="guardarPedido">${draft.id ? 'Guardar cambios' : 'Guardar pedido'}</button></div>`;
   editNota = false; pintarNota();
   $('#dia').onchange = e => { draft.dia = e.target.value; if (!draft.id && draft.dia) ss('pd_dia', draft.dia); };
@@ -273,14 +293,14 @@ async function guardarPedido() {
   if (!items.length) return toast('El pedido no tiene productos');
   try {
     if (draft.id) await api('PUT', 'p/pedidos/' + draft.id, body); else await api('POST', 'p/pedidos', { ...body, uid: draft.uid });
-    await cargar(); toast('Pedido guardado'); go('pedidos');
+    await cargar(); toast('Pedido guardado'); volverA('pedidos');
   } catch (e) {
     if (!e.offline) return toast(e.message);
     if (draft.id) return toast('Sin señal: para editar un pedido ya enviado necesitás conexión');
     // sin señal: queda en el teléfono y se envía solo cuando vuelva
     const total = Math.round(items.reduce((a, i) => a + i.cant * precioLinea(productos.find(p => p.id === i.pid)), 0) * 100) / 100;
     if (!lsSet('pd_cola', [...leerCola(), { uid: draft.uid, u: user.id, body, total, t: new Date().toISOString() }])) return toast('No hay espacio para guardar el pedido');
-    toast('Sin señal: pedido guardado, se enviará solo'); go('pedidos');
+    toast('Sin señal: pedido guardado, se enviará solo'); volverA('pedidos');
   }
 }
 
@@ -357,7 +377,7 @@ function vCliente() {
     try {
       const r = c.id ? await api('PUT', 'p/clientes/' + c.id, d) : await api('POST', 'p/clientes', d);
       await cargar(); toast('Cliente guardado');
-      if (!c.id && clienteVolver === 'elegir') { draft.clienteId = r.id; draft.cliente = nombreC(r); go('pedido'); } else go('clientes');
+      if (!c.id && clienteVolver === 'elegir') { draft.clienteId = r.id; draft.cliente = nombreC(r); history.go(-2); } else volverA('clientes');
     } catch (er) { toast(er.message); }
   };
 }
@@ -385,7 +405,7 @@ function vPedidos() {
 }
 async function borrarPedido() {
   if (!confirm('¿Eliminar el pedido?')) return;
-  try { await api('DELETE', 'p/pedidos/' + draft.id); await cargar(); toast('Pedido eliminado'); go('pedidos'); } catch (e) { toast(e.message); }
+  try { await api('DELETE', 'p/pedidos/' + draft.id); await cargar(); toast('Pedido eliminado'); volverA('pedidos'); } catch (e) { toast(e.message); }
 }
 
 /* ---------- productos ---------- */
@@ -415,7 +435,7 @@ function vProducto() {
     d.activo = !!f.get('activo'); d.promo = !!f.get('promo');
     try {
       if (p.id) await api('PUT', 'p/productos/' + p.id, d); else await api('POST', 'p/productos', d);
-      await cargar(); toast('Guardado'); go('productos');
+      await cargar(); toast('Guardado'); volverA('productos');
     } catch (er) { toast(er.message); }
   };
 }
@@ -485,7 +505,7 @@ function vUsuario() {
     try {
       if (nuevo) await api('POST', 'p/usuarios', d); else await api('PUT', 'p/usuarios/' + u.id, d);
       if (u.id === user.id) { user = { ...user, nombre: d.nombre, usuario: d.usuario.toLowerCase(), rol: d.rol }; localStorage.setItem('pd_user', JSON.stringify(user)); }
-      await cargar(); toast('Guardado'); go('usuarios');
+      await cargar(); toast('Guardado'); volverA('usuarios');
     } catch (er) { toast(er.message); }
   };
 }
@@ -497,7 +517,7 @@ function vClave() {
     e.preventDefault();
     const d = Object.fromEntries(new FormData(e.target));
     if (d.nueva !== d.rep) return toast('Las contraseñas nuevas no coinciden');
-    try { await api('PUT', 'p/clave', d); toast('Contraseña cambiada'); go('menu'); } catch (er) { toast(er.message); }
+    try { await api('PUT', 'p/clave', d); toast('Contraseña cambiada'); volverA('menu'); } catch (er) { toast(er.message); }
   };
 }
 
@@ -586,14 +606,14 @@ document.addEventListener('click', async e => {
   else if (d.go) { if (d.nuevo) nuevoDraft(); go(d.go); }
   else if (d.act === 'atras') {
     if (eligiendoPromo) { eligiendoPromo = false; return render(); }
-    go({ producto: 'productos', usuario: 'usuarios', cliente: clienteVolver === 'elegir' ? 'elegir' : 'clientes', importarc: 'clientes', clientes: 'menu', elegir: 'pedido', pedido: draft && draft.id ? 'pedidos' : 'menu' }[view] || 'menu');
+    pila.length > 1 ? history.back() : go('menu', true);
   }
   else if (d.act === 'salir') salir();
   else if (d.act === 'guardarPedido') guardarPedido();
   else if (d.act === 'nuevoProd') { editando = { activo: true }; go('producto'); }
   else if (d.act === 'borrarProd') {
     if (!confirm('¿Eliminar el producto?')) return;
-    try { await api('DELETE', 'p/productos/' + editando.id); await cargar(); go('productos'); } catch (er) { toast(er.message); }
+    try { await api('DELETE', 'p/productos/' + editando.id); await cargar(); volverA('productos'); } catch (er) { toast(er.message); }
   }
   else if (d.act === 'agregarPromo') { eligiendoPromo = true; vElegirPromo(); }
   else if (d.act === 'pdf') exportarPdf();
@@ -606,14 +626,14 @@ document.addEventListener('click', async e => {
   else if (d.act === 'plantillaClientes') plantillaClientes();
   else if (d.act === 'borrarCliente') {
     if (!confirm('¿Eliminar el cliente? Sus pedidos se conservan.')) return;
-    try { await api('DELETE', 'p/clientes/' + editC.id); await cargar(); go('clientes'); } catch (er) { toast(er.message); }
+    try { await api('DELETE', 'p/clientes/' + editC.id); await cargar(); volverA('clientes'); } catch (er) { toast(er.message); }
   }
   else if (d.editcli) { clienteVolver = 'clientes'; editC = { ...clientes.find(c => c.id == d.editcli) }; go('cliente'); }
-  else if (d.cli) { const c = clientes.find(x => x.id == d.cli); draft.clienteId = c.id; draft.cliente = nombreC(c); go('pedido'); }
+  else if (d.cli) { const c = clientes.find(x => x.id == d.cli); draft.clienteId = c.id; draft.cliente = nombreC(c); history.back(); }
   else if (d.act === 'nuevoUsuario') { editU = { rol: 'vendedor', activo: true }; go('usuario'); }
   else if (d.act === 'borrarUsuario') {
     if (!confirm('¿Eliminar el usuario? Sus pedidos se conservan.')) return;
-    try { await api('DELETE', 'p/usuarios/' + editU.id); await cargar(); go('usuarios'); } catch (er) { toast(er.message); }
+    try { await api('DELETE', 'p/usuarios/' + editU.id); await cargar(); volverA('usuarios'); } catch (er) { toast(er.message); }
   }
   else if (d.edituser) { editU = { ...usuarios.find(u => u.id == d.edituser) }; go('usuario'); }
   else if (d.reint) { lsSet('pd_cola', leerCola().map(x => x.uid === d.reint ? { uid: x.uid, u: x.u, body: x.body, total: x.total, t: x.t } : x)); render(); sincronizar(); }
@@ -625,7 +645,7 @@ document.addEventListener('click', async e => {
   else if (d.act === 'importarConfirmar') importarConfirmar();
   else if (d.act === 'exportarExcel') exportarExcel();
   else if (d.act === 'borrarPedido') borrarPedido();
-  else if (d.ped) { nuevoDraft(pedidos.find(p => p.id == d.ped)); go('pedido'); $('#main').insertAdjacentHTML('beforeend', `<div style="margin-top:80px"><button class="btn bad" data-act="borrarPedido">Eliminar pedido</button></div>`); }
+  else if (d.ped) { nuevoDraft(pedidos.find(p => p.id == d.ped)); go('pedido'); }
   else if (d.edit) { editando = { ...productos.find(p => p.id == d.edit) }; go('producto'); }
   else if (d.f) { filtro = d.f; render(); }
   else if (d.q && row) cambiarCant(+row.dataset.pid, +d.q, d.q === 'set' ? +(prompt('Cantidad', draft.items[row.dataset.pid] || 0) ?? NaN) : undefined);
@@ -651,7 +671,7 @@ document.addEventListener('change', async e => {
   const id = e.target.dataset.activo;
   if (id) { await setProd(+id, { activo: e.target.checked }); render(); }
 });
-(async () => { if (token) { try { await cargar(); } catch (e) { if (e.offline) usarCache(); else token = null; } } try { render(); sincronizar(); } catch (e) { $('#app').innerHTML = '<p style="padding:24px;color:#b91c1c">Error: ' + esc(e.message) + '</p>'; } })();
+(async () => { if (token) { try { await cargar(); } catch (e) { if (e.offline) usarCache(); else token = null; } } try { history.replaceState({ d: -1 }, ''); go('menu'); sincronizar(); } catch (e) { $('#app').innerHTML = '<p style="padding:24px;color:#b91c1c">Error: ' + esc(e.message) + '</p>'; } })();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 </script>
 </body>
