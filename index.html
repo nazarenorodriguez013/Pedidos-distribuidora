@@ -317,7 +317,7 @@ const promoAplicada = p => hayPromo(p) && (promoCantDe(p) <= 1 || (draft.promos[
 const precioLinea = p => {
   const o = draft.orig[p.id], cb = comboDeLinea(p), ap = promoAplicada(p);
   const qtyNow = !cb && promoPorCant(p) && ap;
-  if (o) {   // un producto que ya estaba en el pedido conserva el precio con que se vendió; solo cambia si se acepta o quita una promo
+  if (o && draft.estado === 'cargado') {   // pedido ya cargado: cada producto conserva el precio del momento de la carga; solo cambia si se acepta o quita una promo
     const oldQty = o.promoQty ?? (!!o.promo && promoPorCant(p));
     if ((o.comboId || 0) === (cb ? cb.id : 0) && oldQty === qtyNow) return o.precio;
   }
@@ -390,7 +390,7 @@ function pintarDetalle() {
   const sel = productos.filter(enPed);
   for (const p of sel) if (promoPorCant(p) && draft.items[p.id] >= promoCantDe(p) && !draft.promos[p.id] && !draft.avisado[p.id]) { draft.avisado[p.id] = true; toast(`🏷️ Promo disponible en ${p.nombre}`); }
   for (const c of combos) if (comboCumple(c) && !draft.combos[c.id] && !draft.avisadoC[c.id]) { draft.avisadoC[c.id] = true; toast(`🏷️ Promo disponible: ${c.nombre}`); }
-  $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + bloqueCombos() + sel.map(p => { const pl = precioLinea(p); const ex = draft.items[p.id], cc = cargadaDe(p.id), ref = (draft.orig[p.id] && draft.orig[p.id].precioLista) || p.precio;   // precio de lista con el que se armó la línea
+  $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + bloqueCombos() + sel.map(p => { const pl = precioLinea(p); const ex = draft.items[p.id], cc = cargadaDe(p.id), ref = (draft.estado === 'cargado' && draft.orig[p.id] && draft.orig[p.id].precioLista) || p.precio;   // precio de lista con el que se armó la línea
     return `<div class="drow" data-pid="${p.id}"><div class="dtop"><div class="dn"><b>${esc(p.nombre)}</b></div>
       <div class="dp">${pl < ref ? `<s>${money(ref)}</s> ` : ''}${money(pl)} c/u<b data-sub>${money(ex * pl)}</b></div>
       <button class="btn sec xq" data-quitar="${p.id}" aria-label="Quitar del pedido">✕</button></div>
