@@ -93,6 +93,11 @@ function armarPedido(b, viejo, quien, admin) {
     cli = state.clientes.find(c => c.id === Number(b.clienteId));
     if (!cli || (!admin && cli.vendedorId !== quien.id)) throw { code: 400, msg: 'Cliente inexistente' };
   } else if (!viejo || viejo.clienteId) throw { code: 400, msg: 'Elegí un cliente' };   // pedidos viejos sin cliente cargado se pueden seguir editando
+  const dia = String(b.dia || '').trim(), turno = String(b.turno || '').trim();
+  if (!(viejo && !viejo.dia && !dia && !turno)) {   // pedidos viejos sin día/turno se pueden editar tal cual
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dia) || Number.isNaN(Date.parse(dia))) throw { code: 400, msg: 'Elegí el día' };
+    if (!['manana', 'tarde'].includes(turno)) throw { code: 400, msg: 'Elegí el turno: mañana o tarde' };
+  }
   const cliente = cli ? nombreCliente(cli) : viejo.cliente;
   const vend = cli && state.usuarios.find(u => u.id === cli.vendedorId);
   const viejas = new Map((viejo ? viejo.items : []).map(i => [i.pid, i]));
@@ -112,7 +117,7 @@ function armarPedido(b, viejo, quien, admin) {
     items.push({ pid, codigo: p.codigo, nombre: p.nombre, precio: old ? old.precio : precioDe(p), cant });
   }
   const total = Math.round(items.reduce((s, i) => s + i.precio * i.cant, 0) * 100) / 100;
-  return { cliente, nota: String(b.nota || '').trim(), items, total, clienteId: cli ? cli.id : undefined, vendedorId: vend ? vend.id : viejo ? viejo.vendedorId : quien.id, vendedor: vend ? vend.nombre : viejo ? viejo.vendedor : quien.nombre };
+  return { cliente, nota: String(b.nota || '').trim(), items, total, clienteId: cli ? cli.id : undefined, dia: dia || undefined, turno: turno || undefined, vendedorId: vend ? vend.id : viejo ? viejo.vendedorId : quien.id, vendedor: vend ? vend.nombre : viejo ? viejo.vendedor : quien.nombre };
 }
 
 // ---- sesiones: token firmado con el usuario; el rol se lee de la base en cada pedido ----
