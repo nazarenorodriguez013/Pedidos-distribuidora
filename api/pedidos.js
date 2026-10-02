@@ -176,6 +176,37 @@ function importar(b) {
   return r;
 }
 
+function importarClientes(b) {
+  const r = { creados: 0, actualizados: 0, errores: [] };
+  const porDefecto = state.usuarios.find(u => u.id === Number(b.vendedorId));
+  (Array.isArray(b.rows) ? b.rows : []).forEach((f, n) => {
+    const t = k => String(f[k] ?? '').trim();
+    const fila = `Fila ${n + 1}${t('nombre') ? ' (' + t('nombre') + ')' : ''}`;
+    if (!t('nombre')) return r.errores.push(`Fila ${n + 1}: sin nombre`);
+    let vend = porDefecto;
+    if (t('vendedor')) {
+      const v = t('vendedor').toLowerCase();
+      vend = state.usuarios.find(u => u.usuario === v || u.nombre.toLowerCase() === v);
+      if (!vend) return r.errores.push(`${fila}: no existe el vendedor "${t('vendedor')}"`);
+    }
+    if (!vend) return r.errores.push(`${fila}: falta asignarle un vendedor`);
+    const codigo = t('codigo');
+    const c = codigo && state.clientes.find(x => x.codigo.toLowerCase() === codigo.toLowerCase());
+    if (c) {
+      c.nombre = t('nombre'); c.apellido = '';
+      if (t('direccion')) c.direccion = t('direccion');
+      if (t('telefono')) c.telefono = t('telefono');
+      c.vendedorId = vend.id;
+      for (const p of state.pedidos) if (p.clienteId === c.id) p.cliente = nombreCliente(c);
+      r.actualizados++;
+    } else {
+      state.clientes.push({ id: state.seq.c++, codigo, nombre: t('nombre'), apellido: '', direccion: t('direccion'), telefono: t('telefono'), vendedorId: vend.id });
+      r.creados++;
+    }
+  });
+  return r;
+}
+
 module.exports = async function (req, res, url, body, send, pool, secret) {
   const s = await load(pool);
   const m = /^\/api\/p\/([a-z]+)(?:\/(\d+))?$/.exec(url);
@@ -213,6 +244,13 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     if (rec === 'importar' && req.method === 'POST') {
       soloAdmin();
       const r = importar(await body(req, 30e6));
+      await save(pool);
+      return send(res, 200, r);
+    }
+
+    if (rec === 'importarclientes' && req.method === 'POST') {
+      soloAdmin();
+      const r = importarClientes(await body(req, 30e6));
       await save(pool);
       return send(res, 200, r);
     }
