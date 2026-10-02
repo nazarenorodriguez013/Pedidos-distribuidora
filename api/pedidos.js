@@ -151,6 +151,7 @@ function cleanCliente(b, prev, admin, yo) {
     o.vendedorId = Number(b.vendedorId ?? prev?.vendedorId);
     if (!state.usuarios.some(u => u.id === o.vendedorId)) throw { code: 400, msg: 'Asignale un vendedor al cliente' };
   } else {   // el vendedor no pone código ni cambia el vendedor: el cliente queda a su nombre
+    if (prev && b.vendedorId !== undefined && Number(b.vendedorId) !== prev.vendedorId) throw { code: 403, msg: 'Solo el administrador puede reasignar un cliente a otro vendedor' };
     o.codigo = prev ? prev.codigo : '';
     o.vendedorId = prev ? prev.vendedorId : yo.id;
   }
