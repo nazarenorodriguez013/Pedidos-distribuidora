@@ -65,6 +65,11 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .detalle .qty button{width:34px;height:34px;font-size:18px}
 .dtot{border-top:1px solid var(--bd)!important}
 .qin{width:68px;text-align:center;font-size:18px;font-weight:700;padding:6px;min-height:42px}
+.tabs{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--bd);z-index:7;padding-bottom:env(safe-area-inset-bottom)}
+.tabs button{flex:1;border:0;background:none;color:var(--mut);padding:8px 2px 7px;font-size:11px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:2px;min-height:56px}
+.tabs button span{font-size:22px;line-height:1}
+.tabs button.on{color:var(--pri);border-top:3px solid var(--pri);padding-top:5px}
+.card h2{font-size:17px;margin:0 0 4px}
 .login{max-width:360px;margin:12vh auto 0;padding:0 16px}
 .login h1{text-align:center;color:var(--pri)}
 </style>
@@ -171,12 +176,14 @@ window.addEventListener('popstate', e => {
 });
 
 /* ---------- vistas ---------- */
-const TITULOS = { menu: 'Distribuidora', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', producto: 'Producto', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', clave: 'Mi contraseña', promos: 'Promociones de la semana', precios: 'Lista de precios' };
+const TITULOS = { menu: 'Distribuidora', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', producto: 'Producto', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', config: 'Configuración', promos: 'Promociones de la semana', precios: 'Lista de precios' };
+const TABS = ['menu', 'pedidos', 'clientes', 'precios', 'config'];   // pantallas con barra de botones abajo
 function render() {
   if (!token) return login();
-  $('#app').innerHTML = `<header>${view !== 'menu' ? '<button data-act="atras">←</button>' : ''}<h1>${TITULOS[view]}</h1>${view === 'menu' ? `<button data-act="salir">Salir</button>` : ''}</header><div id="estado" class="estado" hidden></div><main id="main"></main>`;
+  const tab = TABS.includes(view);
+  $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : ''}<h1>${TITULOS[view]}</h1></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '💲', 'Precios'], ['config', '⚙️', 'Config']].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}</nav>` : ''}`;
   estado();
-  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, producto: vProducto, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, clave: vClave, promos: vPromos, precios: vPrecios })[view]();
+  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, producto: vProducto, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios })[view]();
 }
 function login() {
   $('#app').innerHTML = `<form class="login"><h1>Distribuidora</h1>
@@ -196,17 +203,28 @@ function login() {
   };
 }
 function vMenu() {
-  const a = esAdmin();
-  $('#main').innerHTML = `${a && !dbOk ? '<div class="hint" style="background:#fee2e2;color:#7f1d1d;padding:10px;border-radius:8px;margin-bottom:10px"><b>Base de datos no conectada.</b> Los usuarios y pedidos se borran en cada deploy. Revisá la variable DATABASE_URL en Railway.</div>' : ''}<p class="mut">${esc(user.nombre)} · ${a ? 'Administrador' : 'Vendedor'}</p><div class="menu">
-    <button class="main" data-go="pedido" data-nuevo="1"><span>🛒</span>Cargar pedido</button>
-    <button data-go="pedidos"><span>📋</span>${a ? 'Todos los pedidos' : 'Mis pedidos'} (${pedidos.length})</button>
-    <button data-go="clientes"><span>👤</span>Clientes (${clientes.length})</button>
-    <button data-go="precios"><span>💲</span>Precios y PDF</button>
+  const a = esAdmin(), hoyP = pedidos.filter(p => p.dia === hoy());
+  $('#main').innerHTML = `${a && !dbOk ? '<div class="hint" style="background:#fee2e2;color:#7f1d1d;padding:10px;border-radius:8px;margin-bottom:10px"><b>Base de datos no conectada.</b> Los usuarios y pedidos se borran en cada deploy. Revisá la variable DATABASE_URL en Railway.</div>' : ''}<p class="mut">${esc(user.nombre)}${user.nombre === 'Administrador' || !a ? '' : ' · Administrador'}${!a ? ' · Vendedor' : ''}</p>
+    <div class="menu"><button class="main" data-go="pedido" data-nuevo="1"><span>🛒</span>Cargar pedido</button>
     <button data-go="promos"><span>🏷️</span>Promos de la semana</button>
-    ${a ? `<button data-go="productos"><span>📦</span>Productos (${productos.length})</button>
-    <button data-go="importar"><span>📥</span>Importar / exportar Excel</button>
-    <button data-go="usuarios"><span>👥</span>Usuarios</button>` : ''}
-    <button data-go="clave"><span>🔑</span>Mi contraseña</button></div>`;
+    <button data-tab="pedidos"><span>📋</span>Para hoy<br><small class="mut">${hoyP.length} pedidos · ${money(hoyP.reduce((t, p) => t + p.total, 0))}</small></button></div>`;
+}
+
+/* ---------- configuración ---------- */
+function vConfig() {
+  const a = esAdmin(), fila = (v, i, t) => `<div class="row" data-go="${v}" style="cursor:pointer"><span style="font-size:22px">${i}</span><div class="nm"><b>${t}</b></div><span class="mut">›</span></div>`;
+  $('#main').innerHTML = `<div class="card"><b>${esc(user.nombre)}</b><br><span class="mut">usuario: ${esc(user.usuario)} · ${a ? 'Administrador' : 'Vendedor'}</span></div>
+    ${a ? `<div class="card">${fila('productos', '📦', `Productos (${productos.length})`)}${fila('importar', '📥', 'Importar / exportar Excel')}${fila('usuarios', '👥', 'Usuarios')}${fila('promos', '🏷️', 'Promos de la semana')}</div>` : ''}
+    <div class="card"><h2>Cambiar contraseña</h2><form id="f"><label>Contraseña actual</label><input name="actual" type="password" autocomplete="current-password" required>
+      <label>Nueva contraseña</label><input name="nueva" type="password" minlength="4" autocomplete="new-password" required>
+      <label>Repetir nueva contraseña</label><input name="rep" type="password" autocomplete="new-password" required><div style="height:14px"></div><button class="btn">Cambiar contraseña</button></form></div>
+    <button class="btn bad" data-act="salir">Cerrar sesión</button>`;
+  $('#f').onsubmit = async e => {
+    e.preventDefault();
+    const d = Object.fromEntries(new FormData(e.target));
+    if (d.nueva !== d.rep) return toast('Las contraseñas nuevas no coinciden');
+    try { await api('PUT', 'p/clave', d); toast('Contraseña cambiada'); e.target.reset(); } catch (er) { toast(er.message); }
+  };
 }
 
 /* búsqueda común: el input no se vuelve a dibujar al filtrar */
@@ -509,18 +527,6 @@ function vUsuario() {
     } catch (er) { toast(er.message); }
   };
 }
-function vClave() {
-  $('#main').innerHTML = `<form id="f"><label>Contraseña actual</label><input name="actual" type="password" required>
-    <label>Nueva contraseña</label><input name="nueva" type="password" minlength="4" required>
-    <label>Repetir nueva contraseña</label><input name="rep" type="password" required><div style="height:14px"></div><button class="btn">Cambiar contraseña</button></form>`;
-  $('#f').onsubmit = async e => {
-    e.preventDefault();
-    const d = Object.fromEntries(new FormData(e.target));
-    if (d.nueva !== d.rep) return toast('Las contraseñas nuevas no coinciden');
-    try { await api('PUT', 'p/clave', d); toast('Contraseña cambiada'); volverA('menu'); } catch (er) { toast(er.message); }
-  };
-}
-
 /* ---------- Excel (admin) ---------- */
 let importFilas = null;
 const COLS = { codigo: ['codigo', 'cod', 'sku', 'code'], nombre: ['nombre', 'descripcion', 'producto', 'articulo', 'detalle'], precio: ['precio', 'price', 'importe', 'pvp'], activo: ['activo', 'habilitado'] };
@@ -598,10 +604,15 @@ function exportarExcel() {
 
 /* ---------- eventos ---------- */
 document.addEventListener('click', async e => {
-  const t = e.target.closest('button, [data-sel], [data-ped], [data-edit], [data-edituser], [data-editcli], [data-cli], [data-precio], [data-promoprecio], [data-nuevapromo]');
+  const t = e.target.closest('button, [data-go], [data-sel], [data-ped], [data-edit], [data-edituser], [data-editcli], [data-cli], [data-precio], [data-promoprecio], [data-nuevapromo]');
   if (!t || e.target.closest('[data-stop]')) return;
   const d = t.dataset, row = t.closest('[data-pid]');
-  if (d.quitar) { delete draft.items[d.quitar]; const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); }
+  if (d.tab) {
+    if (d.tab === view) return;
+    if (d.tab === 'menu') pila.length > 1 && pila[pila.length - 2] === 'menu' ? history.back() : go('menu', true);
+    else go(d.tab, view !== 'menu');
+  }
+  else if (d.quitar) { delete draft.items[d.quitar]; const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); }
   else if (d.sel) { q = ''; $('#q').value = ''; cambiarCant(+d.sel, 1); }   // tocar el producto lo agrega con cantidad 1; después se ajusta en el detalle
   else if (d.go) { if (d.nuevo) nuevoDraft(); go(d.go); }
   else if (d.act === 'atras') {
