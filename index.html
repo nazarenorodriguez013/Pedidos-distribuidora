@@ -85,7 +85,7 @@ const STOCK_BAJO = 5;
 let token = localStorage.getItem('pd_token'), user = null;
 try { user = JSON.parse(localStorage.getItem('pd_user')); } catch {}
 if (!user || !user.rol) token = null;
-let productos = [], pedidos = [], usuarios = [];
+let productos = [], pedidos = [], usuarios = [], dbOk = true;
 const esAdmin = () => user && user.rol === 'admin';
 let view = 'menu', draft = null, q = '', filtro = 'todos';
 
@@ -136,7 +136,8 @@ window.addEventListener('offline', estado);
 setInterval(sincronizar, 30000);
 
 async function cargar() {
-  const [a, b, c] = await Promise.all([api('GET', 'p/productos'), api('GET', 'p/pedidos'), esAdmin() ? api('GET', 'p/usuarios') : { usuarios: [] }]);
+  const [a, b, c, y] = await Promise.all([api('GET', 'p/productos'), api('GET', 'p/pedidos'), esAdmin() ? api('GET', 'p/usuarios') : { usuarios: [] }, api('GET', 'p/yo')]);
+  dbOk = y.db;
   productos = a.productos.sort((x, y) => x.nombre.localeCompare(y.nombre));
   pedidos = b.pedidos;
   usuarios = c.usuarios;
@@ -155,7 +156,7 @@ function render() {
 }
 function login() {
   $('#app').innerHTML = `<form class="login"><h1>Distribuidora</h1>
-    <label>Usuario</label><input id="u" autocomplete="username" autocapitalize="none" required>
+    <label>Usuario</label><input id="u" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required>
     <label>Contraseña</label><input id="pw" type="password" autocomplete="current-password" required>
     <p id="err" class="mut" style="color:var(--bad)"></p><button class="btn">Ingresar</button>
     <button type="button" id="inst" class="btn sec" style="margin-top:12px" ${instalar ? '' : 'hidden'}>📲 Instalar app en el celular</button>
@@ -173,7 +174,7 @@ function login() {
 function vMenu() {
   const pend = productos.filter(p => p.activo && p.stock <= STOCK_BAJO).length;
   const a = esAdmin();
-  $('#main').innerHTML = `<p class="mut">${esc(user.nombre)} · ${a ? 'Administrador' : 'Vendedor'}</p><div class="menu">
+  $('#main').innerHTML = `${a && !dbOk ? '<div class="hint" style="background:#fee2e2;color:#7f1d1d;padding:10px;border-radius:8px;margin-bottom:10px"><b>Base de datos no conectada.</b> Los usuarios y pedidos se borran en cada deploy. Revisá la variable DATABASE_URL en Railway.</div>' : ''}<p class="mut">${esc(user.nombre)} · ${a ? 'Administrador' : 'Vendedor'}</p><div class="menu">
     <button class="main" data-go="pedido" data-nuevo="1"><span>🛒</span>Cargar pedido</button>
     <button data-go="pedidos"><span>📋</span>${a ? 'Todos los pedidos' : 'Mis pedidos'} (${pedidos.length})</button>
     <button data-go="precios"><span>💲</span>Precios y PDF</button>
