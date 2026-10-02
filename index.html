@@ -94,6 +94,35 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 @media (min-width:600px){.modal{align-items:center}.modal-card{border-radius:20px}}
 .login{max-width:360px;margin:12vh auto 0;padding:0 16px}
 .login h1{text-align:center;color:var(--pri)}
+
+/* ---- computadora: menú lateral, pedido en dos columnas, listas en dos columnas ---- */
+@media (min-width:900px){
+  body{padding-bottom:24px}
+  main{max-width:1200px;padding:20px 28px}
+  body.hay-tabs main{width:calc(100% - 210px);max-width:none;margin:0 0 0 210px;box-sizing:border-box;padding:20px max(28px, calc((100vw - 210px - 1200px) / 2))}
+  body.hay-tabs .estado{margin-left:210px}
+  .tabs{top:52px;bottom:0;left:0;right:auto;width:210px;flex-direction:column;justify-content:flex-start;border-top:0;border-right:1px solid var(--bd);padding:10px 0}
+  .tabs button{flex:none;flex-direction:row;justify-content:flex-start;gap:12px;font-size:15px;padding:12px 20px;min-height:0;border-left:4px solid transparent;cursor:pointer}
+  .tabs button span{font-size:20px}
+  .tabs button.on{border-top:0;border-left:4px solid var(--pri);padding-top:12px;background:color-mix(in srgb,var(--pri) 10%,transparent)}
+  .tabs button:hover{background:color-mix(in srgb,var(--pri) 8%,transparent)}
+  .menu{grid-template-columns:repeat(3,1fr)}
+  .menu button{min-height:130px;cursor:pointer}
+  .menu button.main{grid-column:1/-1;min-height:110px}
+  .ped-grid{display:grid;grid-template-columns:minmax(360px,5fr) minmax(420px,6fr);gap:28px;align-items:start}
+  .ped-izq,.ped-der{min-width:0}
+  .bar{position:sticky;bottom:0;left:auto;right:auto;border:1px solid var(--bd);border-radius:12px;margin-top:12px;box-shadow:0 -4px 14px rgba(0,0,0,.1)}
+  .cols2{column-count:2;column-gap:32px}
+  .cols2 .row{break-inside:avoid}
+  .grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:10px 14px;align-items:start}
+  .grid2>p{grid-column:1/-1;margin:0}
+  .grid2>.card{margin:0}
+  [data-sel],[data-ped],[data-edit],[data-editcli],[data-edituser],[data-cli],[data-precio],[data-promoprecio],[data-editcombo],[data-go]{cursor:pointer}
+  .row[data-sel]:hover,.row[data-edit]:hover,.row[data-editcli]:hover,.row[data-edituser]:hover,.row[data-cli]:hover,.row[data-precio]:hover,.row[data-promoprecio]:hover,.row[data-editcombo]:hover,.card[data-ped]:hover{background:color-mix(in srgb,var(--pri) 8%,transparent)}
+  .btn:hover{filter:brightness(1.07)}
+  .modal-card{max-width:640px}
+  #toast{bottom:30px}
+}
 </style>
 </head>
 <body>
@@ -231,11 +260,13 @@ window.addEventListener('popstate', e => {
 
 /* ---------- vistas ---------- */
 const TITULOS = { menu: 'Distribuidora', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', config: 'Configuración', promos: 'Promociones de la semana', precios: 'Listado' };
+const escritorio = () => window.matchMedia('(min-width:900px)').matches;
 const TABS = ['menu', 'pedidos', 'clientes', 'precios', 'config'];   // pantallas con barra de botones abajo
 function render() {
   if (!token) return login();
-  const tab = TABS.includes(view);
-  $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : ''}<h1>${TITULOS[view]}</h1></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '📦', 'Listado'], ['config', '⚙️', 'Config']].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}</nav>` : ''}`;
+  const tab = TABS.includes(view), desk = escritorio();
+  document.body.classList.toggle('hay-tabs', desk || tab);
+  $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : ''}<h1>${TITULOS[view]}</h1></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab || desk ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '📦', 'Listado'], ['config', '⚙️', 'Config']].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}</nav>` : ''}`;
   estado();
   ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios })[view]();
 }
@@ -365,18 +396,21 @@ function vPedido() {
     ? `<div class="hint" style="background:#fee2e2;color:#7f1d1d;padding:10px;border-radius:8px;margin-bottom:6px">⚠ <b>Agregar:</b> ${esAdmin() ? 'el vendedor modificó el pedido después de cargarlo.' : 'modificaste el pedido después de que lo cargaron. Administración lo ve marcado.'}<br>${draft.cambios.map(esc).join(' · ')}</div>`
     : esAdmin() ? `<div class="hint" style="background:#dcfce7;color:#166534;padding:10px;border-radius:8px;margin-bottom:6px">✓ Pedido <b>cargado</b>${draft.cargadoPor ? ' por ' + esc(draft.cargadoPor) : ''}.</div>`
     : `<div class="hint" style="background:#e0f2fe;color:#0c4a6e;padding:10px;border-radius:8px;margin-bottom:6px">✓ Este pedido ya fue <b>cargado</b> por administración. Si lo modificás, queda marcado como <b>Agregar</b> para que lo vean.</div>`;
-  $('#main').innerHTML = `${cargadoBanner}<label>Cliente</label><button class="btn sec" data-act="cambiarCliente" style="text-align:left;display:flex;justify-content:space-between"><span>${draft.cliente ? '👤 ' + (draft.clienteCodigo ? '<b>' + esc(draft.clienteCodigo) + '</b> · ' : '') + esc(draft.cliente) + ((clientes.find(c => c.id === draft.clienteId) || {}).direccion ? `<small class="mut" style="display:block;font-weight:400;margin-top:2px">📍 ${esc(clientes.find(c => c.id === draft.clienteId).direccion)}</small>` : '') : 'Elegir cliente…'}</span><span class="mut">${draft.cliente ? 'Cambiar' : '›'}</span></button>
+  $('#main').innerHTML = `${cargadoBanner}<div class="ped-grid"><div class="ped-izq"><label>Cliente</label><button class="btn sec" data-act="cambiarCliente" style="text-align:left;display:flex;justify-content:space-between"><span>${draft.cliente ? '👤 ' + (draft.clienteCodigo ? '<b>' + esc(draft.clienteCodigo) + '</b> · ' : '') + esc(draft.cliente) + ((clientes.find(c => c.id === draft.clienteId) || {}).direccion ? `<small class="mut" style="display:block;font-weight:400;margin-top:2px">📍 ${esc(clientes.find(c => c.id === draft.clienteId).direccion)}</small>` : '') : 'Elegir cliente…'}</span><span class="mut">${draft.cliente ? 'Cambiar' : '›'}</span></button>
     <div class="row" style="border:0;align-items:flex-end"><div style="flex:1.2"><label>Día de entrega</label><input id="dia" type="date" value="${esc(draft.dia)}"></div>
       <div style="flex:1"><label>Turno</label><div class="chips" style="margin:0" id="turnos">${Object.entries(TURNOS).map(([k, v]) => `<button type="button" data-turno="${k}" class="${draft.turno === k ? 'on' : ''}" style="flex:1;min-height:46px">${v}</button>`).join('')}</div></div></div>
-    <div style="height:10px"></div>${buscador()}
+    <div style="height:10px"></div>${buscador()}</div>
+    <div class="ped-der">
     <div id="detalle" class="card detalle"></div>
     <div id="notaBox" style="margin-top:10px"></div>
     ${esAdmin() && draft.id && draft.estado === 'cargado' ? '<div style="margin-top:14px"><button class="btn sec" data-estado="pendiente">Volver a pendiente</button></div>' : ''}
     ${draft.id && !cargadoParaVendedor() ? '<div style="margin:24px 0 80px"><button class="btn bad" data-act="borrarPedido">Eliminar pedido</button></div>' : !draft.id ? '<div style="margin:24px 0 80px"><button class="btn sec" data-act="descartarPedido">Descartar este pedido</button></div>' : '<div style="height:80px"></div>'}
-    <div class="bar"><div class="tot" id="tot"></div><button class="btn" id="btnGuardar" data-act="guardarPedido">${etiquetaBoton()}</button></div>`;
+    <div class="bar"><div class="tot" id="tot"></div><button class="btn" id="btnGuardar" data-act="guardarPedido">${etiquetaBoton()}</button></div></div></div>`;
   editNota = false; pintarNota(); actualizarBoton();
   $('#dia').onchange = e => { draft.dia = e.target.value; if (!draft.id && draft.dia) ss('pd_dia', draft.dia); actualizarBoton(); };
   enlazarBuscador(pintarPedido);
+  $('#q').onkeydown = e => { if (e.key === 'Enter') { const f = document.querySelector('#lista [data-sel]'); if (f) f.click(); } };   // Enter agrega el primer resultado
+  if (escritorio()) $('#q').focus();
 }
 const enPed = p => draft.items[p.id] > 0;
 function pintarPedido() { pintarLista(); pintarDetalle(); pintarTotal(); }
@@ -495,7 +529,7 @@ const filtrarC = l => { const n = norm(q); return l.filter(c => (!n || [c.nombre
 const fechaHora = iso => new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
 function listaClientes(l, attr) {
   l = [...l].sort((a, b) => nombreC(a).localeCompare(nombreC(b), 'es', { sensitivity: 'base' }));   // orden alfabético
-  return l.length ? `<div class="card">${l.map(c => `<div class="row" ${attr}="${c.id}"><div class="nm"><b>${esc(nombreC(c))}</b><span class="mut">${[c.codigo ? esc(c.codigo) : '', esc(c.direccion), esc(c.telefono), esAdmin() ? esc(vendNombre(c.vendedorId)) : ''].filter(Boolean).join(' · ')}${c.editadoEn ? `<br>✎ ${esc(fechaHora(c.editadoEn))} · ${esc(c.editadoPor || '')}` : ''}</span></div>${esAdmin() && !c.codigo ? '<span class="tag warn">Sin código</span>' : ''}<span class="mut">›</span></div>`).join('')}</div>` : vacio('No hay clientes');
+  return l.length ? `<div class="card cols2">${l.map(c => `<div class="row" ${attr}="${c.id}"><div class="nm"><b>${esc(nombreC(c))}</b><span class="mut">${[c.codigo ? esc(c.codigo) : '', esc(c.direccion), esc(c.telefono), esAdmin() ? esc(vendNombre(c.vendedorId)) : ''].filter(Boolean).join(' · ')}${c.editadoEn ? `<br>✎ ${esc(fechaHora(c.editadoEn))} · ${esc(c.editadoPor || '')}` : ''}</span></div>${esAdmin() && !c.codigo ? '<span class="tag warn">Sin código</span>' : ''}<span class="mut">›</span></div>`).join('')}</div>` : vacio('No hay clientes');
 }
 const selVend = () => esAdmin() ? `<select id="vendc" style="width:100%;margin:8px 0;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Todos los vendedores</option>${usuarios.filter(u => clientes.some(c => c.vendedorId === u.id)).map(u => `<option value="${u.id}" ${String(u.id) === vendC ? 'selected' : ''}>${esc(u.nombre)}</option>`).join('')}</select>` : '';
 function conSelVend(pintar) { if (esAdmin()) $('#vendc').onchange = e => { vendC = e.target.value; pintar(); }; }
@@ -574,7 +608,7 @@ let vend = '', fdia = '', fturno = '', festado = '';
 function vPedidos() {
   const sel = esAdmin() ? `<select id="vend" style="margin-top:8px"><option value="">Todos los vendedores</option>${[...new Set(pedidos.map(p => p.vendedor))].filter(Boolean).sort().map(v => `<option ${v === vend ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>` : '';
   $('#main').innerHTML = `<input id="q" type="search" placeholder="Buscar por cliente o número" value="${esc(q)}">${sel}
-    <div class="row" style="border:0;padding:8px 0 0"><input id="fdia" type="date" value="${esc(fdia)}" title="Filtrar por día"><select id="fturno" style="padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Todos los turnos</option>${Object.entries(TURNOS).map(([k, v]) => `<option value="${k}" ${fturno === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>${esAdmin() ? `<div class="chips" id="festados">${[['', 'Todos'], ['pendiente', 'Pendientes'], ['cargado', 'Cargados'], ['agregados', '⚠ Agregar']].map(([k, t]) => `<button data-festado="${k}" class="${festado === k ? 'on' : ''}">${t}${k === 'agregados' && pedidos.some(hayAgregados) ? ' (' + pedidos.filter(hayAgregados).length + ')' : ''}</button>`).join('')}</div>` : ''}<div id="lista" style="margin-top:10px"></div>`;
+    <div class="row" style="border:0;padding:8px 0 0"><input id="fdia" type="date" value="${esc(fdia)}" title="Filtrar por día"><select id="fturno" style="padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Todos los turnos</option>${Object.entries(TURNOS).map(([k, v]) => `<option value="${k}" ${fturno === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>${esAdmin() ? `<div class="chips" id="festados">${[['', 'Todos'], ['pendiente', 'Pendientes'], ['cargado', 'Cargados'], ['agregados', '⚠ Agregar']].map(([k, t]) => `<button data-festado="${k}" class="${festado === k ? 'on' : ''}">${t}${k === 'agregados' && pedidos.some(hayAgregados) ? ' (' + pedidos.filter(hayAgregados).length + ')' : ''}</button>`).join('')}</div>` : ''}<div id="lista" class="grid2" style="margin-top:10px"></div>`;
   const pintar = () => {
     const n = norm(q), l = pedidos.filter(p => (!n || norm(p.cliente).includes(n) || String(p.id) === n) && (!vend || p.vendedor === vend) && (!fdia || p.dia === fdia) && (!fturno || p.turno === fturno) && (!festado || (festado === 'agregados' ? hayAgregados(p) : festado === 'cargado' ? p.estado === 'cargado' : p.estado !== 'cargado')));
     const tot = l.reduce((a, p) => a + p.total, 0);
@@ -603,7 +637,7 @@ function vProductos() {
   $('#main').innerHTML = `<button class="btn" data-act="nuevoProd" style="margin-bottom:10px">+ Nuevo producto</button>` + buscador(`<div class="chips">${['todos', 'activos', 'inactivos'].map(f => `<button data-f="${f}" class="${filtro === f ? 'on' : ''}">${f[0].toUpperCase() + f.slice(1)}</button>`).join('')}</div>`);
   enlazarBuscador(() => {
     const l = filtrar(productos).filter(p => filtro === 'todos' || (filtro === 'activos') === p.activo);
-    $('#lista').innerHTML = l.length ? `<div class="card">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" data-edit="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}</span></div>${p.promo ? '<span class="tag promo">PROMO</span>' : ''}${precioHtml(p)}
+    $('#lista').innerHTML = l.length ? `<div class="card cols2">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" data-edit="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}</span></div>${p.promo ? '<span class="tag promo">PROMO</span>' : ''}${precioHtml(p)}
       <label class="sw" data-stop><input type="checkbox" data-activo="${p.id}" ${p.activo ? 'checked' : ''}><i></i></label></div>`).join('')}</div>` : vacio('Sin productos');
   });
 }
@@ -717,14 +751,14 @@ function vPromos() {
     ${esAdmin() ? '<button class="btn sec" data-act="nuevoCombo" style="margin-bottom:10px">+ Nueva promo combinada</button>' : ''}<div id="combos"></div>`;
   $('#combos').innerHTML = combos.length ? `<div class="card">${combos.map(c => `<div class="row ${c.activa ? '' : 'off'}" ${esAdmin() ? `data-editcombo="${c.id}"` : ''}><div class="nm"><b>${esc(c.nombre)}</b><span class="mut" style="white-space:normal">${esc(comboTxt(c))}${c.activa ? '' : ' · desactivada'}</span></div>${esAdmin() ? '<span class="mut">›</span>' : ''}</div>`).join('')}</div>` : '<p class="mut">No hay promociones combinadas.</p>';
   const l = productos.filter(p => p.promo);
-  $('#lista').innerHTML = l.length ? `<div class="card">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" ${esAdmin() ? `data-promoprecio="${p.id}"` : ''}><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · ${hayPromo(p) ? esc(promoDesc(p)) : 'incompleta: falta descuento o precio'}${esAdmin() ? ' · tocar para editar' : ''}</span></div><span class="price">${money(p.precio)}</span>${esAdmin() ? `<button class="btn sec" style="width:auto;min-height:40px;padding:0 12px" data-quitarpromo="${p.id}">✕</button>` : ''}</div>`).join('')}</div>` : vacio('No hay promociones cargadas');
+  $('#lista').innerHTML = l.length ? `<div class="card cols2">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" ${esAdmin() ? `data-promoprecio="${p.id}"` : ''}><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · ${hayPromo(p) ? esc(promoDesc(p)) : 'incompleta: falta descuento o precio'}${esAdmin() ? ' · tocar para editar' : ''}</span></div><span class="price">${money(p.precio)}</span>${esAdmin() ? `<button class="btn sec" style="width:auto;min-height:40px;padding:0 12px" data-quitarpromo="${p.id}">✕</button>` : ''}</div>`).join('')}</div>` : vacio('No hay promociones cargadas');
 }
 let eligiendoPromo = false;
 function vElegirPromo() {
   $('#main').innerHTML = `<p class="mut">Elegí el producto para ponerlo en promoción</p>` + buscador();
   enlazarBuscador(() => {
     const l = filtrar(productos.filter(p => p.activo && !p.promo));
-    $('#lista').innerHTML = l.length ? `<div class="card">${l.map(p => `<div class="row" data-nuevapromo="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}</span></div>${precioHtml(p)}</div>`).join('')}</div>` : vacio('Sin resultados');
+    $('#lista').innerHTML = l.length ? `<div class="card cols2">${l.map(p => `<div class="row" data-nuevapromo="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}</span></div>${precioHtml(p)}</div>`).join('')}</div>` : vacio('Sin resultados');
   });
 }
 
@@ -733,7 +767,7 @@ function vPrecios() {
   $('#main').innerHTML = `${esAdmin() ? '<button class="btn" data-act="nuevoProd" style="margin-bottom:10px">+ Cargar un producto</button>' : ''}<button class="btn ${esAdmin() ? 'sec' : ''}" data-act="pdf" style="margin-bottom:10px">📄 Exportar lista de precios (PDF)</button>` + buscador();
   enlazarBuscador(() => {
     const l = filtrar(productos).filter(p => esAdmin() || p.activo || sinPrecio(p));
-    $('#lista').innerHTML = l.length ? `<div class="card">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" ${esAdmin() ? `data-precio="${p.id}"` : ''}><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}${p.activo ? '' : p.precio > 0 ? ' · inactivo' : ' · sin precio'}</span></div>${p.promo ? '<span class="tag promo">PROMO</span>' : ''}${precioHtml(p)}</div>`).join('')}</div>` : vacio('Sin resultados');
+    $('#lista').innerHTML = l.length ? `<div class="card cols2">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" ${esAdmin() ? `data-precio="${p.id}"` : ''}><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}${p.activo ? '' : p.precio > 0 ? ' · inactivo' : ' · sin precio'}</span></div>${p.promo ? '<span class="tag promo">PROMO</span>' : ''}${precioHtml(p)}</div>`).join('')}</div>` : vacio('Sin resultados');
   });
 }
 function exportarPdf() {
@@ -756,7 +790,7 @@ function exportarPdf() {
 /* ---------- usuarios (admin) ---------- */
 let editU = null;
 function vUsuarios() {
-  $('#main').innerHTML = `<button class="btn" data-act="nuevoUsuario" style="margin-bottom:10px">+ Nuevo usuario</button><div class="card">${usuarios.map(u => `<div class="row ${u.activo ? '' : 'off'}" data-edituser="${u.id}"><div class="nm"><b>${esc(u.nombre)}</b><span class="mut">${esc(u.usuario)} · ${u.rol === 'admin' ? 'Administrador' : 'Vendedor'}${u.activo ? '' : ' · desactivado'}</span></div><span class="tag">ID ${u.id}</span><span class="mut">›</span></div>`).join('')}</div>`;
+  $('#main').innerHTML = `<button class="btn" data-act="nuevoUsuario" style="margin-bottom:10px">+ Nuevo usuario</button><div class="card cols2">${usuarios.map(u => `<div class="row ${u.activo ? '' : 'off'}" data-edituser="${u.id}"><div class="nm"><b>${esc(u.nombre)}</b><span class="mut">${esc(u.usuario)} · ${u.rol === 'admin' ? 'Administrador' : 'Vendedor'}${u.activo ? '' : ' · desactivado'}</span></div><span class="tag">ID ${u.id}</span><span class="mut">›</span></div>`).join('')}</div>`;
 }
 function vUsuario() {
   const u = editU, nuevo = !u.id;
@@ -872,7 +906,7 @@ document.addEventListener('click', async e => {
   else if (d.quitar) { delete draft.items[d.quitar]; const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); }
   else if (d.combo) { const cid = t.closest('[data-cid]').dataset.cid; if (d.combo === 'ask') delete draft.combos[cid]; else draft.combos[cid] = d.combo; const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); }
   else if (d.promo && row) { if (d.promo === 'ask') delete draft.promos[row.dataset.pid]; else draft.promos[row.dataset.pid] = d.promo; const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); }
-  else if (d.sel) { q = ''; $('#q').value = ''; cambiarCant(+d.sel, 1); }   // tocar el producto lo agrega con cantidad 1; después se ajusta en el detalle
+  else if (d.sel) { q = ''; $('#q').value = ''; cambiarCant(+d.sel, 1); if (escritorio()) $('#q').focus(); }   // tocar el producto lo agrega con cantidad 1; después se ajusta en el detalle
   else if (d.go) { if (d.nuevo) abrirNuevoPedido(); go(d.go); }
   else if (d.act === 'atras') {
     if (eligiendoPromo) { eligiendoPromo = false; return render(); }
@@ -966,6 +1000,7 @@ document.addEventListener('change', async e => {
   const id = e.target.dataset.activo;
   if (id) { await setProd(+id, { activo: e.target.checked }); render(); }
 });
+try { window.matchMedia('(min-width:900px)').addEventListener('change', () => { if (token && !document.getElementById('modal')) render(); }); } catch {}
 (async () => { if (token) { try { await cargar(); } catch (e) { if (e.offline) usarCache(); else token = null; } } try { history.replaceState({ d: -1 }, ''); if (!restaurarNav()) go('menu'); sincronizar(); } catch (e) { $('#app').innerHTML = '<p style="padding:24px;color:#b91c1c">Error: ' + esc(e.message) + '</p>'; } })();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 </script>
