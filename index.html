@@ -63,12 +63,7 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .detalle{max-height:34vh;overflow:auto;margin-top:10px}
 .detalle .row{padding:6px 0}
 .detalle .qty button{width:34px;height:34px;font-size:18px}
-.hoja{position:fixed;inset:0;z-index:30;display:flex;align-items:flex-end}
-.hoja-bg{position:absolute;inset:0;background:rgba(0,0,0,.5)}
-.hoja-card{position:relative;background:var(--card);width:100%;max-width:640px;margin:0 auto;border-radius:16px 16px 0 0;padding:16px;display:flex;flex-direction:column;gap:10px}
-.hoja-card .qty{justify-content:center;gap:12px}
-.hoja-card .qty button{width:56px;height:56px;font-size:28px}
-.hoja-card .qty input{width:110px;text-align:center;font-size:26px;font-weight:700}
+.qin{width:68px;text-align:center;font-size:18px;font-weight:700;padding:6px;min-height:42px}
 .login{max-width:360px;margin:12vh auto 0;padding:0 16px}
 .login h1{text-align:center;color:var(--pri)}
 </style>
@@ -229,8 +224,9 @@ function vPedido() {
   $('#dia').onchange = e => { draft.dia = e.target.value; if (!draft.id && draft.dia) ss('pd_dia', draft.dia); };
   enlazarBuscador(pintarPedido);
 }
-function pintarPedido() {
-  const enPed = p => draft.items[p.id] > 0;
+const enPed = p => draft.items[p.id] > 0;
+function pintarPedido() { pintarLista(); pintarDetalle(); pintarTotal(); }
+function pintarLista() {
   const base = productos.filter(p => p.activo || sinPrecio(p) || enPed(p));
   const lista = filtrar(base);   // orden fijo: lo elegido no sube, queda en el detalle
   $('#lista').innerHTML = lista.length ? `<div class="card">${lista.map(p => {
@@ -238,35 +234,15 @@ function pintarPedido() {
     return `<div class="row ${bloq ? 'off' : ''}" ${bloq ? '' : `data-sel="${p.id}"`} style="${c ? 'background:color-mix(in srgb,var(--pri) 10%,transparent)' : ''}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · </span>${p.promo && p.precioPromo > 0 ? '<span class="tag promo">PROMO</span> ' : ''}${precioHtml({ ...p, precio: p.precio, precioPromo: draft.orig[p.id] ? 0 : p.precioPromo, promo: !draft.orig[p.id] && p.promo })}</div>
       ${bloq ? '<span class="tag">No disponible</span>' : c ? `<span class="tag ok">✓ ${c}</span>` : '<span class="mut">+</span>'}</div>`;
   }).join('')}</div>` : vacio('Sin resultados');
+}
+function pintarDetalle() {
   const sel = productos.filter(enPed);
-  $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + sel.map(p => `<div class="row" data-pid="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${draft.items[p.id]} × ${money(precioLinea(p))} = <b>${money(draft.items[p.id] * precioLinea(p))}</b></span></div>
-      <div class="qty"><button data-q="-1">−</button><b data-q="set">${draft.items[p.id]}</b><button data-q="1">+</button></div></div>`).join('') : '<span class="mut">Todavía no elegiste productos. Se van sumando acá.</span>';
+  $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + sel.map(p => `<div class="row" data-pid="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${money(precioLinea(p))} c/u · subtotal <b data-sub>${money(draft.items[p.id] * precioLinea(p))}</b></span></div>
+      <div class="qty"><button data-q="-1">−</button><input class="qin" type="number" inputmode="numeric" min="0" data-qin="${p.id}" value="${draft.items[p.id]}"><button data-q="1">+</button></div></div>`).join('') : '<span class="mut">Tocá un producto de la lista para agregarlo con cantidad 1. Después ajustás la cantidad acá.</span>';
+}
+function pintarTotal() {
   const n = Object.values(draft.items).reduce((a, b) => a + b, 0);
   $('#tot').textContent = `${money(totalDraft())} · ${n} u.`;
-}
-/* hoja para elegir la cantidad después de tocar el producto */
-function abrirHoja(pid) {
-  const p = productos.find(x => x.id === pid); if (!p) return;
-  const ya = draft.items[pid] || 0, precio = precioLinea(p);
-  const el = document.createElement('div'); el.id = 'hoja'; el.className = 'hoja'; el.dataset.pid = pid;
-  el.innerHTML = `<div class="hoja-bg" data-hoja="cerrar"></div><div class="hoja-card"><div><b style="font-size:18px">${esc(p.nombre)}</b><br><span class="mut">${esc(p.codigo)} · ${money(precio)}</span></div>
-    <div class="qty"><button data-hoja="menos">−</button><input id="hq" type="number" inputmode="numeric" min="1" value="${ya || 1}"><button data-hoja="mas">+</button></div>
-    <div class="mut" id="hsub" style="text-align:center"></div>
-    <button class="btn" data-hoja="ok">${ya ? 'Actualizar cantidad' : 'Agregar al pedido'}</button>
-    ${ya ? '<button class="btn bad" data-hoja="quitar">Quitar del pedido</button>' : ''}<button class="btn sec" data-hoja="cerrar">Cancelar</button></div>`;
-  document.body.appendChild(el);
-  const inp = $('#hq'), sub = () => { $('#hsub').textContent = 'Subtotal: ' + money((parseInt(inp.value) || 0) * precio); };
-  inp.oninput = sub; inp.onkeydown = e => { if (e.key === 'Enter') hojaAccion('ok'); }; sub(); inp.focus(); inp.select();
-}
-function hojaAccion(a) {
-  const el = $('#hoja'); if (!el) return;
-  const pid = +el.dataset.pid, inp = $('#hq');
-  if (a === 'menos') { inp.value = Math.max(1, (parseInt(inp.value) || 1) - 1); inp.oninput(); return; }
-  if (a === 'mas') { inp.value = (parseInt(inp.value) || 0) + 1; inp.oninput(); return; }
-  if (a === 'ok') { const c = parseInt(inp.value); if (!(c > 0)) return toast('Poné una cantidad'); draft.items[pid] = Math.min(c, 99999); }
-  if (a === 'quitar') delete draft.items[pid];
-  el.remove();
-  if (a === 'ok' || a === 'quitar') { q = ''; const bq = $('#q'); if (bq) bq.value = ''; const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); if (a === 'ok' && bq) bq.focus(); }
 }
 function cambiarCant(pid, d, fijo) {
   const p = productos.find(x => x.id === pid); if (!p || Number.isNaN(fijo) || (!p.activo && !draft.items[pid])) return;
@@ -589,11 +565,10 @@ function exportarExcel() {
 
 /* ---------- eventos ---------- */
 document.addEventListener('click', async e => {
-  const t = e.target.closest('button, [data-sel], [data-hoja], [data-ped], [data-edit], [data-edituser], [data-editcli], [data-cli], [data-precio], [data-promoprecio], [data-nuevapromo]');
+  const t = e.target.closest('button, [data-sel], [data-ped], [data-edit], [data-edituser], [data-editcli], [data-cli], [data-precio], [data-promoprecio], [data-nuevapromo]');
   if (!t || e.target.closest('[data-stop]')) return;
   const d = t.dataset, row = t.closest('[data-pid]');
-  if (d.hoja) hojaAccion(d.hoja);
-  else if (d.sel) abrirHoja(+d.sel);
+  if (d.sel) cambiarCant(+d.sel, 1);   // tocar el producto lo agrega con cantidad 1; después se ajusta en el detalle
   else if (d.go) { if (d.nuevo) nuevoDraft(); go(d.go); }
   else if (d.act === 'atras') {
     if (eligiendoPromo) { eligiendoPromo = false; return render(); }
@@ -643,6 +618,19 @@ document.addEventListener('click', async e => {
   else if (d.nuevapromo) { const p = productos.find(x => x.id == d.nuevapromo), v = prompt('Precio promo para ' + p.nombre); if (v) { await setProd(p.id, { promo: true, precioPromo: v }); eligiendoPromo = false; render(); } }
   else if (d.precio) { const p = productos.find(x => x.id == d.precio), v = prompt('Precio de ' + p.nombre, p.precio); if (v !== null && v !== '') { await setProd(p.id, { precio: v }); render(); } }
 });
+// cantidad escrita con el teclado en el detalle
+document.addEventListener('input', e => {
+  const pid = e.target.dataset && e.target.dataset.qin; if (!pid) return;
+  const c = parseInt(e.target.value);
+  if (c > 0) draft.items[pid] = Math.min(c, 99999); else if (e.target.value !== '') delete draft.items[pid];
+  const p = productos.find(x => x.id == pid), sub = e.target.closest('.row').querySelector('[data-sub]');
+  if (sub && c > 0) sub.textContent = money(c * precioLinea(p));
+  pintarLista(); pintarTotal();
+});
+document.addEventListener('change', e => {
+  if (e.target.dataset && e.target.dataset.qin) { const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); }
+});
+document.addEventListener('focusin', e => { if (e.target.dataset && e.target.dataset.qin) e.target.select(); });
 document.addEventListener('change', async e => {
   const id = e.target.dataset.activo;
   if (id) { await setProd(+id, { activo: e.target.checked }); render(); }
