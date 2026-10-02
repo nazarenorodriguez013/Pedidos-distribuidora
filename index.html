@@ -337,7 +337,7 @@ function pintarLista() {
   const todos = filtrar(base), lista = todos.slice(0, 30);   // orden fijo: lo elegido no sube, queda en el detalle
   $('#lista').innerHTML = lista.length ? `<div class="card">${lista.map(p => {
     const c = draft.items[p.id] || 0, bloq = !p.activo && !c;   // sin precio / desactivado: se ve pero no se puede pedir
-    return `<div class="row ${bloq ? 'off' : ''}" ${bloq ? '' : `data-sel="${p.id}"`} style="${c ? 'background:color-mix(in srgb,var(--pri) 10%,transparent)' : ''}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · </span>${multiploDe(p) > 1 ? `<span class="tag">de a ${multiploDe(p)}</span> ` : ''}${hayPromo(p) ? `<span class="tag promo">PROMO ${esc(promoTxt(p))}</span> ` : ''}${precioHtml({ ...p, promo: !draft.orig[p.id] && p.promo })}</div>
+    return `<div class="row ${bloq ? 'off' : ''}" ${bloq ? '' : `data-sel="${p.id}"`} style="${c ? 'background:color-mix(in srgb,var(--pri) 10%,transparent)' : ''}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · </span>${multiploDe(p) > 1 ? `<span class="tag">unidad ${multiploDe(p)}</span> ` : ''}${hayPromo(p) ? `<span class="tag promo">PROMO ${esc(promoTxt(p))}</span> ` : ''}${precioHtml({ ...p, promo: !draft.orig[p.id] && p.promo })}</div>
       ${bloq ? '<span class="tag">No disponible</span>' : c ? `<span class="tag ok">✓ ${c}</span>` : '<span class="mut">+</span>'}</div>`;
   }).join('')}</div>${todos.length > lista.length ? `<p class="mut" style="text-align:center">Mostrando ${lista.length} de ${todos.length}: seguí escribiendo para afinar</p>` : ''}` : vacio('Sin resultados');
 }
@@ -373,7 +373,7 @@ function pintarDetalle() {
   const sel = productos.filter(enPed);
   for (const p of sel) if (promoPorCant(p) && draft.items[p.id] >= promoCantDe(p) && !draft.promos[p.id] && !draft.avisado[p.id]) { draft.avisado[p.id] = true; toast(`🏷️ Promo disponible en ${p.nombre}`); }
   for (const c of combos) if (comboCumple(c) && !draft.combos[c.id] && !draft.avisadoC[c.id]) { draft.avisadoC[c.id] = true; toast(`🏷️ Promo disponible: ${c.nombre}`); }
-  $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + bloqueCombos() + sel.map(p => { const pl = precioLinea(p); return `<div class="row" data-pid="${p.id}" style="flex-wrap:wrap"><div class="nm"><b>${esc(p.nombre)}</b>${draft.estado === 'cargado' && draft.items[p.id] > cargadaDe(p.id) ? `<span class="tag bad">Agregar${cargadaDe(p.id) ? ' +' + (draft.items[p.id] - cargadaDe(p.id)) : ''}</span> ` : draft.estado === 'cargado' && draft.items[p.id] < cargadaDe(p.id) ? `<span class="tag warn">−${cargadaDe(p.id) - draft.items[p.id]}</span> ` : ''}<span class="mut">${pl < p.precio ? `<s>${money(p.precio)}</s> ` : ''}${money(pl)} c/u${multiploDe(p) > 1 ? ' · de a ' + multiploDe(p) : ''} · subtotal <b data-sub>${money(draft.items[p.id] * pl)}</b></span></div>
+  $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + bloqueCombos() + sel.map(p => { const pl = precioLinea(p); return `<div class="row" data-pid="${p.id}" style="flex-wrap:wrap"><div class="nm"><b>${esc(p.nombre)}</b>${draft.estado === 'cargado' && draft.items[p.id] > cargadaDe(p.id) ? `<span class="tag bad">Agregar${cargadaDe(p.id) ? ' +' + (draft.items[p.id] - cargadaDe(p.id)) : ''}</span> ` : draft.estado === 'cargado' && draft.items[p.id] < cargadaDe(p.id) ? `<span class="tag warn">−${cargadaDe(p.id) - draft.items[p.id]}</span> ` : ''}<span class="mut">${pl < p.precio ? `<s>${money(p.precio)}</s> ` : ''}${money(pl)} c/u${multiploDe(p) > 1 ? ' · unidad ' + multiploDe(p) : ''} · subtotal <b data-sub>${money(draft.items[p.id] * pl)}</b></span></div>
       <div class="qty"><button data-q="-1">−</button><input class="qin" type="number" inputmode="numeric" min="0" step="${multiploDe(p)}" data-qin="${p.id}" value="${draft.items[p.id]}"><button data-q="1">+</button></div><button class="btn sec" data-quitar="${p.id}" aria-label="Quitar del pedido" style="width:38px;min-height:38px;padding:0;color:var(--bad);flex:none">✕</button>${bloquePromo(p)}</div>`; }).join('') + (draft.estado === 'cargado' ? (draft.cargadoItems || []).filter(o => !(draft.items[o.pid] > 0)).map(o => `<div class="row" style="border:0"><span class="tag warn">Quitado</span><span class="mut">${esc(o.nombre)} ×${o.cant}</span></div>`).join('') : '') + '<div id="dtotales"></div>' : '<span class="mut">Tocá un producto de la lista para agregarlo con cantidad 1. Después ajustás la cantidad acá.</span>';
 }
 let editNota = false;
@@ -410,7 +410,7 @@ async function guardarPedido() {
   const body = { clienteId: draft.clienteId, cliente: draft.cliente, nota: draft.nota, dia: draft.dia, turno: draft.turno, items };
   if (!draft.clienteId && !draft.legacy) return toast('Elegí un cliente');
   const mal = items.find(i => { const p = productos.find(x => x.id === i.pid); return p && i.cant % multiploDe(p); });
-  if (mal) { const p = productos.find(x => x.id === mal.pid); return toast(`"${p.nombre}" se vende de a ${multiploDe(p)}`); }
+  if (mal) { const p = productos.find(x => x.id === mal.pid); return toast(`"${p.nombre}": la unidad de venta es ${multiploDe(p)}`); }
   if (!draft.dia) return toast('Elegí el día');
   if (!draft.turno) return toast('Elegí el turno: mañana o tarde');
   if (!items.length) return toast('El pedido no tiene productos');
@@ -552,8 +552,8 @@ function formProducto(p) {
     <label>Código</label><input name="codigo" value="${esc(p.codigo)}" required>
     <label>Nombre</label><input name="nombre" value="${esc(p.nombre)}" required>
     <div class="row" style="border:0;align-items:flex-end"><div><label>Precio</label><input name="precio" inputmode="decimal" value="${p.precio || ''}" required></div>
-      <div><label>Se vende de a</label><input name="multiplo" inputmode="numeric" value="${p.multiplo || 1}" placeholder="1"></div></div>
-    <p class="mut" style="margin:4px 0 0">"Se vende de a": 1 = por unidad. Con 5, las cantidades del pedido van de 5 en 5.</p>
+      <div><label>Unidad de venta</label><input name="multiplo" inputmode="numeric" value="${p.multiplo || 1}" placeholder="1"></div></div>
+    <p class="mut" style="margin:4px 0 0">Unidad de venta: 1 = por unidad suelta. Con 5, las cantidades del pedido van de 5 en 5 (5, 10, 15…).</p>
     <div class="row" style="border:0"><div class="nm"><b>Activo</b><span class="mut">Apagado: no se puede pedir ni sale en el PDF</span></div><label class="sw" style="margin:0"><input type="checkbox" name="activo" ${p.activo !== false ? 'checked' : ''}><i></i></label></div>
     <div class="row" style="border:0"><div class="nm"><b>En promoción</b></div><label class="sw" style="margin:0"><input type="checkbox" name="promo" ${p.promo ? 'checked' : ''}><i></i></label></div>
     <div class="card" style="margin:6px 0 0;background:var(--bg)"><b>Promoción</b>
@@ -706,7 +706,7 @@ function vUsuario() {
 }
 /* ---------- Excel (admin) ---------- */
 let importFilas = null;
-const COLS = { codigo: ['codigo', 'cod', 'sku', 'code'], nombre: ['nombre', 'descripcion', 'producto', 'articulo', 'detalle'], precio: ['precio', 'price', 'importe', 'pvp'], activo: ['activo', 'habilitado'], multiplo: ['multiplo', 'multiple', 'se vende de a'] };
+const COLS = { codigo: ['codigo', 'cod', 'sku', 'code'], nombre: ['nombre', 'descripcion', 'producto', 'articulo', 'detalle'], precio: ['precio', 'price', 'importe', 'pvp'], activo: ['activo', 'habilitado'], multiplo: ['unidad de venta', 'unidad', 'multiplo', 'multiple', 'se vende de a'] };
 function leerHoja(rows) {
   rows = rows.filter(r => r.some(c => String(c ?? '').trim() !== ''));
   const mapa = {};
@@ -746,7 +746,7 @@ async function filasDePdf(file) {
 }
 function vImportar() {
   $('#main').innerHTML = `<div class="card"><h3 style="margin:0 0 6px">Importar lista</h3>
-    <p class="mut">Subí el <b>PDF de la lista de precios</b> del proveedor (código, artículo, IVA, precio; los de precio 0 quedan desactivados), o un archivo Excel (.xlsx) / CSV con columnas: <b>Código</b>, <b>Nombre</b>, <b>Precio</b> y, si querés, <b>Múltiplo</b> (de a cuántas unidades se vende) y <b>Activo</b> (si/no). Si el archivo trae una columna Stock, se ignora. Los productos se identifican por código: los existentes se actualizan y los nuevos se crean.</p>
+    <p class="mut">Subí el <b>PDF de la lista de precios</b> del proveedor (código, artículo, IVA, precio; los de precio 0 quedan desactivados), o un archivo Excel (.xlsx) / CSV con columnas: <b>Código</b>, <b>Nombre</b>, <b>Precio</b> y, si querés, <b>Unidad de venta</b> (de a cuántas unidades se vende: 1, 5, 10…) y <b>Activo</b> (si/no). Si el archivo trae una columna Stock, se ignora. Los productos se identifican por código: los existentes se actualizan y los nuevos se crean.</p>
     <input id="arch" type="file" accept=".pdf,.xlsx,.xls,.csv"><div id="prev"></div></div>
     <div class="card"><h3 style="margin:0 0 6px">Exportar</h3><p class="mut">Descarga el listado actual en Excel; podés editarlo y volver a importarlo.</p><button class="btn sec" data-act="exportarExcel">Descargar Excel</button></div>`;
   $('#arch').onchange = async e => {
@@ -774,7 +774,7 @@ async function importarConfirmar() {
 }
 function exportarExcel() {
   if (!window.XLSX) return toast('No cargó el generador de Excel (revisá la conexión)');
-  const ws = XLSX.utils.json_to_sheet(productos.map(p => ({ 'Código': p.codigo, 'Nombre': p.nombre, 'Precio': p.precio,'Múltiplo': p.multiplo || 1, 'Activo': p.activo ? 'si' : 'no' })));
+  const ws = XLSX.utils.json_to_sheet(productos.map(p => ({ 'Código': p.codigo, 'Nombre': p.nombre, 'Precio': p.precio,'Unidad de venta': p.multiplo || 1, 'Activo': p.activo ? 'si' : 'no' })));
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Productos');
   XLSX.writeFile(wb, 'productos-' + new Date().toISOString().slice(0, 10) + '.xlsx');
 }

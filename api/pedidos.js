@@ -74,7 +74,7 @@ function cleanProducto(b, prev = {}) {
   return {
     codigo, nombre,
     precio: num(b.precio, prev.precio ?? 0),
-    multiplo: Math.max(1, Math.floor(num(b.multiplo, prev.multiplo ?? 1))),   // se vende de a este múltiplo (1, 5, 10…)
+    multiplo: Math.max(1, Math.floor(num(b.multiplo, prev.multiplo ?? 1))),   // unidad de venta: las cantidades van de a este múltiplo (1, 5, 10…)
     activo: b.activo === undefined ? prev.activo ?? true : !!b.activo,
     promo: b.promo === undefined ? prev.promo ?? false : !!b.promo,
     precioPromo: num(b.precioPromo, prev.precioPromo ?? 0),
@@ -154,7 +154,7 @@ function armarPedido(b, viejo, quien, admin) {
     if (!p) throw { code: 400, msg: 'Producto inexistente' };
     if (!old && !p.activo) throw { code: 409, msg: `"${p.nombre}" está desactivado` };
     const m = p.multiplo || 1;
-    if (cant % m && !(old && old.cant === cant)) throw { code: 400, msg: `"${p.nombre}" se vende de a ${m}: la cantidad tiene que ser múltiplo de ${m}` };
+    if (cant % m && !(old && old.cant === cant)) throw { code: 400, msg: `"${p.nombre}" tiene unidad de venta ${m}: la cantidad tiene que ser múltiplo de ${m}` };
     if (!old && !((hayPromo(p) && promoCantDe(p) <= 1 ? precioPromoDe(p) : p.precio) > 0)) throw { code: 409, msg: `"${p.nombre}" no tiene precio` };
     let aplica = hayPromo(p) && promoCantDe(p) <= 1;   // promo sin cantidad: automática
     if (quierePromo.get(pid)) {   // promo por cantidad aceptada por el vendedor
@@ -231,7 +231,7 @@ function importar(b) {
     if (f.precio !== undefined && f.precio !== '' && precio === null) return r.errores.push(`Fila ${fila} (${codigo}): precio inválido`);
     let p = state.productos.find(x => x.codigo.toLowerCase() === codigo.toLowerCase());
     const mult = f.multiplo === undefined || f.multiplo === '' ? null : parseNum(f.multiplo);
-    if (f.multiplo !== undefined && f.multiplo !== '' && !(mult >= 1)) return r.errores.push(`Fila ${fila} (${codigo}): múltiplo inválido`);
+    if (f.multiplo !== undefined && f.multiplo !== '' && !(mult >= 1)) return r.errores.push(`Fila ${fila} (${codigo}): unidad de venta inválida`);
     const sinPrecio = precio === 0 && (f.activo === undefined || f.activo === '');   // precio 0 = sin precio: queda desactivado
     vistos.add(codigo.toLowerCase());
     if (!p) {
