@@ -288,7 +288,8 @@ function importar(b) {
   return r;
 }
 
-function importarClientes(b) {
+function importarClientes(b, quien) {
+  const marca = { editadoEn: new Date().toISOString(), editadoPor: quien.nombre };   // última edición y quién
   const r = { creados: 0, actualizados: 0, errores: [] };
   const porDefecto = state.usuarios.find(u => u.id === Number(b.vendedorId));
   (Array.isArray(b.rows) ? b.rows : []).forEach((f, n) => {
@@ -308,11 +309,11 @@ function importarClientes(b) {
       c.nombre = t('nombre'); c.apellido = '';
       if (t('direccion')) c.direccion = t('direccion');
       if (t('telefono')) c.telefono = t('telefono');
-      c.vendedorId = vend.id;
+      c.vendedorId = vend.id; Object.assign(c, marca);
       for (const p of state.pedidos) if (p.clienteId === c.id) { p.cliente = nombreCliente(c); p.clienteCodigo = c.codigo; }
       r.actualizados++;
     } else {
-      state.clientes.push({ id: state.seq.c++, codigo, nombre: t('nombre'), apellido: '', direccion: t('direccion'), telefono: t('telefono'), vendedorId: vend.id });
+      state.clientes.push({ ...marca, id: state.seq.c++, codigo, nombre: t('nombre'), apellido: '', direccion: t('direccion'), telefono: t('telefono'), vendedorId: vend.id });
       r.creados++;
     }
   });
@@ -362,7 +363,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
 
     if (rec === 'importarclientes' && req.method === 'POST') {
       soloAdmin();
-      const r = importarClientes(await body(req, 30e6));
+      const r = importarClientes(await body(req, 30e6), yo);
       await save(pool);
       return send(res, 200, r);
     }
@@ -415,7 +416,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       if (!id && req.method === 'GET') return send(res, 200, { clientes: s.clientes.filter(vis) });
       if (!id && req.method === 'POST') {
         const datos = cleanCliente(await body(req), null, admin, yo);
-        const c = { id: s.seq.c++, ...datos };
+        const c = { id: s.seq.c++, ...datos, editadoEn: new Date().toISOString(), editadoPor: yo.nombre };
         s.clientes.push(c); await save(pool);
         return send(res, 200, c);
       }
@@ -423,7 +424,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       if (!c) throw { code: 404, msg: 'No existe' };
       if (req.method === 'GET') return send(res, 200, c);
       if (req.method === 'PUT') {
-        Object.assign(c, cleanCliente(await body(req), c, admin, yo));
+        Object.assign(c, cleanCliente(await body(req), c, admin, yo), { editadoEn: new Date().toISOString(), editadoPor: yo.nombre });
         for (const p of s.pedidos) if (p.clienteId === c.id) { p.cliente = nombreCliente(c); p.clienteCodigo = c.codigo; }
         await save(pool);
         return send(res, 200, c);
