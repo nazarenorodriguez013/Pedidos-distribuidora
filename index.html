@@ -685,7 +685,7 @@ function vElegirPromo() {
 
 /* ---------- precios + PDF ---------- */
 function vPrecios() {
-  $('#main').innerHTML = `<button class="btn" data-act="pdf" style="margin-bottom:10px">📄 Exportar lista de precios (PDF)</button>` + buscador();
+  $('#main').innerHTML = `${esAdmin() ? '<button class="btn" data-act="nuevoProd" style="margin-bottom:10px">+ Cargar un producto</button>' : ''}<button class="btn ${esAdmin() ? 'sec' : ''}" data-act="pdf" style="margin-bottom:10px">📄 Exportar lista de precios (PDF)</button>` + buscador();
   enlazarBuscador(() => {
     const l = filtrar(productos).filter(p => esAdmin() || p.activo || sinPrecio(p));
     $('#lista').innerHTML = l.length ? `<div class="card">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" ${esAdmin() ? `data-precio="${p.id}"` : ''}><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}${p.activo ? '' : p.precio > 0 ? ' · inactivo' : ' · sin precio'}</span></div>${p.promo ? '<span class="tag promo">PROMO</span>' : ''}${precioHtml(p)}</div>`).join('')}</div>` : vacio('Sin resultados');
@@ -775,7 +775,7 @@ async function filasDePdf(file) {
 }
 function vImportar() {
   $('#main').innerHTML = `<div class="card"><h3 style="margin:0 0 6px">Importar lista</h3>
-    <p class="mut">Subí el <b>PDF de la lista de precios</b> del proveedor (código, artículo, IVA, precio; los de precio 0 quedan desactivados), o un archivo Excel (.xlsx) / CSV con columnas: <b>Código</b>, <b>Nombre</b>, <b>Precio</b> y, si querés, <b>Unidad de venta</b> (de a cuántas unidades se vende: 1, 5, 10…) y <b>Activo</b> (si/no). Si el archivo trae una columna Stock, se ignora. Los productos se identifican por código: los existentes se actualizan y los nuevos se crean.</p>
+    <p class="mut">Subí el <b>PDF de la lista de precios</b> del proveedor (código, artículo, IVA, precio; los de precio 0 quedan desactivados), o un archivo Excel (.xlsx) / CSV con columnas: <b>Código</b>, <b>Nombre</b>, <b>Precio</b> y, si querés, <b>Unidad de venta</b> (de a cuántas unidades se vende: 1, 5, 10…) y <b>Activo</b> (si/no). Si el archivo trae una columna Stock, se ignora. Los productos se identifican por código: los existentes se actualizan (nombre, precio, unidad de venta) y los nuevos se crean. <b>No se borra nada</b> y las promos (de producto y combinadas) se conservan.</p>
     <input id="arch" type="file" accept=".pdf,.xlsx,.xls,.csv"><div id="prev"></div></div>
     <div class="card"><h3 style="margin:0 0 6px">Exportar</h3><p class="mut">Descarga el listado actual en Excel; podés editarlo y volver a importarlo.</p><button class="btn sec" data-act="exportarExcel">Descargar Excel</button></div>`;
   $('#arch').onchange = async e => {
@@ -789,7 +789,7 @@ function vImportar() {
       }
       if (!importFilas.length) return toast('No se encontraron productos en el archivo');
       $('#prev').innerHTML = `<p><b>${importFilas.length}</b> filas leídas${importFilas.some(r => r.activo === 'no') ? ` (${importFilas.filter(r => r.activo === 'no').length} sin precio, quedan desactivadas)` : ''}. Ejemplo: ${esc(Object.values(importFilas[0] || {}).join(' | '))}</p>
-        <div class="row" style="border:0"><div class="nm"><b>La lista es el catálogo completo</b><span class="mut">Activa los que están y desactiva los que no figuran</span></div><label class="sw" style="margin:0"><input type="checkbox" id="cat"><i></i></label></div>
+        <div class="row" style="border:0"><div class="nm"><b>La lista es el catálogo completo</b><span class="mut">Activa los que están y desactiva (no borra) los que no figuran. Sus promos se conservan.</span></div><label class="sw" style="margin:0"><input type="checkbox" id="cat"><i></i></label></div>
         <button class="btn" data-act="importarConfirmar">Importar</button>`;
     } catch { toast('No se pudo leer el archivo'); }
   };
