@@ -222,11 +222,14 @@ function vPedido() {
     <div class="bar"><div class="tot" id="tot"></div><button class="btn" data-act="guardarPedido">${draft.id ? 'Guardar cambios' : 'Guardar pedido'}</button></div>`;
   $('#nota').oninput = e => draft.nota = e.target.value;
   $('#dia').onchange = e => { draft.dia = e.target.value; if (!draft.id && draft.dia) ss('pd_dia', draft.dia); };
-  enlazarBuscador(pintarPedido);
+  enlazarBuscador(() => { verLista = true; pintarPedido(); });
+  $('#q').onfocus = () => { if (!verLista) { verLista = true; pintarLista(); } };
 }
+let verLista = true;   // al elegir un producto la lista se oculta hasta volver a buscar
 const enPed = p => draft.items[p.id] > 0;
 function pintarPedido() { pintarLista(); pintarDetalle(); pintarTotal(); }
 function pintarLista() {
+  if (!verLista) { $('#lista').innerHTML = '<p class="mut" style="text-align:center;padding:14px 0">Buscá otro producto para seguir agregando</p>'; return; }
   const base = productos.filter(p => p.activo || sinPrecio(p) || enPed(p));
   const lista = filtrar(base);   // orden fijo: lo elegido no sube, queda en el detalle
   $('#lista').innerHTML = lista.length ? `<div class="card">${lista.map(p => {
@@ -568,7 +571,7 @@ document.addEventListener('click', async e => {
   const t = e.target.closest('button, [data-sel], [data-ped], [data-edit], [data-edituser], [data-editcli], [data-cli], [data-precio], [data-promoprecio], [data-nuevapromo]');
   if (!t || e.target.closest('[data-stop]')) return;
   const d = t.dataset, row = t.closest('[data-pid]');
-  if (d.sel) cambiarCant(+d.sel, 1);   // tocar el producto lo agrega con cantidad 1; después se ajusta en el detalle
+  if (d.sel) { verLista = false; q = ''; $('#q').value = ''; cambiarCant(+d.sel, 1); }   // tocar el producto lo agrega con cantidad 1; después se ajusta en el detalle
   else if (d.go) { if (d.nuevo) nuevoDraft(); go(d.go); }
   else if (d.act === 'atras') {
     if (eligiendoPromo) { eligiendoPromo = false; return render(); }
