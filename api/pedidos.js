@@ -63,12 +63,15 @@ function cleanProducto(b, prev = {}) {
   return {
     codigo, nombre,
     precio: num(b.precio, prev.precio ?? 0),
+    multiplo: Math.max(1, Math.floor(num(b.multiplo, prev.multiplo ?? 1))),   // se vende de a este múltiplo (1, 5, 10…)
     activo: b.activo === undefined ? prev.activo ?? true : !!b.activo,
     promo: b.promo === undefined ? prev.promo ?? false : !!b.promo,
     precioPromo: num(b.precioPromo, prev.precioPromo ?? 0),
   };
 }
 
+const REDONDEO = 50;   // el total de cada pedido se redondea hacia arriba a múltiplo de 50
+const redondear = x => Math.ceil(Math.round(x * 100) / (REDONDEO * 100)) * REDONDEO;
 const nombreCliente = c => [c.nombre, c.apellido].filter(Boolean).join(' ');
 function cleanCliente(b, prev, admin, yo) {
   const t = k => String(b[k] ?? prev?.[k] ?? '').trim();
@@ -113,11 +116,14 @@ function armarPedido(b, viejo, quien, admin) {
     const old = viejas.get(pid);
     if (!p) throw { code: 400, msg: 'Producto inexistente' };
     if (!old && !p.activo) throw { code: 409, msg: `"${p.nombre}" está desactivado` };
+    const m = p.multiplo || 1;
+    if (cant % m && !(old && old.cant === cant)) throw { code: 400, msg: `"${p.nombre}" se vende de a ${m}: la cantidad tiene que ser múltiplo de ${m}` };
     if (!old && !(precioDe(p) > 0)) throw { code: 409, msg: `"${p.nombre}" no tiene precio` };
     items.push({ pid, codigo: p.codigo, nombre: p.nombre, precio: old ? old.precio : precioDe(p), cant });
   }
-  const total = Math.round(items.reduce((s, i) => s + i.precio * i.cant, 0) * 100) / 100;
-  return { cliente, nota: String(b.nota || '').trim(), items, total, clienteId: cli ? cli.id : undefined, dia: dia || undefined, turno: turno || undefined, vendedorId: vend ? vend.id : viejo ? viejo.vendedorId : quien.id, vendedor: vend ? vend.nombre : viejo ? viejo.vendedor : quien.nombre };
+  const subtotal = Math.round(items.reduce((s, i) => s + i.precio * i.cant, 0) * 100) / 100;
+  const total = redondear(subtotal);
+  return { cliente, nota: String(b.nota || '').trim(), items, subtotal, redondeo: Math.round((total - subtotal) * 100) / 100, total, clienteId: cli ? cli.id : undefined, dia: dia || undefined, turno: turno || undefined, vendedorId: vend ? vend.id : viejo ? viejo.vendedorId : quien.id, vendedor: vend ? vend.nombre : viejo ? viejo.vendedor : quien.nombre };
 }
 
 // ---- sesiones: token firmado con el usuario; el rol se lee de la base en cada pedido ----
@@ -163,16 +169,19 @@ function importar(b) {
     const precio = f.precio === undefined || f.precio === '' ? null : parseNum(f.precio);
     if (f.precio !== undefined && f.precio !== '' && precio === null) return r.errores.push(`Fila ${fila} (${codigo}): precio inválido`);
     let p = state.productos.find(x => x.codigo.toLowerCase() === codigo.toLowerCase());
+    const mult = f.multiplo === undefined || f.multiplo === '' ? null : parseNum(f.multiplo);
+    if (f.multiplo !== undefined && f.multiplo !== '' && !(mult >= 1)) return r.errores.push(`Fila ${fila} (${codigo}): múltiplo inválido`);
     const sinPrecio = precio === 0 && (f.activo === undefined || f.activo === '');   // precio 0 = sin precio: queda desactivado
     vistos.add(codigo.toLowerCase());
     if (!p) {
       const nombre = String(f.nombre ?? '').trim();
       if (!nombre || precio === null) return r.errores.push(`Fila ${fila} (${codigo}): producto nuevo necesita nombre y precio`);
-      state.productos.push({ id: state.seq.p++, codigo, nombre, precio, activo: f.activo === undefined || f.activo === '' ? !sinPrecio : truthy(f.activo), promo: false, precioPromo: 0 });
+      state.productos.push({ id: state.seq.p++, codigo, nombre, precio, multiplo: mult ? Math.floor(mult) : 1, activo: f.activo === undefined || f.activo === '' ? !sinPrecio : truthy(f.activo), promo: false, precioPromo: 0 });
       return r.creados++;
     }
     if (String(f.nombre ?? '').trim()) p.nombre = String(f.nombre).trim();
     if (precio !== null && !sinPrecio) p.precio = precio;
+    if (mult) p.multiplo = Math.floor(mult);
     if (sinPrecio) p.activo = false;
     if (f.activo !== undefined && f.activo !== '') p.activo = truthy(f.activo);
     else if (b.catalogoCompleto && !sinPrecio) p.activo = true;
