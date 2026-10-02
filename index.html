@@ -63,12 +63,16 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 </style>
 </head>
 <body>
-<div id="app"></div>
+<div id="app"><p style="padding:24px;text-align:center">Cargando…</p></div>
+<noscript>Esta app necesita JavaScript.</noscript>
 <div id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js" defer></script>
 <script>
+window.addEventListener('error', e => { const a = document.getElementById('app'); if (a && /Cargando/.test(a.textContent)) a.innerHTML = '<p style="padding:24px;color:#b91c1c">Error al iniciar: ' + String(e.message).replace(/</g, '&lt;') + '</p>'; });
+let instalar = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); instalar = e; const b = document.getElementById('inst'); if (b) b.hidden = false; });
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = n => Number(n || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
@@ -112,7 +116,10 @@ function login() {
   $('#app').innerHTML = `<form class="login"><h1>Distribuidora</h1>
     <label>Usuario</label><input id="u" autocomplete="username" autocapitalize="none" required>
     <label>Contraseña</label><input id="pw" type="password" autocomplete="current-password" required>
-    <p id="err" class="mut" style="color:var(--bad)"></p><button class="btn">Ingresar</button></form>`;
+    <p id="err" class="mut" style="color:var(--bad)"></p><button class="btn">Ingresar</button>
+    <button type="button" id="inst" class="btn sec" style="margin-top:12px" ${instalar ? '' : 'hidden'}>📲 Instalar app en el celular</button>
+    <p class="mut" style="text-align:center;margin-top:14px">iPhone: Safari → Compartir → "Agregar a inicio".<br>Android: menú de Chrome → "Instalar app".</p></form>`;
+  $('#inst').onclick = async () => { if (instalar) { instalar.prompt(); instalar = null; $('#inst').hidden = true; } };
   $('form').onsubmit = async e => {
     e.preventDefault();
     try {
@@ -432,7 +439,7 @@ document.addEventListener('change', async e => {
   const id = e.target.dataset.activo;
   if (id) { await setProd(+id, { activo: e.target.checked }); render(); }
 });
-(async () => { if (token) { try { await cargar(); } catch { token = null; } } render(); })();
+(async () => { if (token) { try { await cargar(); } catch { token = null; } } try { render(); } catch (e) { $('#app').innerHTML = '<p style="padding:24px;color:#b91c1c">Error: ' + esc(e.message) + '</p>'; } })();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 </script>
 </body>

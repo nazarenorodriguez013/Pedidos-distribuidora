@@ -7,8 +7,10 @@ const pedidos = require('./api/pedidos.js');
 
 const E = process.env;
 const SECRET = E.AUTH_SECRET || 'pedidos-' + (E.APP_PASS || 'kevin123');
-const DB_URL = E.DATABASE_URL || E.DATABASE_PRIVATE_URL || E.DATABASE_PUBLIC_URL ||
+const DB_URL0 = E.DATABASE_URL || E.DATABASE_PRIVATE_URL || E.DATABASE_PUBLIC_URL ||
   (E.PGHOST && E.PGUSER && E.PGPASSWORD ? `postgres://${encodeURIComponent(E.PGUSER)}:${encodeURIComponent(E.PGPASSWORD)}@${E.PGHOST}:${E.PGPORT || 5432}/${E.PGDATABASE || 'railway'}` : null);
+const DB_URL = DB_URL0 && !DB_URL0.includes('${{') ? DB_URL0 : null;   // referencia de Railway sin resolver
+if (DB_URL0 && !DB_URL) console.error('DATABASE_URL no se resolvió: usar "Add Reference" a la base de Railway');
 console.log(DB_URL ? 'Base de datos: configurada' : 'Base de datos: NO configurada (se guarda en data/pedidos.json)');
 const pool = DB_URL ? new Pool({
   connectionString: DB_URL,
