@@ -24,7 +24,7 @@ async function load(pool) {
   state.seq.k = state.seq.k || 1;
   for (const c of state.combos) if (c.tipo === 'precio' && !c.precios) { c.precios = {}; for (const g of c.grupos) for (const pid of g.pids) c.precios[pid] = c.precio; delete c.precio; }
   for (const o of state.pedidos) if (o.clienteId && o.clienteCodigo === undefined) { const c = state.clientes.find(x => x.id === o.clienteId); if (c) o.clienteCodigo = c.codigo; }
-  for (const p of state.productos) delete p.stock;   // ya no se maneja stock
+  for (const p of state.productos) { delete p.stock; if (p.multiplo > 1 && p.multiploSet === undefined) p.multiploSet = true; }   // ya no se maneja stock
   for (const o of state.pedidos) if (o.subtotal === undefined) {   // pedidos anteriores al redondeo: se les aplica solo
     o.subtotal = o.total; o.total = redondear(o.subtotal); o.redondeo = Math.round((o.total - o.subtotal) * 100) / 100;
   }
@@ -77,6 +77,7 @@ function cleanProducto(b, prev = {}) {
     codigo, nombre,
     precio: num(b.precio, prev.precio ?? 0),
     multiplo: Math.max(1, Math.floor(num(b.multiplo, prev.multiplo ?? 1))),   // unidad de venta: las cantidades van de a este múltiplo (1, 5, 10…)
+    multiploSet: b.multiplo !== undefined ? true : !!prev.multiploSet,        // definida a mano: las importaciones no la pisan
     activo: b.activo === undefined ? prev.activo ?? true : !!b.activo,
     promo: b.promo === undefined ? prev.promo ?? false : !!b.promo,
     precioPromo: num(b.precioPromo, prev.precioPromo ?? 0),
@@ -177,8 +178,12 @@ function armarPedido(b, viejo, quien, admin) {
       aplica = false;
     }
     const unit = combo ? precioComboDe(combo, p) : aplica ? precioPromoDe(p) : p.precio;
-    const mismo = old && (combo ? old.comboId === combo.id : !old.comboId && !!old.promo === aplica);
-    items.push({ pid, codigo: p.codigo, nombre: p.nombre, precio: mismo ? old.precio : unit, precioLista: p.precio, promo: aplica || undefined, comboId: combo ? combo.id : undefined, comboNombre: combo ? combo.nombre : undefined, cant });
+    // Un producto que ya estaba en el pedido conserva el precio con que se vendió, aunque después cambie el precio o las promos del producto;
+    // solo se recalcula si el vendedor acepta o quita una promo (por cantidad o combinada) en esa línea.
+    const qtyNow = !combo && !!quierePromo.get(pid);
+    const oldQty = old ? old.promoQty ?? (!!old.promo && promoCantDe(p) > 1) : false;
+    const mismo = old && (old.comboId || 0) === (combo ? combo.id : 0) && oldQty === qtyNow;
+    items.push({ pid, codigo: p.codigo, nombre: p.nombre, precio: mismo ? old.precio : unit, precioLista: mismo ? old.precioLista ?? p.precio : p.precio, promo: aplica || undefined, promoQty: qtyNow || undefined, comboId: combo ? combo.id : undefined, comboNombre: combo ? combo.nombre : undefined, cant });
   }
   // Pedido ya cargado por administración: si lo edita el vendedor queda marcado "agregar" para que el admin lo vea
   let extra = {};
@@ -246,12 +251,12 @@ function importar(b) {
     if (!p) {
       const nombre = String(f.nombre ?? '').trim();
       if (!nombre || precio === null) return r.errores.push(`Fila ${fila} (${codigo}): producto nuevo necesita nombre y precio`);
-      state.productos.push({ id: state.seq.p++, codigo, nombre, precio, multiplo: mult ? Math.floor(mult) : 1, activo: f.activo === undefined || f.activo === '' ? !sinPrecio : truthy(f.activo), promo: false, precioPromo: 0 });
+      state.productos.push({ id: state.seq.p++, codigo, nombre, precio, multiplo: mult ? Math.floor(mult) : 1, multiploSet: !!mult, activo: f.activo === undefined || f.activo === '' ? !sinPrecio : truthy(f.activo), promo: false, precioPromo: 0 });
       return r.creados++;
     }
     if (String(f.nombre ?? '').trim()) p.nombre = String(f.nombre).trim();
     if (precio !== null && !sinPrecio) p.precio = precio;
-    if (mult) p.multiplo = Math.floor(mult);
+    if (mult && !p.multiploSet) { p.multiplo = Math.floor(mult); p.multiploSet = true; }   // la unidad de venta solo se carga si todavía no estaba definida
     if (sinPrecio) p.activo = false;
     if (f.activo !== undefined && f.activo !== '') p.activo = truthy(f.activo);
     else if (b.catalogoCompleto && !sinPrecio) p.activo = true;
