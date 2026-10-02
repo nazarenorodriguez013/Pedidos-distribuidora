@@ -21,6 +21,9 @@ async function load(pool) {
   state.clientes = state.clientes || [];
   state.seq.c = state.seq.c || 1;
   for (const p of state.productos) delete p.stock;   // ya no se maneja stock
+  for (const o of state.pedidos) if (o.subtotal === undefined) {   // pedidos anteriores al redondeo: se les aplica solo
+    o.subtotal = o.total; o.total = redondear(o.subtotal); o.redondeo = Math.round((o.total - o.subtotal) * 100) / 100;
+  }
   if (!state.usuarios.length) {   // primer arranque: el administrador sale de APP_USER / APP_PASS
     state.usuarios.push({ id: state.seq.u++, usuario: process.env.APP_USER || 'kevin', nombre: 'Administrador', rol: 'admin', activo: true, ...hashPass(process.env.APP_PASS || 'kevin123') });
     await save(pool);
