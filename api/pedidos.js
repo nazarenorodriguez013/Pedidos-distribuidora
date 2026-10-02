@@ -56,13 +56,19 @@ function hashPass(pass, salt = crypto.randomBytes(16).toString('hex')) {
 }
 const passOk = (u, pass) => { const h = Buffer.from(hashPass(pass, u.salt).hash), g = Buffer.from(u.hash); return h.length === g.length && crypto.timingSafeEqual(h, g); };
 const pub = u => ({ id: u.id, usuario: u.usuario, nombre: u.nombre, rol: u.rol, activo: u.activo });
-const precioDe = p => (p.promo && p.precioPromo > 0 ? p.precioPromo : p.precio);
+// Promos: precio fijo (precioPromo) o descuento % (promoPct). Con promoCant > 1 solo aplica comprando esa cantidad o más
+// y el vendedor la acepta; con promoCant 1 se aplica siempre, sola.
+const hayPromo = p => !!p.promo && (p.precioPromo > 0 || p.promoPct > 0);
+const promoCantDe = p => Math.max(1, p.promoCant || 1);
+const precioPromoDe = p => Math.round((p.precioPromo > 0 ? p.precioPromo : p.precio * (100 - (p.promoPct || 0)) / 100) * 100) / 100;
 
 function cleanProducto(b, prev = {}) {
   const nombre = String(b.nombre ?? prev.nombre ?? '').trim();
   const codigo = String(b.codigo ?? prev.codigo ?? '').trim();
   if (!nombre) throw { code: 400, msg: 'Falta el nombre' };
   if (!codigo) throw { code: 400, msg: 'Falta el código' };
+  const promo = b.promo === undefined ? prev.promo ?? false : !!b.promo;
+  if (promo && !(num(b.precioPromo, prev.precioPromo ?? 0) > 0 || num(b.promoPct, prev.promoPct ?? 0) > 0)) throw { code: 400, msg: 'La promoción necesita un descuento % o un precio promo' };
   return {
     codigo, nombre,
     precio: num(b.precio, prev.precio ?? 0),
@@ -70,6 +76,8 @@ function cleanProducto(b, prev = {}) {
     activo: b.activo === undefined ? prev.activo ?? true : !!b.activo,
     promo: b.promo === undefined ? prev.promo ?? false : !!b.promo,
     precioPromo: num(b.precioPromo, prev.precioPromo ?? 0),
+    promoCant: Math.max(1, Math.floor(num(b.promoCant, prev.promoCant ?? 1))),
+    promoPct: Math.min(100, num(b.promoPct, prev.promoPct ?? 0)),
   };
 }
 
@@ -113,6 +121,8 @@ function armarPedido(b, viejo, quien, admin) {
     if (cant > 0) nuevas.set(Number(it.pid), (nuevas.get(Number(it.pid)) || 0) + cant);
   }
   if (!nuevas.size) throw { code: 400, msg: 'El pedido no tiene productos' };
+  const quierePromo = new Map();
+  for (const it of Array.isArray(b.items) ? b.items : []) if (it.promo) quierePromo.set(Number(it.pid), true);
   const items = [];
   for (const [pid, cant] of nuevas) {
     const p = state.productos.find(x => x.id === pid);
@@ -121,8 +131,14 @@ function armarPedido(b, viejo, quien, admin) {
     if (!old && !p.activo) throw { code: 409, msg: `"${p.nombre}" está desactivado` };
     const m = p.multiplo || 1;
     if (cant % m && !(old && old.cant === cant)) throw { code: 400, msg: `"${p.nombre}" se vende de a ${m}: la cantidad tiene que ser múltiplo de ${m}` };
-    if (!old && !(precioDe(p) > 0)) throw { code: 409, msg: `"${p.nombre}" no tiene precio` };
-    items.push({ pid, codigo: p.codigo, nombre: p.nombre, precio: old ? old.precio : precioDe(p), cant });
+    if (!old && !((hayPromo(p) && promoCantDe(p) <= 1 ? precioPromoDe(p) : p.precio) > 0)) throw { code: 409, msg: `"${p.nombre}" no tiene precio` };
+    let aplica = hayPromo(p) && promoCantDe(p) <= 1;   // promo sin cantidad: automática
+    if (quierePromo.get(pid)) {   // promo por cantidad aceptada por el vendedor
+      if (!hayPromo(p) || promoCantDe(p) <= 1 || cant < promoCantDe(p)) throw { code: 409, msg: `La promo de "${p.nombre}" no aplica (hay que llevar ${promoCantDe(p)} o más)` };
+      aplica = true;
+    }
+    const unit = aplica ? precioPromoDe(p) : p.precio;
+    items.push({ pid, codigo: p.codigo, nombre: p.nombre, precio: old && !!old.promo === aplica ? old.precio : unit, precioLista: p.precio, promo: aplica || undefined, cant });
   }
   const subtotal = Math.round(items.reduce((s, i) => s + i.precio * i.cant, 0) * 100) / 100;
   const total = redondear(subtotal);
