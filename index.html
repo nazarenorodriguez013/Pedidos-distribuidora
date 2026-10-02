@@ -57,7 +57,7 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .chips button.on{background:var(--pri);color:#fff;border-color:var(--pri)}
 .price{font-weight:700;white-space:nowrap}
 .price s{color:var(--mut);font-weight:400;font-size:12px;margin-right:4px}
-#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:10px;z-index:40;max-width:90%;display:none;font-size:14px}
+#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:10px;z-index:60;max-width:90%;display:none;font-size:14px}
 .estado{padding:8px 12px;font-size:14px;font-weight:600;text-align:center;background:#fef3c7;color:#78350f}
 .estado.ok{background:#dcfce7;color:#166534}
 .detalle{margin-top:10px}
@@ -75,6 +75,9 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .promo-ok{flex-basis:100%;background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok);border-radius:10px;padding:8px 10px;font-weight:600;display:flex;align-items:center;justify-content:space-between;gap:8px}
 .promo-ok .btn,.promo-hint .btn{width:auto;min-height:32px;padding:2px 10px;font-size:13px}
 .promo-hint{flex-basis:100%;font-size:13px;color:var(--warn)}
+.modal{position:fixed;inset:0;z-index:50;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.55)}
+.modal-card{background:var(--card);color:var(--tx);width:100%;max-width:560px;max-height:92vh;overflow:auto;border-radius:20px 20px 0 0;padding:16px 16px 24px;box-shadow:0 -8px 30px rgba(0,0,0,.35)}
+@media (min-width:600px){.modal{align-items:center}.modal-card{border-radius:20px}}
 .login{max-width:360px;margin:12vh auto 0;padding:0 16px}
 .login h1{text-align:center;color:var(--pri)}
 </style>
@@ -184,19 +187,22 @@ window.addEventListener('popstate', e => {
     else { pila = []; go('menu'); }
     return;
   }
+  const habiaModal = !!$('#modal'); if (habiaModal) $('#modal').remove();
   pila.length = st.d + 1; pila[st.d] = st.v;
-  view = st.v; q = ''; filtro = 'todos'; eligiendoPromo = false; render(); window.scrollTo(0, 0);
+  view = st.v; eligiendoPromo = false;
+  if (habiaModal) { const y = window.scrollY; render(); window.scrollTo(0, y); return; }   // se cerró la ventana: se queda donde estaba, con su búsqueda
+  q = ''; filtro = 'todos'; render(); window.scrollTo(0, 0);
 });
 
 /* ---------- vistas ---------- */
-const TITULOS = { menu: 'Distribuidora', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', producto: 'Producto', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', config: 'Configuración', promos: 'Promociones de la semana', precios: 'Listado' };
+const TITULOS = { menu: 'Distribuidora', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', config: 'Configuración', promos: 'Promociones de la semana', precios: 'Listado' };
 const TABS = ['menu', 'pedidos', 'clientes', 'precios', 'config'];   // pantallas con barra de botones abajo
 function render() {
   if (!token) return login();
   const tab = TABS.includes(view);
   $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : ''}<h1>${TITULOS[view]}</h1></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '📦', 'Listado'], ['config', '⚙️', 'Config']].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}</nav>` : ''}`;
   estado();
-  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, producto: vProducto, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios })[view]();
+  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios })[view]();
 }
 function login() {
   $('#app').innerHTML = `<form class="login"><h1>Distribuidora</h1>
@@ -477,31 +483,44 @@ function vProductos() {
   });
 }
 let editando = null;
-function vProducto() {
-  const p = editando;
-  $('#main').innerHTML = `<form id="f">
+/* ventana para crear/editar un producto (administrador) */
+function formProducto(p) {
+  return `<form id="fp" autocomplete="off">
     <label>Código</label><input name="codigo" value="${esc(p.codigo)}" required>
     <label>Nombre</label><input name="nombre" value="${esc(p.nombre)}" required>
-    <label>Precio</label><input name="precio" inputmode="decimal" value="${p.precio || ''}" required>
-    <label>Se vende de a (múltiplo)</label><input name="multiplo" inputmode="numeric" value="${p.multiplo || 1}" placeholder="1">
-    <p class="mut" style="margin:4px 0 0">1 = por unidad. Con 5, las cantidades del pedido van de 5 en 5 (5, 10, 15…).</p>
-    <div class="row" style="border:0"><div class="nm"><b>Activo</b><span class="mut">Si está apagado no se puede pedir ni sale en el PDF</span></div><label class="sw" style="margin:0"><input type="checkbox" name="activo" ${p.activo ? 'checked' : ''}><i></i></label></div>
+    <div class="row" style="border:0;align-items:flex-end"><div><label>Precio</label><input name="precio" inputmode="decimal" value="${p.precio || ''}" required></div>
+      <div><label>Se vende de a</label><input name="multiplo" inputmode="numeric" value="${p.multiplo || 1}" placeholder="1"></div></div>
+    <p class="mut" style="margin:4px 0 0">"Se vende de a": 1 = por unidad. Con 5, las cantidades del pedido van de 5 en 5.</p>
+    <div class="row" style="border:0"><div class="nm"><b>Activo</b><span class="mut">Apagado: no se puede pedir ni sale en el PDF</span></div><label class="sw" style="margin:0"><input type="checkbox" name="activo" ${p.activo !== false ? 'checked' : ''}><i></i></label></div>
     <div class="row" style="border:0"><div class="nm"><b>En promoción</b></div><label class="sw" style="margin:0"><input type="checkbox" name="promo" ${p.promo ? 'checked' : ''}><i></i></label></div>
-    <label>Cantidad mínima para la promo</label><input name="promoCant" inputmode="numeric" value="${p.promoCant || 1}" placeholder="1">
-    <p class="mut" style="margin:4px 0 0">1 = la promo se aplica siempre y sola. Con 10, al vendedor se le ofrece cuando carga 10 o más y decide si la acepta.</p>
-    <label>Descuento %</label><input name="promoPct" inputmode="decimal" value="${p.promoPct || ''}" placeholder="Ej: 5">
-    <label>O precio promo por unidad</label><input name="precioPromo" inputmode="decimal" value="${p.precioPromo || ''}">
+    <div class="card" style="margin:6px 0 0;background:var(--bg)"><b>Promoción</b>
+      <label>Cantidad mínima</label><input name="promoCant" inputmode="numeric" value="${p.promoCant || 1}" placeholder="1">
+      <p class="mut" style="margin:4px 0 0">1 = se aplica siempre y sola. Con 10, se le ofrece al vendedor cuando carga 10 o más y decide si la acepta.</p>
+      <label>Descuento %</label><input name="promoPct" inputmode="decimal" value="${p.promoPct || ''}" placeholder="Ej: 5">
+      <label>O precio promo por unidad</label><input name="precioPromo" inputmode="decimal" value="${p.precioPromo || ''}"></div>
     <div style="height:14px"></div><button class="btn">Guardar</button>
-    ${p.id ? '<div style="height:10px"></div><button type="button" class="btn bad" data-act="borrarProd">Eliminar producto</button>' : ''}</form>`;
-  $('#f').onsubmit = async e => {
+    <div class="row" style="border:0;padding:10px 0 0"><button type="button" class="btn sec" data-modal="cerrar">Cancelar</button>${p.id ? '<button type="button" class="btn bad" data-act="borrarProd">Eliminar</button>' : ''}</div></form>`;
+}
+function abrirProducto(p) {
+  editando = { ...p };
+  const el = document.createElement('div'); el.id = 'modal'; el.className = 'modal';
+  el.innerHTML = `<div class="modal-card"><div class="row" style="border:0;padding:0 0 4px"><h2 style="flex:1;margin:0;font-size:19px">${p.id ? 'Editar producto' : 'Nuevo producto'}</h2><button class="btn sec" data-modal="cerrar" aria-label="Cerrar" style="width:40px;min-height:40px;padding:0;flex:none">✕</button></div>${formProducto(editando)}</div>`;
+  document.body.appendChild(el);
+  try { history.pushState({ v: view, d: pila.length - 1, modal: 1 }, ''); } catch {}
+  el.addEventListener('click', e => { if (e.target === el) cerrarModal(); });
+  $('#fp').onsubmit = async e => {
     e.preventDefault();
     const f = new FormData(e.target), d = Object.fromEntries(f);
     d.activo = !!f.get('activo'); d.promo = !!f.get('promo');
     try {
-      if (p.id) await api('PUT', 'p/productos/' + p.id, d); else await api('POST', 'p/productos', d);
-      await cargar(); toast('Guardado'); pila.length > 1 ? history.back() : go('productos', true);
+      if (editando.id) await api('PUT', 'p/productos/' + editando.id, d); else await api('POST', 'p/productos', d);
+      await cargar(); toast('Guardado'); cerrarModal();
     } catch (er) { toast(er.message); }
   };
+}
+function cerrarModal() {
+  if (history.state && history.state.modal) history.back();   // el popstate cierra la ventana y refresca la pantalla
+  else { const m = $('#modal'); if (m) m.remove(); render(); }
 }
 async function setProd(id, campos) {
   const p = productos.find(x => x.id === id);
@@ -668,10 +687,11 @@ document.addEventListener('click', async e => {
   }
   else if (d.act === 'salir') salir();
   else if (d.act === 'guardarPedido') guardarPedido();
-  else if (d.act === 'nuevoProd') { editando = { activo: true }; go('producto'); }
+  else if (d.modal) cerrarModal();
+  else if (d.act === 'nuevoProd') abrirProducto({ activo: true });
   else if (d.act === 'borrarProd') {
-    if (!confirm('¿Eliminar el producto?')) return;
-    try { await api('DELETE', 'p/productos/' + editando.id); await cargar(); volverA('productos'); } catch (er) { toast(er.message); }
+    if (!t.dataset.seguro) { t.dataset.seguro = 1; t.textContent = 'Tocá de nuevo para confirmar'; return; }   // doble toque en vez de cuadro del navegador
+    try { await api('DELETE', 'p/productos/' + editando.id); await cargar(); toast('Producto eliminado'); cerrarModal(); } catch (er) { toast(er.message); }
   }
   else if (d.act === 'agregarPromo') { eligiendoPromo = true; vElegirPromo(); }
   else if (d.act === 'pdf') exportarPdf();
@@ -704,13 +724,13 @@ document.addEventListener('click', async e => {
   else if (d.act === 'exportarExcel') exportarExcel();
   else if (d.act === 'borrarPedido') borrarPedido();
   else if (d.ped) { nuevoDraft(pedidos.find(p => p.id == d.ped)); go('pedido'); }
-  else if (d.edit) { editando = { ...productos.find(p => p.id == d.edit) }; go('producto'); }
+  else if (d.edit) abrirProducto(productos.find(p => p.id == d.edit));
   else if (d.f) { filtro = d.f; render(); }
   else if (d.q && row) cambiarCant(+row.dataset.pid, +d.q, d.q === 'set' ? +(prompt('Cantidad', draft.items[row.dataset.pid] || 0) ?? NaN) : undefined);
   else if (d.quitarpromo) { await setProd(+d.quitarpromo, { promo: false }); render(); }
-  else if (d.promoprecio) { editando = { ...productos.find(x => x.id == d.promoprecio) }; go('producto'); }
-  else if (d.nuevapromo) { editando = { ...productos.find(x => x.id == d.nuevapromo), promo: true }; go('producto'); }
-  else if (d.precio) { const p = productos.find(x => x.id == d.precio), v = prompt('Precio de ' + p.nombre, p.precio); if (v !== null && v !== '') { await setProd(p.id, { precio: v }); render(); } }
+  else if (d.promoprecio) abrirProducto(productos.find(x => x.id == d.promoprecio));
+  else if (d.nuevapromo) abrirProducto({ ...productos.find(x => x.id == d.nuevapromo), promo: true });
+  else if (d.precio) abrirProducto(productos.find(x => x.id == d.precio));
 });
 // cantidad escrita con el teclado en el detalle
 document.addEventListener('input', e => {
