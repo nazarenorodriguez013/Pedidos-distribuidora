@@ -23,6 +23,7 @@ async function load(pool) {
   state.combos = state.combos || [];
   state.seq.k = state.seq.k || 1;
   for (const c of state.combos) if (c.tipo === 'precio' && !c.precios) { c.precios = {}; for (const g of c.grupos) for (const pid of g.pids) c.precios[pid] = c.precio; delete c.precio; }
+  for (const o of state.pedidos) if (o.clienteId && o.clienteCodigo === undefined) { const c = state.clientes.find(x => x.id === o.clienteId); if (c) o.clienteCodigo = c.codigo; }
   for (const p of state.productos) delete p.stock;   // ya no se maneja stock
   for (const o of state.pedidos) if (o.subtotal === undefined) {   // pedidos anteriores al redondeo: se les aplica solo
     o.subtotal = o.total; o.total = redondear(o.subtotal); o.redondeo = Math.round((o.total - o.subtotal) * 100) / 100;
@@ -192,7 +193,7 @@ function armarPedido(b, viejo, quien, admin) {
   }
   const subtotal = Math.round(items.reduce((s, i) => s + i.precio * i.cant, 0) * 100) / 100;
   const total = redondear(subtotal);
-  return { ...extra, cliente, nota, items, subtotal, redondeo: Math.round((total - subtotal) * 100) / 100, total, clienteId: cli ? cli.id : undefined, dia: dia || undefined, turno: turno || undefined, vendedorId: vend ? vend.id : viejo ? viejo.vendedorId : quien.id, vendedor: vend ? vend.nombre : viejo ? viejo.vendedor : quien.nombre };
+  return { ...extra, cliente, clienteCodigo: cli ? cli.codigo : viejo ? viejo.clienteCodigo : undefined, nota, items, subtotal, redondeo: Math.round((total - subtotal) * 100) / 100, total, clienteId: cli ? cli.id : undefined, dia: dia || undefined, turno: turno || undefined, vendedorId: vend ? vend.id : viejo ? viejo.vendedorId : quien.id, vendedor: vend ? vend.nombre : viejo ? viejo.vendedor : quien.nombre };
 }
 
 // ---- sesiones: token firmado con el usuario; el rol se lee de la base en cada pedido ----
@@ -281,7 +282,7 @@ function importarClientes(b) {
       if (t('direccion')) c.direccion = t('direccion');
       if (t('telefono')) c.telefono = t('telefono');
       c.vendedorId = vend.id;
-      for (const p of state.pedidos) if (p.clienteId === c.id) p.cliente = nombreCliente(c);
+      for (const p of state.pedidos) if (p.clienteId === c.id) { p.cliente = nombreCliente(c); p.clienteCodigo = c.codigo; }
       r.actualizados++;
     } else {
       state.clientes.push({ id: state.seq.c++, codigo, nombre: t('nombre'), apellido: '', direccion: t('direccion'), telefono: t('telefono'), vendedorId: vend.id });
@@ -396,7 +397,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       if (req.method === 'GET') return send(res, 200, c);
       if (req.method === 'PUT') {
         Object.assign(c, cleanCliente(await body(req), c, admin, yo));
-        for (const p of s.pedidos) if (p.clienteId === c.id) p.cliente = nombreCliente(c);
+        for (const p of s.pedidos) if (p.clienteId === c.id) { p.cliente = nombreCliente(c); p.clienteCodigo = c.codigo; }
         await save(pool);
         return send(res, 200, c);
       }
