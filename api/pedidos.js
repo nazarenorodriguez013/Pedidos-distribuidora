@@ -240,7 +240,11 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         if (list.some(p => p.codigo.toLowerCase() === obj.codigo.toLowerCase())) throw { code: 409, msg: 'Ya existe un producto con ese código' };
         obj.id = s.seq.p++;
       } else {
+        const uid = String(b.uid || '').slice(0, 64);
+        const dup = uid && list.find(x => x.uid === uid && x.vendedorId === yo.id);
+        if (dup) return send(res, 200, dup);   // reenvío de un pedido que ya había llegado
         obj = armarPedido(b, null, yo);
+        if (uid) obj.uid = uid;
         obj.id = s.seq.o++;
         obj.creado = obj.editado = new Date().toISOString();
       }

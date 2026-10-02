@@ -58,6 +58,8 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .price{font-weight:700;white-space:nowrap}
 .price s{color:var(--mut);font-weight:400;font-size:12px;margin-right:4px}
 #toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:10px;z-index:20;max-width:90%;display:none;font-size:14px}
+.estado{padding:8px 12px;font-size:14px;font-weight:600;text-align:center;background:#fef3c7;color:#78350f}
+.estado.ok{background:#dcfce7;color:#166534}
 .login{max-width:360px;margin:12vh auto 0;padding:0 16px}
 .login h1{text-align:center;color:var(--pri)}
 </style>
@@ -90,17 +92,55 @@ let view = 'menu', draft = null, q = '', filtro = 'todos';
 function toast(t) { const el = $('#toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => el.style.display = 'none', 2800); }
 
 async function api(method, url, data) {
-  const r = await fetch('/api/' + url, { method, headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token }, body: data ? JSON.stringify(data) : undefined });
+  let r;
+  try { r = await fetch('/api/' + url, { method, headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token }, body: data ? JSON.stringify(data) : undefined }); }
+  catch { throw Object.assign(new Error('Sin señal'), { offline: true }); }
   const j = await r.json().catch(() => ({}));
   if (r.status === 401 && url !== 'p/login') { salir(); throw new Error('Sesión vencida'); }
   if (!r.ok) throw new Error(j.error || 'Error');
   return j;
 }
+/* ---------- sin señal: datos en el teléfono y cola de pedidos pendientes ---------- */
+const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } };
+const cacheDatos = () => lsSet('pd_cache', { productos, pedidos: pedidos.slice(0, 200) });
+const leerCola = () => lsGet('pd_cola', []);
+const colaMia = () => leerCola().filter(x => x.u === user.id);
+function usarCache() { const c = lsGet('pd_cache', null); if (c) { productos = c.productos; pedidos = c.pedidos; } else toast('Sin señal y sin datos guardados todavía'); }
+function estado() {
+  const el = $('#estado'); if (!el) return;
+  const n = colaMia().filter(x => !x.error).length, rech = colaMia().filter(x => x.error).length;
+  const t = [!navigator.onLine ? 'Sin señal: los pedidos se guardan y se envían cuando vuelva' : '', n ? `${n} pedido(s) esperando para enviarse` : '', rech ? `${rech} pedido(s) rechazado(s), revisalos en Pedidos` : ''].filter(Boolean).join(' · ');
+  el.hidden = !t; el.textContent = t;
+}
+let sincronizando = false;
+async function sincronizar() {
+  if (sincronizando || !token || !user) return;
+  sincronizando = true;
+  let enviados = 0, rechazados = 0;
+  try {
+    for (const it of colaMia().filter(x => !x.error)) {
+      try { await api('POST', 'p/pedidos', { ...it.body, uid: it.uid }); lsSet('pd_cola', leerCola().filter(x => x.uid !== it.uid)); enviados++; }
+      catch (e) {
+        if (e.offline || /Sesión/.test(e.message)) break;
+        lsSet('pd_cola', leerCola().map(x => x.uid === it.uid ? { ...x, error: e.message } : x)); rechazados++;
+      }
+    }
+    if (enviados) { try { await cargar(); } catch {} toast(`${enviados} pedido(s) enviado(s)`); }
+    if (rechazados) toast(`${rechazados} pedido(s) rechazado(s) por el servidor`);
+    if (enviados || rechazados) { if (view === 'pedidos' || view === 'menu') render(); }
+  } finally { sincronizando = false; estado(); }
+}
+window.addEventListener('online', () => { estado(); sincronizar(); });
+window.addEventListener('offline', estado);
+setInterval(sincronizar, 30000);
+
 async function cargar() {
   const [a, b, c] = await Promise.all([api('GET', 'p/productos'), api('GET', 'p/pedidos'), esAdmin() ? api('GET', 'p/usuarios') : { usuarios: [] }]);
   productos = a.productos.sort((x, y) => x.nombre.localeCompare(y.nombre));
   pedidos = b.pedidos;
   usuarios = c.usuarios;
+  cacheDatos();
 }
 function salir() { localStorage.removeItem('pd_token'); token = null; view = 'menu'; render(); }
 function go(v) { view = v; q = ''; filtro = 'todos'; window.scrollTo(0, 0); render(); }
@@ -109,7 +149,8 @@ function go(v) { view = v; q = ''; filtro = 'todos'; window.scrollTo(0, 0); rend
 const TITULOS = { menu: 'Distribuidora', pedido: 'Cargar pedido', pedidos: 'Pedidos', productos: 'Productos', producto: 'Producto', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', clave: 'Mi contraseña', promos: 'Promociones de la semana', stock: 'Stock', precios: 'Lista de precios' };
 function render() {
   if (!token) return login();
-  $('#app').innerHTML = `<header>${view !== 'menu' ? '<button data-act="atras">←</button>' : ''}<h1>${TITULOS[view]}</h1>${view === 'menu' ? `<button data-act="salir">Salir</button>` : ''}</header><main id="main"></main>`;
+  $('#app').innerHTML = `<header>${view !== 'menu' ? '<button data-act="atras">←</button>' : ''}<h1>${TITULOS[view]}</h1>${view === 'menu' ? `<button data-act="salir">Salir</button>` : ''}</header><div id="estado" class="estado" hidden></div><main id="main"></main>`;
+  estado();
   ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, productos: vProductos, producto: vProducto, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, clave: vClave, promos: vPromos, stock: vStock, precios: vPrecios })[view]();
 }
 function login() {
@@ -157,7 +198,7 @@ const stockTag = p => p.stock <= 0 ? '<span class="tag bad">Sin stock</span>' : 
 /* ---------- cargar / editar pedido ---------- */
 function nuevoDraft(ped) {
   draft = ped ? { id: ped.id, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])) }
-              : { id: null, cliente: '', nota: '', items: {}, orig: {} };
+              : { id: null, uid: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)), cliente: '', nota: '', items: {}, orig: {} };
 }
 const disp = p => p.stock + (draft.orig[p.id] ? draft.orig[p.id].cant : 0);
 const precioLinea = p => draft.orig[p.id] ? draft.orig[p.id].precio : efectivo(p);
@@ -192,11 +233,21 @@ function cambiarCant(pid, d, fijo) {
 }
 async function guardarPedido() {
   const items = Object.entries(draft.items).map(([pid, cant]) => ({ pid: Number(pid), cant }));
+  const body = { cliente: draft.cliente, nota: draft.nota, items };
+  if (!body.cliente.trim()) return toast('Falta el cliente');
+  if (!items.length) return toast('El pedido no tiene productos');
   try {
-    const body = { cliente: draft.cliente, nota: draft.nota, items };
-    if (draft.id) await api('PUT', 'p/pedidos/' + draft.id, body); else await api('POST', 'p/pedidos', body);
+    if (draft.id) await api('PUT', 'p/pedidos/' + draft.id, body); else await api('POST', 'p/pedidos', { ...body, uid: draft.uid });
     await cargar(); toast('Pedido guardado'); go('pedidos');
-  } catch (e) { toast(e.message); }
+  } catch (e) {
+    if (!e.offline) return toast(e.message);
+    if (draft.id) return toast('Sin señal: para editar un pedido ya enviado necesitás conexión');
+    // sin señal: queda en el teléfono y se envía solo cuando vuelva
+    const total = Math.round(items.reduce((a, i) => a + i.cant * precioLinea(productos.find(p => p.id === i.pid)), 0) * 100) / 100;
+    if (!lsSet('pd_cola', [...leerCola(), { uid: draft.uid, u: user.id, body, total, t: new Date().toISOString() }])) return toast('No hay espacio para guardar el pedido');
+    for (const i of items) { const p = productos.find(x => x.id === i.pid); if (p) p.stock = Math.max(0, p.stock - i.cant); }
+    cacheDatos(); toast('Sin señal: pedido guardado, se enviará solo'); go('pedidos');
+  }
 }
 
 /* ---------- pedidos cargados ---------- */
@@ -207,8 +258,11 @@ function vPedidos() {
   const pintar = () => {
     const n = norm(q), l = pedidos.filter(p => (!n || norm(p.cliente).includes(n) || String(p.id) === n) && (!vend || p.vendedor === vend));
     const tot = l.reduce((a, p) => a + p.total, 0);
-    $('#lista').innerHTML = l.length ? `<p class="mut">${l.length} pedidos · ${money(tot)}</p>` + l.map(p => `<div class="card" data-ped="${p.id}"><div class="row" style="border:0;padding:0"><div class="nm"><b>#${p.id} · ${esc(p.cliente)}</b>
-      <span class="mut">${esAdmin() ? esc(p.vendedor || '—') + ' · ' : ''}${new Date(p.creado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })} · ${p.items.reduce((s, i) => s + i.cant, 0)} u.${p.editado !== p.creado ? ' · editado' : ''}</span></div><span class="price">${money(p.total)}</span></div></div>`).join('') : vacio('No hay pedidos');
+    const pend = colaMia().filter(x => !n || norm(x.body.cliente).includes(n)).map(x => `<div class="card" style="border-color:${x.error ? 'var(--bad)' : 'var(--warn)'}"><div class="row" style="border:0;padding:0"><div class="nm"><b>${esc(x.body.cliente)}</b>
+      <span class="mut">${x.error ? 'Rechazado: ' + esc(x.error) : '⏳ Esperando señal para enviarse'} · ${x.body.items.reduce((s, i) => s + i.cant, 0)} u.</span></div><span class="price">${money(x.total)}</span></div>
+      <div class="row" style="border:0;padding:8px 0 0">${x.error ? `<button class="btn sec" data-reint="${esc(x.uid)}">Reintentar</button>` : ''}<button class="btn sec" data-delcola="${esc(x.uid)}">Eliminar</button></div></div>`).join('');
+    $('#lista').innerHTML = pend + (l.length ? `<p class="mut">${l.length} pedidos · ${money(tot)}</p>` + l.map(p => `<div class="card" data-ped="${p.id}"><div class="row" style="border:0;padding:0"><div class="nm"><b>#${p.id} · ${esc(p.cliente)}</b>
+      <span class="mut">${esAdmin() ? esc(p.vendedor || '—') + ' · ' : ''}${new Date(p.creado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })} · ${p.items.reduce((s, i) => s + i.cant, 0)} u.${p.editado !== p.creado ? ' · editado' : ''}</span></div><span class="price">${money(p.total)}</span></div></div>`).join('') : (pend ? '' : vacio('No hay pedidos')));
   };
   $('#q').oninput = e => { q = e.target.value; pintar(); };
   if (esAdmin()) $('#vend').onchange = e => { vend = e.target.value; pintar(); };
@@ -422,6 +476,13 @@ document.addEventListener('click', async e => {
     try { await api('DELETE', 'p/usuarios/' + editU.id); await cargar(); go('usuarios'); } catch (er) { toast(er.message); }
   }
   else if (d.edituser) { editU = { ...usuarios.find(u => u.id == d.edituser) }; go('usuario'); }
+  else if (d.reint) { lsSet('pd_cola', leerCola().map(x => x.uid === d.reint ? { uid: x.uid, u: x.u, body: x.body, total: x.total, t: x.t } : x)); render(); sincronizar(); }
+  else if (d.delcola) {
+    if (!confirm('¿Eliminar este pedido pendiente? No se va a enviar.')) return;
+    const it = leerCola().find(x => x.uid === d.delcola);
+    if (it && !it.error) for (const i of it.body.items) { const p = productos.find(x => x.id === i.pid); if (p) p.stock += i.cant; }
+    lsSet('pd_cola', leerCola().filter(x => x.uid !== d.delcola)); cacheDatos(); render();
+  }
   else if (d.act === 'importarConfirmar') importarConfirmar();
   else if (d.act === 'exportarExcel') exportarExcel();
   else if (d.act === 'borrarPedido') borrarPedido();
@@ -439,7 +500,7 @@ document.addEventListener('change', async e => {
   const id = e.target.dataset.activo;
   if (id) { await setProd(+id, { activo: e.target.checked }); render(); }
 });
-(async () => { if (token) { try { await cargar(); } catch { token = null; } } try { render(); } catch (e) { $('#app').innerHTML = '<p style="padding:24px;color:#b91c1c">Error: ' + esc(e.message) + '</p>'; } })();
+(async () => { if (token) { try { await cargar(); } catch (e) { if (e.offline) usarCache(); else token = null; } } try { render(); sincronizar(); } catch (e) { $('#app').innerHTML = '<p style="padding:24px;color:#b91c1c">Error: ' + esc(e.message) + '</p>'; } })();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 </script>
 </body>

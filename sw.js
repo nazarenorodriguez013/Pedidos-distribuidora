@@ -1,5 +1,5 @@
-// Service worker mínimo: hace la app instalable y la abre aunque no haya señal.
-const CACHE = 'pedidos-v1';
+// Service worker: la app (y las librerías de Excel/PDF) se abren sin señal; se actualizan en segundo plano.
+const CACHE = 'pedidos-v2';
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(['/', '/manifest.json', '/icon-192.png'])).then(() => self.skipWaiting()));
 });
@@ -9,9 +9,9 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const r = e.request;
   if (r.method !== 'GET' || new URL(r.url).pathname.startsWith('/api/')) return;
-  e.respondWith(fetch(r).then(res => {
-    const copy = res.clone();
-    caches.open(CACHE).then(c => c.put(r, copy));
-    return res;
-  }).catch(() => caches.match(r).then(m => m || caches.match('/'))));
+  e.respondWith(caches.open(CACHE).then(async c => {
+    const hit = await c.match(r, { ignoreSearch: true });
+    const red = fetch(r).then(res => { if (res && (res.ok || res.type === 'opaque')) c.put(r, res.clone()); return res; }).catch(() => null);
+    return hit || (await red) || (r.mode === 'navigate' ? c.match('/') : Response.error());
+  }));
 });
