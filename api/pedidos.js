@@ -271,8 +271,8 @@ function importarClientes(b) {
     let vend = porDefecto;
     if (t('vendedor')) {
       const v = t('vendedor').toLowerCase();
-      vend = state.usuarios.find(u => u.usuario === v || u.nombre.toLowerCase() === v);
-      if (!vend) return r.errores.push(`${fila}: no existe el vendedor "${t('vendedor')}"`);
+      vend = (/^\d+$/.test(v) && state.usuarios.find(u => u.id === Number(v))) || state.usuarios.find(u => u.usuario === v || u.nombre.toLowerCase() === v);   // primero por ID
+      if (!vend) return r.errores.push(`${fila}: no existe el vendedor con ID "${t('vendedor')}" (el ID está en Usuarios)`);
     }
     if (!vend) return r.errores.push(`${fila}: falta asignarle un vendedor`);
     const codigo = t('codigo');
