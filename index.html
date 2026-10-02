@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0f766e">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Pedidos">
+<title>Pedidos Distribuidora</title>
+<style>
+:root{--bg:#f3f4f6;--card:#fff;--tx:#111827;--mut:#6b7280;--pri:#0f766e;--ok:#15803d;--warn:#b45309;--bad:#b91c1c;--bd:#d1d5db}
+@media (prefers-color-scheme:dark){:root{--bg:#0f172a;--card:#1e293b;--tx:#f1f5f9;--mut:#94a3b8;--pri:#14b8a6;--ok:#4ade80;--warn:#fbbf24;--bad:#f87171;--bd:#334155}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.35 system-ui,sans-serif;padding-bottom:90px}
+header{position:sticky;top:0;z-index:5;background:var(--pri);color:#fff;padding:10px 12px;display:flex;align-items:center;gap:10px;min-height:52px}
+header h1{font-size:18px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header button{background:rgba(255,255,255,.2);color:#fff;border:0;border-radius:8px;padding:8px 12px;font-size:14px;font-weight:600}
+main{padding:12px;max-width:640px;margin:0 auto}
+input,textarea{width:100%;padding:10px 12px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)}
+label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
+.btn{padding:12px 14px;min-height:46px;border:0;border-radius:12px;background:var(--pri);color:#fff;font-weight:700;font-size:16px;width:100%}
+.btn.sec{background:var(--card);color:var(--tx);border:1px solid var(--bd)}
+.btn.bad{background:var(--bad)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:10px}
+.menu{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.menu button{min-height:110px;border:1px solid var(--bd);border-radius:16px;background:var(--card);color:var(--tx);font-size:16px;font-weight:700;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.menu button span{font-size:32px}
+.menu button.main{grid-column:1/3;background:var(--pri);color:#fff;border:0}
+.row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--bd)}
+.row:last-child{border:0}
+.row .nm{flex:1;min-width:0}
+.row .nm b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mut{color:var(--mut);font-size:13px}
+.tag{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;font-weight:700;border:1px solid var(--bd)}
+.tag.promo{background:#fef3c7;color:#92400e;border-color:#fcd34d}
+.tag.bad{color:var(--bad)}.tag.warn{color:var(--warn)}.tag.ok{color:var(--ok)}
+.off{opacity:.5}
+.qty{display:flex;align-items:center;gap:6px;flex:none}
+.qty button{width:42px;height:42px;border:0;border-radius:10px;background:var(--pri);color:#fff;font-size:22px;font-weight:700}
+.qty button:disabled{background:var(--bd)}
+.qty b{min-width:34px;text-align:center;font-size:18px;cursor:pointer}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--bd);padding:10px 12px;display:flex;gap:10px;align-items:center;z-index:6}
+.bar .tot{flex:1;font-size:20px;font-weight:800}
+.bar .btn{width:auto;flex:none;padding:12px 22px}
+.sw{position:relative;width:48px;height:28px;flex:none}
+.sw input{opacity:0;width:100%;height:100%;position:absolute;inset:0;margin:0;z-index:1}
+.sw i{position:absolute;inset:0;background:var(--bd);border-radius:99px;transition:.15s}
+.sw i:after{content:"";position:absolute;left:3px;top:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.15s}
+.sw input:checked+i{background:var(--ok)}
+.sw input:checked+i:after{left:23px}
+.chips{display:flex;gap:8px;margin:8px 0;overflow-x:auto}
+.chips button{flex:none;padding:8px 14px;border-radius:99px;border:1px solid var(--bd);background:var(--card);color:var(--tx);font-size:14px}
+.chips button.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+.price{font-weight:700;white-space:nowrap}
+.price s{color:var(--mut);font-weight:400;font-size:12px;margin-right:4px}
+#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:10px;z-index:20;max-width:90%;display:none;font-size:14px}
+.login{max-width:360px;margin:12vh auto 0;padding:0 16px}
+.login h1{text-align:center;color:var(--pri)}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js" defer></script>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const money = n => Number(n || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const efectivo = p => (p.promo && p.precioPromo > 0 ? p.precioPromo : p.precio);
+const STOCK_BAJO = 5;
+
+let token = localStorage.getItem('pd_token'), user = null;
+try { user = JSON.parse(localStorage.getItem('pd_user')); } catch {}
+if (!user || !user.rol) token = null;
+let productos = [], pedidos = [], usuarios = [];
+const esAdmin = () => user && user.rol === 'admin';
+let view = 'menu', draft = null, q = '', filtro = 'todos';
+
+function toast(t) { const el = $('#toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => el.style.display = 'none', 2800); }
+
+async function api(method, url, data) {
+  const r = await fetch('/api/' + url, { method, headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token }, body: data ? JSON.stringify(data) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401 && url !== 'p/login') { salir(); throw new Error('Sesión vencida'); }
+  if (!r.ok) throw new Error(j.error || 'Error');
+  return j;
+}
+async function cargar() {
+  const [a, b, c] = await Promise.all([api('GET', 'p/productos'), api('GET', 'p/pedidos'), esAdmin() ? api('GET', 'p/usuarios') : { usuarios: [] }]);
+  productos = a.productos.sort((x, y) => x.nombre.localeCompare(y.nombre));
+  pedidos = b.pedidos;
+  usuarios = c.usuarios;
+}
+function salir() { localStorage.removeItem('pd_token'); token = null; view = 'menu'; render(); }
+function go(v) { view = v; q = ''; filtro = 'todos'; window.scrollTo(0, 0); render(); }
+
+/* ---------- vistas ---------- */
+const TITULOS = { menu: 'Distribuidora', pedido: 'Cargar pedido', pedidos: 'Pedidos', productos: 'Productos', producto: 'Producto', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', clave: 'Mi contraseña', promos: 'Promociones de la semana', stock: 'Stock', precios: 'Lista de precios' };
+function render() {
+  if (!token) return login();
+  $('#app').innerHTML = `<header>${view !== 'menu' ? '<button data-act="atras">←</button>' : ''}<h1>${TITULOS[view]}</h1>${view === 'menu' ? `<button data-act="salir">Salir</button>` : ''}</header><main id="main"></main>`;
+  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, productos: vProductos, producto: vProducto, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, clave: vClave, promos: vPromos, stock: vStock, precios: vPrecios })[view]();
+}
+function login() {
+  $('#app').innerHTML = `<form class="login"><h1>Distribuidora</h1>
+    <label>Usuario</label><input id="u" autocomplete="username" autocapitalize="none" required>
+    <label>Contraseña</label><input id="pw" type="password" autocomplete="current-password" required>
+    <p id="err" class="mut" style="color:var(--bad)"></p><button class="btn">Ingresar</button></form>`;
+  $('form').onsubmit = async e => {
+    e.preventDefault();
+    try {
+      const j = await api('POST', 'p/login', { user: $('#u').value.trim(), pass: $('#pw').value });
+      token = j.token; user = j.user; localStorage.setItem('pd_token', token); localStorage.setItem('pd_user', JSON.stringify(user));
+      await cargar(); go('menu');
+    } catch (er) { $('#err').textContent = er.message; }
+  };
+}
+function vMenu() {
+  const pend = productos.filter(p => p.activo && p.stock <= STOCK_BAJO).length;
+  const a = esAdmin();
+  $('#main').innerHTML = `<p class="mut">${esc(user.nombre)} · ${a ? 'Administrador' : 'Vendedor'}</p><div class="menu">
+    <button class="main" data-go="pedido" data-nuevo="1"><span>🛒</span>Cargar pedido</button>
+    <button data-go="pedidos"><span>📋</span>${a ? 'Todos los pedidos' : 'Mis pedidos'} (${pedidos.length})</button>
+    <button data-go="precios"><span>💲</span>Precios y PDF</button>
+    <button data-go="promos"><span>🏷️</span>Promos de la semana</button>
+    ${a ? `<button data-go="productos"><span>📦</span>Productos (${productos.length})</button>
+    <button data-go="stock"><span>📊</span>Stock${pend ? ` · ${pend} bajo` : ''}</button>
+    <button data-go="importar"><span>📥</span>Importar / exportar Excel</button>
+    <button data-go="usuarios"><span>👥</span>Usuarios</button>` : ''}
+    <button data-go="clave"><span>🔑</span>Mi contraseña</button></div>`;
+}
+
+/* búsqueda común: el input no se vuelve a dibujar al filtrar */
+function buscador(extra = '') {
+  return `<input id="q" type="search" placeholder="Buscar por nombre o código" value="${esc(q)}" autocomplete="off">${extra}<div id="lista"></div>`;
+}
+function filtrar(arr) { const n = norm(q); return n ? arr.filter(p => norm(p.nombre).includes(n) || norm(p.codigo).includes(n)) : arr; }
+function enlazarBuscador(pintar) { $('#q').oninput = e => { q = e.target.value; pintar(); }; pintar(); }
+const vacio = t => `<p class="mut" style="text-align:center;padding:24px 0">${t}</p>`;
+const precioHtml = p => p.promo && p.precioPromo > 0 ? `<span class="price"><s>${money(p.precio)}</s>${money(p.precioPromo)}</span>` : `<span class="price">${money(p.precio)}</span>`;
+const stockTag = p => p.stock <= 0 ? '<span class="tag bad">Sin stock</span>' : p.stock <= STOCK_BAJO ? `<span class="tag warn">Stock ${p.stock}</span>` : `<span class="mut">Stock ${p.stock}</span>`;
+
+/* ---------- cargar / editar pedido ---------- */
+function nuevoDraft(ped) {
+  draft = ped ? { id: ped.id, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])) }
+              : { id: null, cliente: '', nota: '', items: {}, orig: {} };
+}
+const disp = p => p.stock + (draft.orig[p.id] ? draft.orig[p.id].cant : 0);
+const precioLinea = p => draft.orig[p.id] ? draft.orig[p.id].precio : efectivo(p);
+function totalDraft() { return productos.reduce((s, p) => s + (draft.items[p.id] || 0) * precioLinea(p), 0); }
+function vPedido() {
+  $('#main').innerHTML = `<label>Cliente</label><input id="cli" value="${esc(draft.cliente)}" placeholder="Nombre del cliente" autocomplete="off">
+    <label>Nota (opcional)</label><input id="nota" value="${esc(draft.nota)}" placeholder="Ej: entregar el jueves">
+    <div style="height:10px"></div>${buscador()}
+    <div class="bar"><div class="tot" id="tot"></div><button class="btn" data-act="guardarPedido">${draft.id ? 'Guardar cambios' : 'Guardar pedido'}</button></div>`;
+  $('#cli').oninput = e => draft.cliente = e.target.value;
+  $('#nota').oninput = e => draft.nota = e.target.value;
+  enlazarBuscador(pintarPedido);
+}
+function pintarPedido() {
+  const enPed = p => draft.items[p.id] > 0;
+  const base = productos.filter(p => p.activo || enPed(p));
+  const lista = filtrar(base).sort((a, b) => enPed(b) - enPed(a));
+  $('#lista').innerHTML = lista.length ? `<div class="card">${lista.map(p => {
+    const max = disp(p), c = draft.items[p.id] || 0;
+    return `<div class="row ${max <= 0 && !c ? 'off' : ''}" data-pid="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · </span>${p.promo && p.precioPromo > 0 ? '<span class="tag promo">PROMO</span> ' : ''}${precioHtml({ ...p, precio: p.precio, precioPromo: draft.orig[p.id] ? 0 : p.precioPromo, promo: !draft.orig[p.id] && p.promo })} · ${stockTag({ ...p, stock: max })}</div>
+      <div class="qty"><button data-q="-1" ${c ? '' : 'disabled'}>−</button><b data-q="set">${c}</b><button data-q="1" ${c >= max ? 'disabled' : ''}>+</button></div></div>`;
+  }).join('')}</div>` : vacio('Sin resultados');
+  const n = Object.values(draft.items).reduce((a, b) => a + b, 0);
+  $('#tot').textContent = `${money(totalDraft())} · ${n} u.`;
+}
+function cambiarCant(pid, d, fijo) {
+  const p = productos.find(x => x.id === pid); if (!p || Number.isNaN(fijo)) return;
+  let c = fijo !== undefined ? fijo : (draft.items[pid] || 0) + d;
+  c = Math.max(0, Math.min(c, disp(p)));
+  if (c) draft.items[pid] = c; else delete draft.items[pid];
+  const y = window.scrollY; pintarPedido(); window.scrollTo(0, y);
+}
+async function guardarPedido() {
+  const items = Object.entries(draft.items).map(([pid, cant]) => ({ pid: Number(pid), cant }));
+  try {
+    const body = { cliente: draft.cliente, nota: draft.nota, items };
+    if (draft.id) await api('PUT', 'p/pedidos/' + draft.id, body); else await api('POST', 'p/pedidos', body);
+    await cargar(); toast('Pedido guardado'); go('pedidos');
+  } catch (e) { toast(e.message); }
+}
+
+/* ---------- pedidos cargados ---------- */
+let vend = '';
+function vPedidos() {
+  const sel = esAdmin() ? `<select id="vend" style="margin-top:8px"><option value="">Todos los vendedores</option>${[...new Set(pedidos.map(p => p.vendedor))].filter(Boolean).sort().map(v => `<option ${v === vend ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>` : '';
+  $('#main').innerHTML = `<input id="q" type="search" placeholder="Buscar por cliente o número" value="${esc(q)}">${sel}<div id="lista" style="margin-top:10px"></div>`;
+  const pintar = () => {
+    const n = norm(q), l = pedidos.filter(p => (!n || norm(p.cliente).includes(n) || String(p.id) === n) && (!vend || p.vendedor === vend));
+    const tot = l.reduce((a, p) => a + p.total, 0);
+    $('#lista').innerHTML = l.length ? `<p class="mut">${l.length} pedidos · ${money(tot)}</p>` + l.map(p => `<div class="card" data-ped="${p.id}"><div class="row" style="border:0;padding:0"><div class="nm"><b>#${p.id} · ${esc(p.cliente)}</b>
+      <span class="mut">${esAdmin() ? esc(p.vendedor || '—') + ' · ' : ''}${new Date(p.creado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })} · ${p.items.reduce((s, i) => s + i.cant, 0)} u.${p.editado !== p.creado ? ' · editado' : ''}</span></div><span class="price">${money(p.total)}</span></div></div>`).join('') : vacio('No hay pedidos');
+  };
+  $('#q').oninput = e => { q = e.target.value; pintar(); };
+  if (esAdmin()) $('#vend').onchange = e => { vend = e.target.value; pintar(); };
+  pintar();
+}
+async function borrarPedido() {
+  if (!confirm('¿Eliminar el pedido? El stock vuelve a sumarse.')) return;
+  try { await api('DELETE', 'p/pedidos/' + draft.id); await cargar(); toast('Pedido eliminado'); go('pedidos'); } catch (e) { toast(e.message); }
+}
+
+/* ---------- productos ---------- */
+function vProductos() {
+  $('#main').innerHTML = `<button class="btn" data-act="nuevoProd" style="margin-bottom:10px">+ Nuevo producto</button>` + buscador(`<div class="chips">${['todos', 'activos', 'inactivos'].map(f => `<button data-f="${f}" class="${filtro === f ? 'on' : ''}">${f[0].toUpperCase() + f.slice(1)}</button>`).join('')}</div>`);
+  enlazarBuscador(() => {
+    const l = filtrar(productos).filter(p => filtro === 'todos' || (filtro === 'activos') === p.activo);
+    $('#lista').innerHTML = l.length ? `<div class="card">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" data-edit="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · ${stockTag(p).replace(/<[^>]+>/g, '')}</span></div>${p.promo ? '<span class="tag promo">PROMO</span>' : ''}${precioHtml(p)}
+      <label class="sw" data-stop><input type="checkbox" data-activo="${p.id}" ${p.activo ? 'checked' : ''}><i></i></label></div>`).join('')}</div>` : vacio('Sin productos');
+  });
+}
+let editando = null;
+function vProducto() {
+  const p = editando;
+  $('#main').innerHTML = `<form id="f">
+    <label>Código</label><input name="codigo" value="${esc(p.codigo)}" required>
+    <label>Nombre</label><input name="nombre" value="${esc(p.nombre)}" required>
+    <label>Precio</label><input name="precio" inputmode="decimal" value="${p.precio || ''}" required>
+    <label>Stock</label><input name="stock" inputmode="numeric" value="${p.stock ?? 0}">
+    <div class="row" style="border:0"><div class="nm"><b>Activo</b><span class="mut">Si está apagado no se puede pedir ni sale en el PDF</span></div><label class="sw" style="margin:0"><input type="checkbox" name="activo" ${p.activo ? 'checked' : ''}><i></i></label></div>
+    <div class="row" style="border:0"><div class="nm"><b>En promoción</b></div><label class="sw" style="margin:0"><input type="checkbox" name="promo" ${p.promo ? 'checked' : ''}><i></i></label></div>
+    <label>Precio promo</label><input name="precioPromo" inputmode="decimal" value="${p.precioPromo || ''}">
+    <div style="height:14px"></div><button class="btn">Guardar</button>
+    ${p.id ? '<div style="height:10px"></div><button type="button" class="btn bad" data-act="borrarProd">Eliminar producto</button>' : ''}</form>`;
+  $('#f').onsubmit = async e => {
+    e.preventDefault();
+    const f = new FormData(e.target), d = Object.fromEntries(f);
+    d.activo = !!f.get('activo'); d.promo = !!f.get('promo');
+    try {
+      if (p.id) await api('PUT', 'p/productos/' + p.id, d); else await api('POST', 'p/productos', d);
+      await cargar(); toast('Guardado'); go('productos');
+    } catch (er) { toast(er.message); }
+  };
+}
+async function setProd(id, campos) {
+  const p = productos.find(x => x.id === id);
+  try { Object.assign(p, await api('PUT', 'p/productos/' + id, { ...p, ...campos })); } catch (e) { toast(e.message); }
+}
+
+/* ---------- promociones ---------- */
+function vPromos() {
+  $('#main').innerHTML = `${esAdmin() ? '<button class="btn" data-act="agregarPromo" style="margin-bottom:10px">+ Agregar promoción</button>' : ''}<div id="lista"></div>`;
+  const l = productos.filter(p => p.promo);
+  $('#lista').innerHTML = l.length ? `<div class="card">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" ${esAdmin() ? `data-promoprecio="${p.id}"` : ''}><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}${esAdmin() ? ' · toque para cambiar el precio' : ''}</span></div>${precioHtml(p)}${esAdmin() ? `<button class="btn sec" style="width:auto;min-height:40px;padding:0 12px" data-quitarpromo="${p.id}">✕</button>` : ''}</div>`).join('')}</div>` : vacio('No hay promociones cargadas');
+}
+let eligiendoPromo = false;
+function vElegirPromo() {
+  $('#main').innerHTML = `<p class="mut">Elegí el producto para ponerlo en promoción</p>` + buscador();
+  enlazarBuscador(() => {
+    const l = filtrar(productos.filter(p => p.activo && !p.promo));
+    $('#lista').innerHTML = l.length ? `<div class="card">${l.map(p => `<div class="row" data-nuevapromo="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}</span></div>${precioHtml(p)}</div>`).join('')}</div>` : vacio('Sin resultados');
+  });
+}
+
+/* ---------- stock ---------- */
+function vStock() {
+  $('#main').innerHTML = buscador(`<div class="chips">${['todos', 'bajo', 'sin stock'].map(f => `<button data-f="${f}" class="${filtro === f ? 'on' : ''}">${f[0].toUpperCase() + f.slice(1)}</button>`).join('')}</div>`);
+  enlazarBuscador(pintarStock);
+}
+function pintarStock() {
+  const l = filtrar(productos).filter(p => filtro === 'todos' || (filtro === 'bajo' ? p.stock <= STOCK_BAJO : p.stock <= 0));
+  $('#lista').innerHTML = l.length ? `<div class="card">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" data-pid="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}</span></div>
+    <div class="qty"><button data-s="-1" ${p.stock <= 0 ? 'disabled' : ''}>−</button><b data-s="set" style="${p.stock <= 0 ? 'color:var(--bad)' : p.stock <= STOCK_BAJO ? 'color:var(--warn)' : ''}">${p.stock}</b><button data-s="1">+</button></div></div>`).join('')}</div>` : vacio('Sin resultados');
+}
+const guardarStock = {};
+function cambiarStock(id, d, fijo) {
+  if (Number.isNaN(fijo)) return;
+  const p = productos.find(x => x.id === id);
+  p.stock = Math.max(0, fijo !== undefined ? fijo : p.stock + d);
+  const y = window.scrollY; pintarStock(); window.scrollTo(0, y);
+  clearTimeout(guardarStock[id]);
+  guardarStock[id] = setTimeout(() => api('PUT', 'p/productos/' + id, p).catch(e => toast(e.message)), 400);
+}
+
+/* ---------- precios + PDF ---------- */
+function vPrecios() {
+  $('#main').innerHTML = `<button class="btn" data-act="pdf" style="margin-bottom:10px">📄 Exportar lista de precios (PDF)</button>` + buscador();
+  enlazarBuscador(() => {
+    const l = filtrar(productos).filter(p => esAdmin() || p.activo);
+    $('#lista').innerHTML = l.length ? `<div class="card">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" ${esAdmin() ? `data-precio="${p.id}"` : ''}><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}${p.activo ? '' : ' · inactivo'}</span></div>${p.promo ? '<span class="tag promo">PROMO</span>' : ''}${precioHtml(p)}</div>`).join('')}</div>` : vacio('Sin resultados');
+  });
+}
+function exportarPdf() {
+  if (!window.jspdf) return toast('No cargó el generador de PDF (revisá la conexión)');
+  const l = productos.filter(p => p.activo);
+  if (!l.length) return toast('No hay productos activos');
+  const doc = new window.jspdf.jsPDF();
+  const hoy = new Date().toLocaleDateString('es-AR');
+  doc.setFontSize(16); doc.text('Lista de precios', 14, 16);
+  doc.setFontSize(10); doc.text(hoy, 196, 16, { align: 'right' });
+  doc.autoTable({
+    startY: 22, head: [['Código', 'Producto', 'Precio']],
+    body: l.map(p => [p.codigo, p.nombre + (p.promo && p.precioPromo > 0 ? '  (PROMO)' : ''), money(efectivo(p))]),
+    headStyles: { fillColor: [15, 118, 110] }, columnStyles: { 2: { halign: 'right' } }, styles: { fontSize: 10 },
+    didParseCell: h => { if (h.section === 'body' && l[h.row.index].promo && l[h.row.index].precioPromo > 0) h.cell.styles.fontStyle = 'bold'; },
+  });
+  doc.save('lista-de-precios-' + new Date().toISOString().slice(0, 10) + '.pdf');
+}
+
+/* ---------- usuarios (admin) ---------- */
+let editU = null;
+function vUsuarios() {
+  $('#main').innerHTML = `<button class="btn" data-act="nuevoUsuario" style="margin-bottom:10px">+ Nuevo usuario</button><div class="card">${usuarios.map(u => `<div class="row ${u.activo ? '' : 'off'}" data-edituser="${u.id}"><div class="nm"><b>${esc(u.nombre)}</b><span class="mut">${esc(u.usuario)} · ${u.rol === 'admin' ? 'Administrador' : 'Vendedor'}${u.activo ? '' : ' · desactivado'}</span></div><span class="mut">›</span></div>`).join('')}</div>`;
+}
+function vUsuario() {
+  const u = editU, nuevo = !u.id;
+  $('#main').innerHTML = `<form id="f" autocomplete="off">
+    <label>Nombre</label><input name="nombre" value="${esc(u.nombre)}" required>
+    <label>Usuario (para ingresar)</label><input name="usuario" value="${esc(u.usuario)}" autocapitalize="none" required>
+    <label>${nuevo ? 'Contraseña' : 'Nueva contraseña (dejar vacío para no cambiarla)'}</label><input name="password" type="text" autocomplete="off" ${nuevo ? 'required' : ''}>
+    <label>Rol</label><select name="rol" style="width:100%;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="vendedor" ${u.rol === 'vendedor' ? 'selected' : ''}>Vendedor</option><option value="admin" ${u.rol === 'admin' ? 'selected' : ''}>Administrador</option></select>
+    <div class="row" style="border:0"><div class="nm"><b>Activo</b><span class="mut">Si se desactiva no puede ingresar</span></div><label class="sw" style="margin:0"><input type="checkbox" name="activo" ${u.activo ? 'checked' : ''}><i></i></label></div>
+    <div style="height:14px"></div><button class="btn">Guardar</button>
+    ${nuevo ? '' : '<div style="height:10px"></div><button type="button" class="btn bad" data-act="borrarUsuario">Eliminar usuario</button>'}</form>`;
+  $('#f').onsubmit = async e => {
+    e.preventDefault();
+    const f = new FormData(e.target), d = Object.fromEntries(f); d.activo = !!f.get('activo');
+    try {
+      if (nuevo) await api('POST', 'p/usuarios', d); else await api('PUT', 'p/usuarios/' + u.id, d);
+      if (u.id === user.id) { user = { ...user, nombre: d.nombre, usuario: d.usuario.toLowerCase(), rol: d.rol }; localStorage.setItem('pd_user', JSON.stringify(user)); }
+      await cargar(); toast('Guardado'); go('usuarios');
+    } catch (er) { toast(er.message); }
+  };
+}
+function vClave() {
+  $('#main').innerHTML = `<form id="f"><label>Contraseña actual</label><input name="actual" type="password" required>
+    <label>Nueva contraseña</label><input name="nueva" type="password" minlength="4" required>
+    <label>Repetir nueva contraseña</label><input name="rep" type="password" required><div style="height:14px"></div><button class="btn">Cambiar contraseña</button></form>`;
+  $('#f').onsubmit = async e => {
+    e.preventDefault();
+    const d = Object.fromEntries(new FormData(e.target));
+    if (d.nueva !== d.rep) return toast('Las contraseñas nuevas no coinciden');
+    try { await api('PUT', 'p/clave', d); toast('Contraseña cambiada'); go('menu'); } catch (er) { toast(er.message); }
+  };
+}
+
+/* ---------- Excel (admin) ---------- */
+let importFilas = null;
+const COLS = { codigo: ['codigo', 'cod', 'sku', 'code'], nombre: ['nombre', 'descripcion', 'producto', 'articulo', 'detalle'], precio: ['precio', 'price', 'importe', 'pvp'], stock: ['stock', 'existencia', 'cantidad', 'unidades'], activo: ['activo', 'habilitado'] };
+function leerHoja(rows) {
+  rows = rows.filter(r => r.some(c => String(c ?? '').trim() !== ''));
+  const mapa = {};
+  const cab = rows[0].map(norm).map(x => x.trim());
+  for (const [k, ks] of Object.entries(COLS)) { const i = cab.findIndex(c => ks.some(w => c === w || c.startsWith(w))); if (i >= 0) mapa[k] = i; }
+  let datos = rows;
+  if (mapa.codigo !== undefined) datos = rows.slice(1);
+  else Object.assign(mapa, { codigo: 0, nombre: 1, precio: 2, stock: 3 });   // sin encabezados: A=código, B=nombre, C=precio, D=stock
+  return datos.map(r => Object.fromEntries(Object.entries(mapa).map(([k, i]) => [k, r[i] ?? ''])));
+}
+function vImportar() {
+  $('#main').innerHTML = `<div class="card"><h3 style="margin:0 0 6px">Importar lista</h3>
+    <p class="mut">Archivo Excel (.xlsx) o CSV con columnas: <b>Código</b>, <b>Nombre</b>, <b>Precio</b>, <b>Stock</b> y, si querés, <b>Activo</b> (si/no). Los productos se identifican por código: los existentes se actualizan y los nuevos se crean. Las columnas que falten no se tocan.</p>
+    <input id="arch" type="file" accept=".xlsx,.xls,.csv"><div id="prev"></div></div>
+    <div class="card"><h3 style="margin:0 0 6px">Exportar</h3><p class="mut">Descarga el listado actual en Excel; podés editarlo y volver a importarlo.</p><button class="btn sec" data-act="exportarExcel">Descargar Excel</button></div>`;
+  $('#arch').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    if (!window.XLSX) return toast('No cargó el lector de Excel (revisá la conexión)');
+    try {
+      const wb = /\.csv$/i.test(f.name) ? XLSX.read(await f.text(), { type: 'string', raw: true }) : XLSX.read(await f.arrayBuffer(), { type: 'array' });
+      importFilas = leerHoja(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true }));
+      $('#prev').innerHTML = `<p><b>${importFilas.length}</b> filas leídas. Ejemplo: ${esc(Object.values(importFilas[0] || {}).join(' | '))}</p>
+        <div class="row" style="border:0"><div class="nm"><b>La lista es el catálogo completo</b><span class="mut">Activa los que están y desactiva los que no figuran</span></div><label class="sw" style="margin:0"><input type="checkbox" id="cat"><i></i></label></div>
+        <button class="btn" data-act="importarConfirmar">Importar</button>`;
+    } catch { toast('No se pudo leer el archivo'); }
+  };
+}
+async function importarConfirmar() {
+  try {
+    const r = await api('POST', 'p/importar', { rows: importFilas, catalogoCompleto: $('#cat').checked });
+    await cargar();
+    $('#prev').innerHTML = `<p><b>Listo:</b> ${r.creados} creados, ${r.actualizados} actualizados, ${r.desactivados} desactivados.</p>${r.errores.length ? `<p class="mut" style="color:var(--bad)">${r.errores.length} filas con error:<br>${r.errores.slice(0, 30).map(esc).join('<br>')}</p>` : ''}`;
+  } catch (e) { toast(e.message); }
+}
+function exportarExcel() {
+  if (!window.XLSX) return toast('No cargó el generador de Excel (revisá la conexión)');
+  const ws = XLSX.utils.json_to_sheet(productos.map(p => ({ 'Código': p.codigo, 'Nombre': p.nombre, 'Precio': p.precio, 'Stock': p.stock, 'Activo': p.activo ? 'si' : 'no' })));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Productos');
+  XLSX.writeFile(wb, 'productos-' + new Date().toISOString().slice(0, 10) + '.xlsx');
+}
+
+/* ---------- eventos ---------- */
+document.addEventListener('click', async e => {
+  const t = e.target.closest('button, [data-ped], [data-edit], [data-edituser], [data-precio], [data-promoprecio], [data-nuevapromo]');
+  if (!t || e.target.closest('[data-stop]')) return;
+  const d = t.dataset, row = t.closest('[data-pid]');
+  if (d.go) { if (d.nuevo) nuevoDraft(); go(d.go); }
+  else if (d.act === 'atras') {
+    if (eligiendoPromo) { eligiendoPromo = false; return render(); }
+    go({ producto: 'productos', usuario: 'usuarios', pedido: draft && draft.id ? 'pedidos' : 'menu' }[view] || 'menu');
+  }
+  else if (d.act === 'salir') salir();
+  else if (d.act === 'guardarPedido') guardarPedido();
+  else if (d.act === 'nuevoProd') { editando = { activo: true, stock: 0 }; go('producto'); }
+  else if (d.act === 'borrarProd') {
+    if (!confirm('¿Eliminar el producto?')) return;
+    try { await api('DELETE', 'p/productos/' + editando.id); await cargar(); go('productos'); } catch (er) { toast(er.message); }
+  }
+  else if (d.act === 'agregarPromo') { eligiendoPromo = true; vElegirPromo(); }
+  else if (d.act === 'pdf') exportarPdf();
+  else if (d.act === 'nuevoUsuario') { editU = { rol: 'vendedor', activo: true }; go('usuario'); }
+  else if (d.act === 'borrarUsuario') {
+    if (!confirm('¿Eliminar el usuario? Sus pedidos se conservan.')) return;
+    try { await api('DELETE', 'p/usuarios/' + editU.id); await cargar(); go('usuarios'); } catch (er) { toast(er.message); }
+  }
+  else if (d.edituser) { editU = { ...usuarios.find(u => u.id == d.edituser) }; go('usuario'); }
+  else if (d.act === 'importarConfirmar') importarConfirmar();
+  else if (d.act === 'exportarExcel') exportarExcel();
+  else if (d.act === 'borrarPedido') borrarPedido();
+  else if (d.ped) { nuevoDraft(pedidos.find(p => p.id == d.ped)); go('pedido'); $('#main').insertAdjacentHTML('beforeend', `<div style="margin-top:80px"><button class="btn bad" data-act="borrarPedido">Eliminar pedido</button></div>`); }
+  else if (d.edit) { editando = { ...productos.find(p => p.id == d.edit) }; go('producto'); }
+  else if (d.f) { filtro = d.f; render(); }
+  else if (d.q && row) cambiarCant(+row.dataset.pid, +d.q, d.q === 'set' ? +(prompt('Cantidad', draft.items[row.dataset.pid] || 0) ?? NaN) : undefined);
+  else if (d.s && row) cambiarStock(+row.dataset.pid, +d.s, d.s === 'set' ? +(prompt('Stock', productos.find(p => p.id == row.dataset.pid).stock) ?? NaN) : undefined);
+  else if (d.quitarpromo) { await setProd(+d.quitarpromo, { promo: false }); render(); }
+  else if (d.promoprecio) { const p = productos.find(x => x.id == d.promoprecio), v = prompt('Precio promo', p.precioPromo || ''); if (v !== null) { await setProd(p.id, { precioPromo: v }); render(); } }
+  else if (d.nuevapromo) { const p = productos.find(x => x.id == d.nuevapromo), v = prompt('Precio promo para ' + p.nombre); if (v) { await setProd(p.id, { promo: true, precioPromo: v }); eligiendoPromo = false; render(); } }
+  else if (d.precio) { const p = productos.find(x => x.id == d.precio), v = prompt('Precio de ' + p.nombre, p.precio); if (v !== null && v !== '') { await setProd(p.id, { precio: v }); render(); } }
+});
+document.addEventListener('change', async e => {
+  const id = e.target.dataset.activo;
+  if (id) { await setProd(+id, { activo: e.target.checked }); render(); }
+});
+(async () => { if (token) { try { await cargar(); } catch { token = null; } } render(); })();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+</script>
+</body>
+</html>

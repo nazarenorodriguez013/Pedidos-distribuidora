@@ -1,0 +1,1 @@
+{"name":"pedidos-distribuidora","private":true,"scripts":{"start":"node server.js"},"engines":{"node":">=18"},"dependencies":{"pg":"^8.23.1"}}
