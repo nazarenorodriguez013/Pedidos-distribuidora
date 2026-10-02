@@ -289,10 +289,10 @@ function nuevoDraft(ped) {
 const sumaGrupo = g => g.pids.reduce((t, pid) => t + (draft.items[pid] || 0), 0);
 const comboCumple = c => c.activa && c.grupos.every(g => sumaGrupo(g) >= g.cant);
 const comboIncluye = (c, pid) => c.grupos.some(g => g.pids.includes(pid));
-const precioComboDe = (c, p) => (c.tipo === 'precio' ? c.precio : Math.round(p.precio * (100 - c.pct)) / 100);
-const nombresGrupo = g => { const n = g.pids.map(pid => (productos.find(p => p.id === pid) || {}).nombre || '?'); return n.slice(0, 3).join(' / ') + (n.length > 3 ? ` y ${n.length - 3} más` : ''); };
-const comboBeneficio = c => (c.tipo === 'precio' ? money(c.precio) + ' c/u' : c.pct + '% de descuento');
-const comboTxt = c => c.grupos.map(g => `${g.cant} ${nombresGrupo(g)}`).join(' + ') + ' → ' + comboBeneficio(c);
+const precioComboDe = (c, p) => (c.tipo === 'precio' ? (c.precios || {})[p.id] || p.precio : Math.round(p.precio * (100 - c.pct)) / 100);   // 'precio': cada producto con el suyo
+const nombresGrupo = (g, c) => { const n = g.pids.map(pid => { const p = productos.find(x => x.id === pid) || {}; return (p.nombre || '?') + (c && c.tipo === 'precio' && c.precios && c.precios[pid] ? ' ' + money(c.precios[pid]) : ''); }); return n.slice(0, 3).join(' / ') + (n.length > 3 ? ` y ${n.length - 3} más` : ''); };
+const comboBeneficio = c => (c.tipo === 'precio' ? 'precio especial' : c.pct + '% de descuento');
+const comboTxt = c => c.grupos.map(g => `${g.cant} ${nombresGrupo(g, c)}`).join(' + ') + (c.tipo === 'precio' ? '' : ' → ' + comboBeneficio(c));
 function comboDeLinea(p) {   // promo combinada aceptada y cumplida que alcanza a este producto (la de menor precio)
   let best = null;
   for (const c of combos) if (draft.combos[c.id] === 'si' && comboCumple(c) && comboIncluye(c, p.id) && (!best || precioComboDe(c, p) < precioComboDe(best, p))) best = c;
@@ -348,11 +348,11 @@ function bloqueCombos() {   // ofertas y avance de las promos combinadas
   const out = [];
   for (const c of combos) {
     if (!c.activa || !c.grupos.some(g => sumaGrupo(g) > 0)) continue;
-    const st = draft.combos[c.id], avance = c.grupos.map(g => `${Math.min(sumaGrupo(g), g.cant)}/${g.cant} ${esc(nombresGrupo(g))}`).join(' · ');
+    const st = draft.combos[c.id], avance = c.grupos.map(g => `${Math.min(sumaGrupo(g), g.cant)}/${g.cant} ${esc(nombresGrupo(g, c))}`).join(' · ');
     if (!comboCumple(c)) out.push(`<div class="promo-hint" style="padding:4px 0">🏷️ <b>${esc(c.nombre)}</b>: ${avance} → ${esc(comboBeneficio(c))}</div>`);
     else if (st === 'si') out.push(`<div class="promo-ok" style="margin:6px 0" data-cid="${c.id}"><span>✓ Promo aplicada: <b>${esc(c.nombre)}</b> (${esc(comboBeneficio(c))})</span><button class="btn sec" data-combo="no">Quitar</button></div>`);
     else if (st === 'no') out.push(`<div class="promo-hint" style="padding:4px 0" data-cid="${c.id}">Promo ${esc(c.nombre)} no aplicada <button class="btn sec" data-combo="ask">Aplicar</button></div>`);
-    else out.push(`<div class="promo-offer" style="margin:6px 0" data-cid="${c.id}"><b>🏷️ ¡Hay una promo!</b> ${esc(c.nombre)}: ${esc(comboBeneficio(c))} en ${esc(c.grupos.map(g => nombresGrupo(g)).join(' + '))}. ¿La aplicás?<div class="row" style="border:0;padding:8px 0 0"><button class="btn" data-combo="si">Aceptar</button><button class="btn sec" data-combo="no">No, gracias</button></div></div>`);
+    else out.push(`<div class="promo-offer" style="margin:6px 0" data-cid="${c.id}"><b>🏷️ ¡Hay una promo!</b> ${esc(c.nombre)}: ${esc(comboBeneficio(c))} en ${esc(c.grupos.map(g => nombresGrupo(g, c)).join(' + '))}. ¿La aplicás?<div class="row" style="border:0;padding:8px 0 0"><button class="btn" data-combo="si">Aceptar</button><button class="btn sec" data-combo="no">No, gracias</button></div></div>`);
   }
   return out.join('');
 }
@@ -584,7 +584,7 @@ function abrirProducto(p) {
 /* ventana para crear/editar una promo combinada (administrador) */
 let comboEd = null;
 function abrirCombo(c) {
-  comboEd = c ? JSON.parse(JSON.stringify(c)) : { nombre: '', activa: true, tipo: 'pct', pct: '', precio: '', grupos: [{ cant: 10, pids: [] }] };
+  comboEd = c ? JSON.parse(JSON.stringify(c)) : { nombre: '', activa: true, tipo: 'pct', pct: '', precios: {}, grupos: [{ cant: 10, pids: [] }] };
   const el = document.createElement('div'); el.id = 'modal'; el.className = 'modal';
   el.innerHTML = `<div class="modal-card"><div class="row" style="border:0;padding:0 0 4px"><h2 style="flex:1;margin:0;font-size:19px">${c ? 'Editar promo combinada' : 'Nueva promo combinada'}</h2><button class="btn sec" data-modal="cerrar" aria-label="Cerrar" style="width:40px;min-height:40px;padding:0;flex:none">✕</button></div><div id="cform"></div></div>`;
   document.body.appendChild(el);
@@ -601,16 +601,27 @@ function pintarCombo() {
     ${c.grupos.map((g, i) => `<div class="card" style="background:var(--bg)"><div class="row" style="border:0;padding:0;align-items:flex-end"><div style="flex:none;width:96px"><label>Cantidad</label><input class="gc" data-gi="${i}" inputmode="numeric" value="${g.cant}"></div>
       <div class="nm"><label>Grupo ${i + 1}</label><input class="gb" data-gi="${i}" placeholder="Buscar producto…" autocomplete="off"></div>${c.grupos.length > 1 ? `<button type="button" class="btn sec" data-gdelg="${i}" style="width:40px;min-height:46px;padding:0;flex:none;color:var(--bad)">✕</button>` : ''}</div>
       <div id="gres${i}"></div>
-      <div style="margin-top:8px">${g.pids.length ? g.pids.map(pid => `<span class="tag" style="margin:2px 4px 2px 0;padding:4px 8px">${esc((productos.find(p => p.id === pid) || {}).nombre || '?')} <button type="button" data-gdel="${i}:${pid}" style="border:0;background:none;color:var(--bad);font-size:16px">×</button></span>`).join('') : '<span class="mut">Sin productos todavía</span>'}</div></div>`).join('')}
+      <div style="margin-top:8px">${!g.pids.length ? '<span class="mut">Sin productos todavía</span>' : c.tipo === 'precio'
+        ? `<label>Mismo precio para todo el grupo (opcional)</label><input class="gp" data-gi="${i}" inputmode="decimal" placeholder="Ej: 450">` + g.pids.map(pid => { const pr = productos.find(x => x.id === pid) || {}; return `<div class="row" style="border:0;padding:6px 0"><div class="nm"><b>${esc(pr.nombre || '?')}</b><span class="mut">lista ${money(pr.precio)}</span></div><input class="pp" data-gi="${i}" data-pid="${pid}" inputmode="decimal" placeholder="Precio promo" value="${(c.precios || {})[pid] || ''}" style="width:120px;flex:none"><button type="button" data-gdel="${i}:${pid}" style="border:0;background:none;color:var(--bad);font-size:20px;flex:none">×</button></div>`; }).join('')
+        : g.pids.map(pid => `<span class="tag" style="margin:2px 4px 2px 0;padding:4px 8px">${esc((productos.find(p => p.id === pid) || {}).nombre || '?')} <button type="button" data-gdel="${i}:${pid}" style="border:0;background:none;color:var(--bad);font-size:16px">×</button></span>`).join('')}</div></div>`).join('')}
     <button type="button" class="btn sec" data-gnuevo>+ Otro grupo (otro producto u otros sabores)</button>
     <h3 style="margin:14px 0 4px;font-size:16px">Beneficio</h3>
-    <div class="chips" style="margin:0"><button type="button" data-ctipo="pct" class="${c.tipo === 'pct' ? 'on' : ''}">Descuento %</button><button type="button" data-ctipo="precio" class="${c.tipo === 'precio' ? 'on' : ''}">Precio por unidad</button></div>
-    <label>${c.tipo === 'pct' ? 'Porcentaje de descuento' : 'Precio por unidad (para todos los productos de la promo)'}</label><input id="cv" inputmode="decimal" value="${c.tipo === 'pct' ? c.pct || '' : c.precio || ''}" placeholder="${c.tipo === 'pct' ? 'Ej: 5' : 'Ej: 450'}">
+    <div class="chips" style="margin:0"><button type="button" data-ctipo="pct" class="${c.tipo === 'pct' ? 'on' : ''}">Descuento %</button><button type="button" data-ctipo="precio" class="${c.tipo === 'precio' ? 'on' : ''}">Precio de cada producto</button></div>
+    ${c.tipo === 'pct' ? `<label>Porcentaje de descuento (se aplica a cada producto de la promo)</label><input id="cv" inputmode="decimal" value="${c.pct || ''}" placeholder="Ej: 5">` : '<p class="mut">Poné arriba, en cada producto, el precio que tiene con la promo (por ejemplo harina común $800 y harina leudante $900).</p>'}
     <div style="height:14px"></div><button type="button" class="btn" data-csave>Guardar</button>
     <div class="row" style="border:0;padding:10px 0 0"><button type="button" class="btn sec" data-modal="cerrar">Cancelar</button>${c.id ? '<button type="button" class="btn bad" data-cdel>Eliminar</button>' : ''}</div>`;
   $('#cn').oninput = e => { c.nombre = e.target.value; };
   $('#ca').onchange = e => { c.activa = e.target.checked; };
-  $('#cv').oninput = e => { c[c.tipo === 'pct' ? 'pct' : 'precio'] = e.target.value; };
+  if ($('#cv')) $('#cv').oninput = e => { c.pct = e.target.value; };
+  c.precios = c.precios || {};
+  f.querySelectorAll('.pp').forEach(inp => { inp.oninput = e => { c.precios[e.target.dataset.pid] = e.target.value; }; });
+  f.querySelectorAll('.gp').forEach(inp => {
+    inp.oninput = e => {
+      const i = +e.target.dataset.gi;
+      for (const pid of c.grupos[i].pids) c.precios[pid] = e.target.value;
+      f.querySelectorAll(`.pp[data-gi="${i}"]`).forEach(x => { x.value = e.target.value; });
+    };
+  });
   f.querySelectorAll('.gc').forEach(inp => { inp.oninput = e => { c.grupos[+e.target.dataset.gi].cant = e.target.value; }; });
   f.querySelectorAll('.gb').forEach(inp => {
     inp.oninput = e => {
@@ -621,7 +632,7 @@ function pintarCombo() {
   });
 }
 async function guardarCombo() {
-  const c = comboEd, d = { nombre: c.nombre, activa: c.activa, tipo: c.tipo, pct: c.pct, precio: c.precio, grupos: c.grupos.map(g => ({ cant: g.cant, pids: g.pids })) };
+  const c = comboEd, d = { nombre: c.nombre, activa: c.activa, tipo: c.tipo, pct: c.pct, precios: c.precios, grupos: c.grupos.map(g => ({ cant: g.cant, pids: g.pids })) };
   try {
     if (c.id) await api('PUT', 'p/combos/' + c.id, d); else await api('POST', 'p/combos', d);
     await cargar(); toast('Promo guardada'); cerrarModal();

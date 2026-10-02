@@ -22,6 +22,7 @@ async function load(pool) {
   state.seq.c = state.seq.c || 1;
   state.combos = state.combos || [];
   state.seq.k = state.seq.k || 1;
+  for (const c of state.combos) if (c.tipo === 'precio' && !c.precios) { c.precios = {}; for (const g of c.grupos) for (const pid of g.pids) c.precios[pid] = c.precio; delete c.precio; }
   for (const p of state.productos) delete p.stock;   // ya no se maneja stock
   for (const o of state.pedidos) if (o.subtotal === undefined) {   // pedidos anteriores al redondeo: se les aplica solo
     o.subtotal = o.total; o.total = redondear(o.subtotal); o.redondeo = Math.round((o.total - o.subtotal) * 100) / 100;
@@ -88,7 +89,7 @@ function cleanProducto(b, prev = {}) {
 const sumaGrupo = (g, cant) => g.pids.reduce((t, pid) => t + (cant.get(pid) || 0), 0);
 const comboCumple = (c, cant) => c.activa && c.grupos.every(g => sumaGrupo(g, cant) >= g.cant);
 const comboIncluye = (c, pid) => c.grupos.some(g => g.pids.includes(pid));
-const precioComboDe = (c, p) => (c.tipo === 'precio' ? c.precio : Math.round(p.precio * (100 - c.pct)) / 100);
+const precioComboDe = (c, p) => (c.tipo === 'precio' ? (c.precios || {})[p.id] || p.precio : Math.round(p.precio * (100 - c.pct)) / 100);   // 'precio': cada producto tiene el suyo
 function cleanCombo(b) {
   const nombre = String(b.nombre || '').trim();
   if (!nombre) throw { code: 400, msg: 'Falta el nombre de la promo' };
@@ -99,10 +100,15 @@ function cleanCombo(b) {
     if (!g.pids.length || g.pids.some(pid => !state.productos.some(p => p.id === pid))) throw { code: 400, msg: 'Cada grupo necesita al menos un producto' };
   }
   const tipo = b.tipo === 'precio' ? 'precio' : 'pct';
-  const pct = Math.min(100, num(b.pct)), precio = num(b.precio);
+  const pct = Math.min(100, num(b.pct));
   if (tipo === 'pct' && !(pct > 0)) throw { code: 400, msg: 'Poné el porcentaje de descuento' };
-  if (tipo === 'precio' && !(precio > 0)) throw { code: 400, msg: 'Poné el precio por unidad' };
-  return { nombre, activa: b.activa === undefined ? true : !!b.activa, grupos, tipo, pct: tipo === 'pct' ? pct : 0, precio: tipo === 'precio' ? precio : 0 };
+  const precios = {};
+  if (tipo === 'precio') for (const pid of new Set(grupos.flatMap(g => g.pids))) {   // cada producto lleva su precio con descuento
+    const v = num((b.precios || {})[pid]);
+    if (!(v > 0)) throw { code: 400, msg: `Poné el precio promo de "${state.productos.find(p => p.id === pid).nombre}"` };
+    precios[pid] = v;
+  }
+  return { nombre, activa: b.activa === undefined ? true : !!b.activa, grupos, tipo, pct: tipo === 'pct' ? pct : 0, precios };
 }
 
 const REDONDEO = 50;   // el total de cada pedido se redondea hacia arriba a múltiplo de 50
