@@ -296,7 +296,7 @@ const hayCambios = () => !!draft.id && draft.snap !== snapDraft();   // el que m
 const etiquetaBoton = () => !draft.id ? 'Guardar pedido' : !esAdmin() ? 'Guardar cambios' : hayCambios() ? 'Guardar cambios' : (draft.estado !== 'cargado' || draft.agregar) ? 'Cargar' : '✓ Cargado';
 function actualizarBoton() { const b = $('#btnGuardar'); if (b) { b.textContent = etiquetaBoton(); b.disabled = esAdmin() && draft.id && !hayCambios() && draft.estado === 'cargado' && !draft.agregar; } }
 function nuevoDraft(ped) {
-  draft = ped ? { id: ped.id, combos: Object.fromEntries(ped.items.filter(i => i.comboId).map(i => [i.comboId, 'si'])), avisadoC: {}, cargadoPor: ped.cargadoPor, agregar: !!ped.agregar, cambios: cambiosDe(ped), cargadoItems: ped.cargadoItems || [], estado: ped.estado || 'pendiente', cargada: Object.fromEntries(ped.items.map(i => [i.pid, i.cantCargada ?? i.cant])), promos: Object.fromEntries(ped.items.filter(i => i.promo).map(i => [i.pid, 'si'])), avisado: {}, dia: ped.dia || diaSesion(), turno: ped.turno || '', clienteId: ped.clienteId || null, legacy: !ped.clienteId, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])) }
+  draft = ped ? { id: ped.id, clienteCodigo: ped.clienteCodigo ?? (clientes.find(c => c.id === ped.clienteId) || {}).codigo, combos: Object.fromEntries(ped.items.filter(i => i.comboId).map(i => [i.comboId, 'si'])), avisadoC: {}, cargadoPor: ped.cargadoPor, agregar: !!ped.agregar, cambios: cambiosDe(ped), cargadoItems: ped.cargadoItems || [], estado: ped.estado || 'pendiente', cargada: Object.fromEntries(ped.items.map(i => [i.pid, i.cantCargada ?? i.cant])), promos: Object.fromEntries(ped.items.filter(i => i.promo).map(i => [i.pid, 'si'])), avisado: {}, dia: ped.dia || diaSesion(), turno: ped.turno || '', clienteId: ped.clienteId || null, legacy: !ped.clienteId, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])) }
               : { id: null, combos: {}, avisadoC: {}, estado: 'pendiente', cargada: {}, promos: {}, avisado: {}, dia: diaSesion(), turno: ss('pd_turno') || '', clienteId: null, uid: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)), cliente: '', nota: '', items: {}, orig: {} };
   if (ped) draft.snap = snapDraft();
 }
@@ -331,7 +331,7 @@ function vPedido() {
     ? `<div class="hint" style="background:#fee2e2;color:#7f1d1d;padding:10px;border-radius:8px;margin-bottom:6px">⚠ <b>Agregar:</b> ${esAdmin() ? 'el vendedor modificó el pedido después de cargarlo.' : 'modificaste el pedido después de que lo cargaron. Administración lo ve marcado.'}<br>${draft.cambios.map(esc).join(' · ')}</div>`
     : esAdmin() ? `<div class="hint" style="background:#dcfce7;color:#166534;padding:10px;border-radius:8px;margin-bottom:6px">✓ Pedido <b>cargado</b>${draft.cargadoPor ? ' por ' + esc(draft.cargadoPor) : ''}.</div>`
     : `<div class="hint" style="background:#e0f2fe;color:#0c4a6e;padding:10px;border-radius:8px;margin-bottom:6px">✓ Este pedido ya fue <b>cargado</b> por administración. Si lo modificás, queda marcado como <b>Agregar</b> para que lo vean.</div>`;
-  $('#main').innerHTML = `${cargadoBanner}<label>Cliente</label><button class="btn sec" data-act="cambiarCliente" style="text-align:left;display:flex;justify-content:space-between"><span>${draft.cliente ? '👤 ' + esc(draft.cliente) : 'Elegir cliente…'}</span><span class="mut">${draft.cliente ? 'Cambiar' : '›'}</span></button>
+  $('#main').innerHTML = `${cargadoBanner}<label>Cliente</label><button class="btn sec" data-act="cambiarCliente" style="text-align:left;display:flex;justify-content:space-between"><span>${draft.cliente ? '👤 ' + (draft.clienteCodigo ? '<b>' + esc(draft.clienteCodigo) + '</b> · ' : '') + esc(draft.cliente) : 'Elegir cliente…'}</span><span class="mut">${draft.cliente ? 'Cambiar' : '›'}</span></button>
     <div class="row" style="border:0;align-items:flex-end"><div style="flex:1.2"><label>Día de entrega</label><input id="dia" type="date" value="${esc(draft.dia)}"></div>
       <div style="flex:1"><label>Turno</label><div class="chips" style="margin:0" id="turnos">${Object.entries(TURNOS).map(([k, v]) => `<button type="button" data-turno="${k}" class="${draft.turno === k ? 'on' : ''}" style="flex:1;min-height:46px">${v}</button>`).join('')}</div></div></div>
     <div style="height:10px"></div>${buscador()}
@@ -520,7 +520,7 @@ function vCliente() {
     try {
       const r = c.id ? await api('PUT', 'p/clientes/' + c.id, d) : await api('POST', 'p/clientes', d);
       await cargar(); toast('Cliente guardado');
-      if (!c.id && clienteVolver === 'elegir') { draft.clienteId = r.id; draft.cliente = nombreC(r); history.go(-2); } else volverA('clientes');
+      if (!c.id && clienteVolver === 'elegir') { draft.clienteId = r.id; draft.cliente = nombreC(r); draft.clienteCodigo = r.codigo; history.go(-2); } else volverA('clientes');
     } catch (er) { toast(er.message); }
   };
 }
@@ -537,7 +537,7 @@ function vPedidos() {
     const pend = colaMia().filter(x => !n || norm(x.body.cliente).includes(n)).map(x => `<div class="card" style="border-color:${x.error ? 'var(--bad)' : 'var(--warn)'}"><div class="row" style="border:0;padding:0"><div class="nm"><b>${esc(x.body.cliente)}</b>
       <span class="mut">${x.body.dia ? esc(diaTxt(x.body.dia)) + ' · ' + (TURNOS[x.body.turno] || '') + ' · ' : ''}${x.error ? 'Rechazado: ' + esc(x.error) : '⏳ Esperando señal para enviarse'} · ${x.body.items.length} prod. · ${x.body.items.reduce((s, i) => s + i.cant, 0)} u.</span></div><span class="price">${money(x.total)}</span></div>
       <div class="row" style="border:0;padding:8px 0 0">${x.error ? `<button class="btn sec" data-reint="${esc(x.uid)}">Reintentar</button>` : ''}<button class="btn sec" data-delcola="${esc(x.uid)}">Eliminar</button></div></div>`).join('');
-    $('#lista').innerHTML = pend + (l.length ? `<p class="mut">${l.length} pedidos · ${money(tot)}</p>` + l.map(p => `<div class="card" data-ped="${p.id}"><div class="row" style="border:0;padding:0"><div class="nm"><b>#${p.id} · ${esc(p.cliente)}</b> ${estadoTag(p)}
+    $('#lista').innerHTML = pend + (l.length ? `<p class="mut">${l.length} pedidos · ${money(tot)}</p>` + l.map(p => `<div class="card" data-ped="${p.id}"><div class="row" style="border:0;padding:0"><div class="nm"><b>#${p.id} · ${p.clienteCodigo ? esc(p.clienteCodigo) + ' · ' : ''}${esc(p.cliente)}</b> ${estadoTag(p)}
       <span class="mut">${p.dia ? `<b>${esc(diaTxt(p.dia))} · ${TURNOS[p.turno] || ''}</b> · ` : ''}${esAdmin() ? esc(p.vendedor || '—') + ' · ' : ''}${new Date(p.creado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })} · ${p.items.length} prod. · ${p.items.reduce((s, i) => s + i.cant, 0)} u.${p.editado !== p.creado ? ' · <b>editado ' + new Date(p.editado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) + '</b>' : ''}</span></div><span class="price">${money(p.total)}</span></div></div>`).join('') : (pend ? '' : vacio('No hay pedidos')));
   };
   $('#q').oninput = e => { q = e.target.value; pintar(); };
@@ -866,7 +866,7 @@ document.addEventListener('click', async e => {
     try { await api('DELETE', 'p/clientes/' + editC.id); await cargar(); volverA('clientes'); } catch (er) { toast(er.message); }
   }
   else if (d.editcli) { clienteVolver = 'clientes'; editC = { ...clientes.find(c => c.id == d.editcli) }; go('cliente'); }
-  else if (d.cli) { const c = clientes.find(x => x.id == d.cli); draft.clienteId = c.id; draft.cliente = nombreC(c); history.back(); }
+  else if (d.cli) { const c = clientes.find(x => x.id == d.cli); draft.clienteId = c.id; draft.cliente = nombreC(c); draft.clienteCodigo = c.codigo; history.back(); }
   else if (d.act === 'nuevoUsuario') { editU = { rol: 'vendedor', activo: true }; go('usuario'); }
   else if (d.act === 'borrarUsuario') {
     if (!confirm('¿Eliminar el usuario? Sus pedidos se conservan.')) return;
