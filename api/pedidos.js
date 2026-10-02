@@ -145,7 +145,7 @@ function importar(b) {
     if (!p) {
       const nombre = String(f.nombre ?? '').trim();
       if (!nombre || precio === null) return r.errores.push(`Fila ${fila} (${codigo}): producto nuevo necesita nombre y precio`);
-      state.productos.push({ id: state.seq.p++, codigo, nombre, precio, stock: Math.floor(stock ?? 0), activo: true, promo: false, precioPromo: 0 });
+      state.productos.push({ id: state.seq.p++, codigo, nombre, precio, stock: Math.floor(stock ?? 0), activo: f.activo === undefined || f.activo === '' ? true : truthy(f.activo), promo: false, precioPromo: 0 });
       return r.creados++;
     }
     if (String(f.nombre ?? '').trim()) p.nombre = String(f.nombre).trim();
