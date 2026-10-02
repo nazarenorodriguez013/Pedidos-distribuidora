@@ -1,4 +1,4 @@
-// API de la app de pedidos: productos (precio, stock, promos, activo) y pedidos.
+// API de la app de pedidos: productos (precio, promos, activo) y pedidos.
 // Guarda todo en Postgres (tabla kv) si hay base; si no, en data/pedidos.json.
 const fs = require('fs');
 const crypto = require('crypto');
@@ -18,6 +18,7 @@ async function load(pool) {
   state = state || { seq: { p: 1, o: 1 }, productos: [], pedidos: [] };
   state.seq.u = state.seq.u || 1;
   state.usuarios = state.usuarios || [];
+  for (const p of state.productos) delete p.stock;   // ya no se maneja stock
   if (!state.usuarios.length) {   // primer arranque: el administrador sale de APP_USER / APP_PASS
     state.usuarios.push({ id: state.seq.u++, usuario: process.env.APP_USER || 'kevin', nombre: 'Administrador', rol: 'admin', activo: true, ...hashPass(process.env.APP_PASS || 'kevin123') });
     await save(pool);
@@ -60,14 +61,13 @@ function cleanProducto(b, prev = {}) {
   return {
     codigo, nombre,
     precio: num(b.precio, prev.precio ?? 0),
-    stock: Math.floor(num(b.stock, prev.stock ?? 0)),
     activo: b.activo === undefined ? prev.activo ?? true : !!b.activo,
     promo: b.promo === undefined ? prev.promo ?? false : !!b.promo,
     precioPromo: num(b.precioPromo, prev.precioPromo ?? 0),
   };
 }
 
-// Aplica un pedido nuevo/editado: valida stock y arma las líneas con su precio.
+// Arma un pedido nuevo/editado con las líneas y su precio.
 function armarPedido(b, viejo, quien) {
   const cliente = String(b.cliente || '').trim();
   if (!cliente) throw { code: 400, msg: 'Falta el cliente' };
@@ -79,19 +79,13 @@ function armarPedido(b, viejo, quien) {
   }
   if (!nuevas.size) throw { code: 400, msg: 'El pedido no tiene productos' };
   const items = [];
-  const deltas = [];
   for (const [pid, cant] of nuevas) {
     const p = state.productos.find(x => x.id === pid);
     const old = viejas.get(pid);
     if (!p) throw { code: 400, msg: 'Producto inexistente' };
     if (!old && !p.activo) throw { code: 409, msg: `"${p.nombre}" está desactivado` };
-    const delta = cant - (old ? old.cant : 0);
-    if (delta > p.stock) throw { code: 409, msg: `Stock insuficiente de "${p.nombre}" (hay ${p.stock + (old ? old.cant : 0)})` };
-    deltas.push([p, delta]);
     items.push({ pid, codigo: p.codigo, nombre: p.nombre, precio: old ? old.precio : precioDe(p), cant });
   }
-  for (const [pid, old] of viejas) if (!nuevas.has(pid)) { const p = state.productos.find(x => x.id === pid); if (p) deltas.push([p, -old.cant]); }
-  for (const [p, d] of deltas) p.stock -= d;
   const total = Math.round(items.reduce((s, i) => s + i.precio * i.cant, 0) * 100) / 100;
   return { cliente, nota: String(b.nota || '').trim(), items, total, vendedorId: viejo ? viejo.vendedorId : quien.id, vendedor: viejo ? viejo.vendedor : quien.nombre };
 }
@@ -137,22 +131,19 @@ function importar(b) {
     const fila = n + 1;
     if (!codigo) return r.errores.push(`Fila ${fila}: sin código`);
     const precio = f.precio === undefined || f.precio === '' ? null : parseNum(f.precio);
-    const stock = f.stock === undefined || f.stock === '' ? null : parseNum(f.stock);
     if (f.precio !== undefined && f.precio !== '' && precio === null) return r.errores.push(`Fila ${fila} (${codigo}): precio inválido`);
-    if (f.stock !== undefined && f.stock !== '' && stock === null) return r.errores.push(`Fila ${fila} (${codigo}): stock inválido`);
     let p = state.productos.find(x => x.codigo.toLowerCase() === codigo.toLowerCase());
     const sinPrecio = precio === 0 && (f.activo === undefined || f.activo === '');   // precio 0 = sin precio: queda desactivado
     vistos.add(codigo.toLowerCase());
     if (!p) {
       const nombre = String(f.nombre ?? '').trim();
       if (!nombre || precio === null) return r.errores.push(`Fila ${fila} (${codigo}): producto nuevo necesita nombre y precio`);
-      state.productos.push({ id: state.seq.p++, codigo, nombre, precio, stock: Math.floor(stock ?? 0), activo: f.activo === undefined || f.activo === '' ? !sinPrecio : truthy(f.activo), promo: false, precioPromo: 0 });
+      state.productos.push({ id: state.seq.p++, codigo, nombre, precio, activo: f.activo === undefined || f.activo === '' ? !sinPrecio : truthy(f.activo), promo: false, precioPromo: 0 });
       return r.creados++;
     }
     if (String(f.nombre ?? '').trim()) p.nombre = String(f.nombre).trim();
     if (precio !== null && !sinPrecio) p.precio = precio;
     if (sinPrecio) p.activo = false;
-    if (stock !== null) p.stock = Math.floor(stock);
     if (f.activo !== undefined && f.activo !== '') p.activo = truthy(f.activo);
     else if (b.catalogoCompleto && !sinPrecio) p.activo = true;
     r.actualizados++;
@@ -272,7 +263,6 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       return send(res, 200, list[idx]);
     }
     if (req.method === 'DELETE') {
-      if (rec === 'pedidos') for (const i of list[idx].items) { const p = s.productos.find(x => x.id === i.pid); if (p) p.stock += i.cant; }
       list.splice(idx, 1);
       await save(pool);
       return send(res, 200, { ok: true });
