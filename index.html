@@ -347,7 +347,7 @@ function limpiarCombos() {
 function bloqueCombos() {   // ofertas y avance de las promos combinadas
   const out = [];
   for (const c of combos) {
-    if (!c.activa || !c.grupos.some(g => sumaGrupo(g) > 0)) continue;
+    if (!c.activa || !c.grupos.every(g => sumaGrupo(g) > 0)) continue;   // la promo solo aparece cuando ya cargó algo de cada grupo de la promo
     const st = draft.combos[c.id], avance = c.grupos.map(g => `${Math.min(sumaGrupo(g), g.cant)}/${g.cant} ${esc(nombresGrupo(g, c))}`).join(' · ');
     if (!comboCumple(c)) out.push(`<div class="promo-hint" style="padding:4px 0">🏷️ <b>${esc(c.nombre)}</b>: ${avance} → ${esc(comboBeneficio(c))}</div>`);
     else if (st === 'si') out.push(`<div class="promo-ok" style="margin:6px 0" data-cid="${c.id}"><span>✓ Promo aplicada: <b>${esc(c.nombre)}</b> (${esc(comboBeneficio(c))})</span><button class="btn sec" data-combo="no">Quitar</button></div>`);
