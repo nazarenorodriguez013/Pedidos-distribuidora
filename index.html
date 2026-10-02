@@ -249,7 +249,11 @@ function nuevoDraft(ped) {
               : { id: null, dia: diaSesion(), turno: ss('pd_turno') || '', clienteId: null, uid: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)), cliente: '', nota: '', items: {}, orig: {} };
 }
 const precioLinea = p => draft.orig[p.id] ? draft.orig[p.id].precio : efectivo(p);
-function totalDraft() { return productos.reduce((s, p) => s + (draft.items[p.id] || 0) * precioLinea(p), 0); }
+const REDONDEO = 50;   // el total de cada pedido se redondea hacia arriba a múltiplo de 50
+const redondear50 = x => Math.ceil(Math.round(x * 100) / (REDONDEO * 100)) * REDONDEO;
+const multiploDe = p => p.multiplo || 1;
+function subtotalDraft() { return Math.round(productos.reduce((s, p) => s + (draft.items[p.id] || 0) * precioLinea(p), 0) * 100) / 100; }
+function totalDraft() { return redondear50(subtotalDraft()); }
 function vPedido() {
   $('#main').innerHTML = `<label>Cliente</label><button class="btn sec" data-act="cambiarCliente" style="text-align:left;display:flex;justify-content:space-between"><span>${draft.cliente ? '👤 ' + esc(draft.cliente) : 'Elegir cliente…'}</span><span class="mut">${draft.cliente ? 'Cambiar' : '›'}</span></button>
     <div class="row" style="border:0;align-items:flex-end"><div style="flex:1.2"><label>Día de entrega</label><input id="dia" type="date" value="${esc(draft.dia)}"></div>
@@ -271,14 +275,14 @@ function pintarLista() {
   const todos = filtrar(base), lista = todos.slice(0, 30);   // orden fijo: lo elegido no sube, queda en el detalle
   $('#lista').innerHTML = lista.length ? `<div class="card">${lista.map(p => {
     const c = draft.items[p.id] || 0, bloq = !p.activo && !c;   // sin precio / desactivado: se ve pero no se puede pedir
-    return `<div class="row ${bloq ? 'off' : ''}" ${bloq ? '' : `data-sel="${p.id}"`} style="${c ? 'background:color-mix(in srgb,var(--pri) 10%,transparent)' : ''}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · </span>${p.promo && p.precioPromo > 0 ? '<span class="tag promo">PROMO</span> ' : ''}${precioHtml({ ...p, precio: p.precio, precioPromo: draft.orig[p.id] ? 0 : p.precioPromo, promo: !draft.orig[p.id] && p.promo })}</div>
+    return `<div class="row ${bloq ? 'off' : ''}" ${bloq ? '' : `data-sel="${p.id}"`} style="${c ? 'background:color-mix(in srgb,var(--pri) 10%,transparent)' : ''}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · </span>${multiploDe(p) > 1 ? `<span class="tag">de a ${multiploDe(p)}</span> ` : ''}${p.promo && p.precioPromo > 0 ? '<span class="tag promo">PROMO</span> ' : ''}${precioHtml({ ...p, precio: p.precio, precioPromo: draft.orig[p.id] ? 0 : p.precioPromo, promo: !draft.orig[p.id] && p.promo })}</div>
       ${bloq ? '<span class="tag">No disponible</span>' : c ? `<span class="tag ok">✓ ${c}</span>` : '<span class="mut">+</span>'}</div>`;
   }).join('')}</div>${todos.length > lista.length ? `<p class="mut" style="text-align:center">Mostrando ${lista.length} de ${todos.length}: seguí escribiendo para afinar</p>` : ''}` : vacio('Sin resultados');
 }
 function pintarDetalle() {
   const sel = productos.filter(enPed);
-  $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + sel.map(p => `<div class="row" data-pid="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${money(precioLinea(p))} c/u · subtotal <b data-sub>${money(draft.items[p.id] * precioLinea(p))}</b></span></div>
-      <div class="qty"><button data-q="-1">−</button><input class="qin" type="number" inputmode="numeric" min="0" data-qin="${p.id}" value="${draft.items[p.id]}"><button data-q="1">+</button></div><button class="btn sec" data-quitar="${p.id}" aria-label="Quitar del pedido" style="width:38px;min-height:38px;padding:0;color:var(--bad);flex:none">✕</button></div>`).join('') + `<div class="row dtot" style="border:0"><div class="nm"><b>Total</b><span class="mut" data-dcant>${cantTxt()}</span></div><span class="price" data-dtot style="font-size:18px">${money(totalDraft())}</span></div>` : '<span class="mut">Tocá un producto de la lista para agregarlo con cantidad 1. Después ajustás la cantidad acá.</span>';
+  $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + sel.map(p => `<div class="row" data-pid="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${money(precioLinea(p))} c/u${multiploDe(p) > 1 ? ' · de a ' + multiploDe(p) : ''} · subtotal <b data-sub>${money(draft.items[p.id] * precioLinea(p))}</b></span></div>
+      <div class="qty"><button data-q="-1">−</button><input class="qin" type="number" inputmode="numeric" min="0" step="${multiploDe(p)}" data-qin="${p.id}" value="${draft.items[p.id]}"><button data-q="1">+</button></div><button class="btn sec" data-quitar="${p.id}" aria-label="Quitar del pedido" style="width:38px;min-height:38px;padding:0;color:var(--bad);flex:none">✕</button></div>`).join('') + '<div id="dtotales"></div>' : '<span class="mut">Tocá un producto de la lista para agregarlo con cantidad 1. Después ajustás la cantidad acá.</span>';
 }
 let editNota = false;
 function pintarNota() {
@@ -291,13 +295,15 @@ function pintarNota() {
 }
 const cantTxt = () => { const k = Object.keys(draft.items).length, n = Object.values(draft.items).reduce((a, b) => a + b, 0); return `${k} ${k === 1 ? 'producto' : 'productos'} · ${n} u.`; };
 function pintarTotal() {
-  $('#tot').innerHTML = `${money(totalDraft())}<br><small style="font-weight:600;font-size:13px">${cantTxt()}</small>`;
-  const dc = $('[data-dcant]'); if (dc) dc.textContent = cantTxt();
-  const dt = $('[data-dtot]'); if (dt) dt.textContent = money(totalDraft());
+  const sub = subtotalDraft(), tot = redondear50(sub), red = Math.round((tot - sub) * 100) / 100;
+  $('#tot').innerHTML = `${money(tot)}<br><small style="font-weight:600;font-size:13px">${cantTxt()}</small>`;
+  const d = $('#dtotales');
+  if (d) d.innerHTML = Object.keys(draft.items).length ? `${red > 0 ? `<div class="row" style="border:0;padding:2px 0;justify-content:space-between"><span class="mut">Subtotal</span><span class="mut">${money(sub)}</span></div><div class="row" style="border:0;padding:2px 0;justify-content:space-between"><span class="mut">Redondeo (a múltiplo de ${REDONDEO})</span><span class="mut">+ ${money(red)}</span></div>` : ''}<div class="row dtot" style="border:0"><div class="nm"><b>Total</b><span class="mut">${cantTxt()}</span></div><span class="price" style="font-size:18px">${money(tot)}</span></div>` : '';
 }
 function cambiarCant(pid, d, fijo) {
   const p = productos.find(x => x.id === pid); if (!p || Number.isNaN(fijo) || (!p.activo && !draft.items[pid])) return;
-  let c = fijo !== undefined ? fijo : (draft.items[pid] || 0) + d;
+  const m = multiploDe(p), cur = draft.items[pid] || 0;
+  let c = fijo !== undefined ? Math.ceil(fijo / m) * m : d > 0 ? Math.floor(cur / m) * m + m : Math.ceil(cur / m) * m - m;   // de a múltiplos de m
   c = Math.max(0, Math.min(c, 99999));
   if (c) draft.items[pid] = c; else delete draft.items[pid];
   const y = window.scrollY; pintarPedido(); window.scrollTo(0, y);
@@ -306,6 +312,8 @@ async function guardarPedido() {
   const items = Object.entries(draft.items).map(([pid, cant]) => ({ pid: Number(pid), cant }));
   const body = { clienteId: draft.clienteId, cliente: draft.cliente, nota: draft.nota, dia: draft.dia, turno: draft.turno, items };
   if (!draft.clienteId && !draft.legacy) return toast('Elegí un cliente');
+  const mal = items.find(i => { const p = productos.find(x => x.id === i.pid); return p && i.cant % multiploDe(p); });
+  if (mal) { const p = productos.find(x => x.id === mal.pid); return toast(`"${p.nombre}" se vende de a ${multiploDe(p)}`); }
   if (!draft.dia) return toast('Elegí el día');
   if (!draft.turno) return toast('Elegí el turno: mañana o tarde');
   if (!items.length) return toast('El pedido no tiene productos');
@@ -316,7 +324,7 @@ async function guardarPedido() {
     if (!e.offline) return toast(e.message);
     if (draft.id) return toast('Sin señal: para editar un pedido ya enviado necesitás conexión');
     // sin señal: queda en el teléfono y se envía solo cuando vuelva
-    const total = Math.round(items.reduce((a, i) => a + i.cant * precioLinea(productos.find(p => p.id === i.pid)), 0) * 100) / 100;
+    const total = totalDraft();
     if (!lsSet('pd_cola', [...leerCola(), { uid: draft.uid, u: user.id, body, total, t: new Date().toISOString() }])) return toast('No hay espacio para guardar el pedido');
     toast('Sin señal: pedido guardado, se enviará solo'); volverA('pedidos');
   }
@@ -442,6 +450,8 @@ function vProducto() {
     <label>Código</label><input name="codigo" value="${esc(p.codigo)}" required>
     <label>Nombre</label><input name="nombre" value="${esc(p.nombre)}" required>
     <label>Precio</label><input name="precio" inputmode="decimal" value="${p.precio || ''}" required>
+    <label>Se vende de a (múltiplo)</label><input name="multiplo" inputmode="numeric" value="${p.multiplo || 1}" placeholder="1">
+    <p class="mut" style="margin:4px 0 0">1 = por unidad. Con 5, las cantidades del pedido van de 5 en 5 (5, 10, 15…).</p>
     <div class="row" style="border:0"><div class="nm"><b>Activo</b><span class="mut">Si está apagado no se puede pedir ni sale en el PDF</span></div><label class="sw" style="margin:0"><input type="checkbox" name="activo" ${p.activo ? 'checked' : ''}><i></i></label></div>
     <div class="row" style="border:0"><div class="nm"><b>En promoción</b></div><label class="sw" style="margin:0"><input type="checkbox" name="promo" ${p.promo ? 'checked' : ''}><i></i></label></div>
     <label>Precio promo</label><input name="precioPromo" inputmode="decimal" value="${p.precioPromo || ''}">
@@ -529,7 +539,7 @@ function vUsuario() {
 }
 /* ---------- Excel (admin) ---------- */
 let importFilas = null;
-const COLS = { codigo: ['codigo', 'cod', 'sku', 'code'], nombre: ['nombre', 'descripcion', 'producto', 'articulo', 'detalle'], precio: ['precio', 'price', 'importe', 'pvp'], activo: ['activo', 'habilitado'] };
+const COLS = { codigo: ['codigo', 'cod', 'sku', 'code'], nombre: ['nombre', 'descripcion', 'producto', 'articulo', 'detalle'], precio: ['precio', 'price', 'importe', 'pvp'], activo: ['activo', 'habilitado'], multiplo: ['multiplo', 'multiple', 'se vende de a'] };
 function leerHoja(rows) {
   rows = rows.filter(r => r.some(c => String(c ?? '').trim() !== ''));
   const mapa = {};
@@ -569,7 +579,7 @@ async function filasDePdf(file) {
 }
 function vImportar() {
   $('#main').innerHTML = `<div class="card"><h3 style="margin:0 0 6px">Importar lista</h3>
-    <p class="mut">Subí el <b>PDF de la lista de precios</b> del proveedor (código, artículo, IVA, precio; los de precio 0 quedan desactivados), o un archivo Excel (.xlsx) / CSV con columnas: <b>Código</b>, <b>Nombre</b>, <b>Precio</b> y, si querés, <b>Activo</b> (si/no). Si el archivo trae una columna Stock, se ignora. Los productos se identifican por código: los existentes se actualizan y los nuevos se crean.</p>
+    <p class="mut">Subí el <b>PDF de la lista de precios</b> del proveedor (código, artículo, IVA, precio; los de precio 0 quedan desactivados), o un archivo Excel (.xlsx) / CSV con columnas: <b>Código</b>, <b>Nombre</b>, <b>Precio</b> y, si querés, <b>Múltiplo</b> (de a cuántas unidades se vende) y <b>Activo</b> (si/no). Si el archivo trae una columna Stock, se ignora. Los productos se identifican por código: los existentes se actualizan y los nuevos se crean.</p>
     <input id="arch" type="file" accept=".pdf,.xlsx,.xls,.csv"><div id="prev"></div></div>
     <div class="card"><h3 style="margin:0 0 6px">Exportar</h3><p class="mut">Descarga el listado actual en Excel; podés editarlo y volver a importarlo.</p><button class="btn sec" data-act="exportarExcel">Descargar Excel</button></div>`;
   $('#arch').onchange = async e => {
@@ -597,7 +607,7 @@ async function importarConfirmar() {
 }
 function exportarExcel() {
   if (!window.XLSX) return toast('No cargó el generador de Excel (revisá la conexión)');
-  const ws = XLSX.utils.json_to_sheet(productos.map(p => ({ 'Código': p.codigo, 'Nombre': p.nombre, 'Precio': p.precio, 'Activo': p.activo ? 'si' : 'no' })));
+  const ws = XLSX.utils.json_to_sheet(productos.map(p => ({ 'Código': p.codigo, 'Nombre': p.nombre, 'Precio': p.precio,'Múltiplo': p.multiplo || 1, 'Activo': p.activo ? 'si' : 'no' })));
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Productos');
   XLSX.writeFile(wb, 'productos-' + new Date().toISOString().slice(0, 10) + '.xlsx');
 }
@@ -675,7 +685,11 @@ document.addEventListener('input', e => {
   pintarLista(); pintarTotal();
 });
 document.addEventListener('change', e => {
-  if (e.target.dataset && e.target.dataset.qin) { const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); }
+  if (e.target.dataset && e.target.dataset.qin) {
+    const pid = +e.target.dataset.qin, p = productos.find(x => x.id === pid), m = p ? multiploDe(p) : 1;
+    if (draft.items[pid] % m) draft.items[pid] = Math.ceil(draft.items[pid] / m) * m;
+    const y = window.scrollY; pintarPedido(); window.scrollTo(0, y);
+  }
 });
 document.addEventListener('focusin', e => { if (e.target.dataset && e.target.dataset.qin) e.target.select(); });
 document.addEventListener('change', async e => {
