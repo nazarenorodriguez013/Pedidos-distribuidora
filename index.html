@@ -147,12 +147,12 @@ function salir() { localStorage.removeItem('pd_token'); token = null; view = 'me
 function go(v) { view = v; q = ''; filtro = 'todos'; window.scrollTo(0, 0); render(); }
 
 /* ---------- vistas ---------- */
-const TITULOS = { menu: 'Distribuidora', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', producto: 'Producto', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', clave: 'Mi contraseña', promos: 'Promociones de la semana', precios: 'Lista de precios' };
+const TITULOS = { menu: 'Distribuidora', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', producto: 'Producto', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', clave: 'Mi contraseña', promos: 'Promociones de la semana', precios: 'Lista de precios' };
 function render() {
   if (!token) return login();
   $('#app').innerHTML = `<header>${view !== 'menu' ? '<button data-act="atras">←</button>' : ''}<h1>${TITULOS[view]}</h1>${view === 'menu' ? `<button data-act="salir">Salir</button>` : ''}</header><div id="estado" class="estado" hidden></div><main id="main"></main>`;
   estado();
-  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, cliente: vCliente, elegir: vElegir, productos: vProductos, producto: vProducto, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, clave: vClave, promos: vPromos, precios: vPrecios })[view]();
+  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, producto: vProducto, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, clave: vClave, promos: vPromos, precios: vPrecios })[view]();
 }
 function login() {
   $('#app').innerHTML = `<form class="login"><h1>Distribuidora</h1>
@@ -257,9 +257,48 @@ function listaClientes(l, attr) {
 const selVend = () => esAdmin() ? `<select id="vendc" style="width:100%;margin:8px 0;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Todos los vendedores</option>${usuarios.filter(u => clientes.some(c => c.vendedorId === u.id)).map(u => `<option value="${u.id}" ${String(u.id) === vendC ? 'selected' : ''}>${esc(u.nombre)}</option>`).join('')}</select>` : '';
 function conSelVend(pintar) { if (esAdmin()) $('#vendc').onchange = e => { vendC = e.target.value; pintar(); }; }
 function vClientes() {
-  $('#main').innerHTML = `<button class="btn" data-act="nuevoCliente" style="margin-bottom:10px">+ Nuevo cliente</button>` + buscador(selVend());
+  $('#main').innerHTML = `<button class="btn" data-act="nuevoCliente" style="margin-bottom:10px">+ Nuevo cliente</button>${esAdmin() ? '<button class="btn sec" data-go="importarc" style="margin-bottom:10px">📥 Importar clientes desde Excel</button>' : ''}` + buscador(selVend());
   const pintar = () => { $('#lista').innerHTML = listaClientes(filtrarC(clientes), 'data-editcli'); };
   conSelVend(pintar); enlazarBuscador(pintar);
+}
+/* importar clientes (admin): Código cliente | Nombre y apellido | Dirección | Teléfono [| Vendedor] */
+let filasC = null;
+const COLS_C = { codigo: ['codigo', 'cod'], nombre: ['nombre', 'apellido', 'cliente', 'razon'], direccion: ['direccion', 'domicilio'], telefono: ['telefono', 'tel', 'celular', 'whatsapp'], vendedor: ['vendedor'] };
+function vImportarC() {
+  $('#main').innerHTML = `<div class="card"><p class="mut">Archivo Excel (.xlsx) o CSV con las columnas, en este orden: <b>Código cliente</b>, <b>Nombre y apellido</b>, <b>Dirección</b>, <b>Teléfono</b>. Opcional: una quinta columna <b>Vendedor</b> (usuario o nombre). Los clientes con el mismo código se actualizan; el resto se crea.</p>
+    <label>Vendedor para los clientes que no traigan la columna Vendedor</label>
+    <select id="vimp" style="width:100%;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Elegir vendedor…</option>${usuarios.filter(u => u.activo).map(u => `<option value="${u.id}">${esc(u.nombre)}</option>`).join('')}</select>
+    <label>Archivo</label><input id="arch" type="file" accept=".xlsx,.xls,.csv"><div id="prev"></div></div>
+    <button class="btn sec" data-act="plantillaClientes">Descargar plantilla</button>`;
+  $('#arch').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    if (!window.XLSX) return toast('No cargó el lector de Excel (revisá la conexión)');
+    try {
+      const wb = /\.csv$/i.test(f.name) ? XLSX.read(await f.text(), { type: 'string', raw: true }) : XLSX.read(await f.arrayBuffer(), { type: 'array' });
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true }).filter(r => r.some(c => String(c ?? '').trim() !== ''));
+      const cab = rows[0].map(c => norm(c).trim()), mapa = {};
+      for (const [k, ks] of Object.entries(COLS_C)) { const i = cab.findIndex(c => ks.some(w => c === w || c.startsWith(w))); if (i >= 0) mapa[k] = i; }
+      let datos = rows;
+      if (mapa.codigo !== undefined || mapa.nombre !== undefined) datos = rows.slice(1);
+      else Object.assign(mapa, { codigo: 0, nombre: 1, direccion: 2, telefono: 3 });
+      if (mapa.nombre === undefined) Object.assign(mapa, { codigo: 0, nombre: 1, direccion: 2, telefono: 3 });
+      filasC = datos.map(r => Object.fromEntries(Object.entries(mapa).map(([k, i]) => [k, String(r[i] ?? '').trim()])));
+      if (!filasC.length) return toast('No se encontraron clientes en el archivo');
+      $('#prev').innerHTML = `<p><b>${filasC.length}</b> clientes leídos. Ejemplo: ${esc(Object.values(filasC[0]).join(' | '))}</p><button class="btn" data-act="importarClientes">Importar</button>`;
+    } catch { toast('No se pudo leer el archivo'); }
+  };
+}
+async function importarClientes() {
+  try {
+    const r = await api('POST', 'p/importarclientes', { rows: filasC, vendedorId: $('#vimp').value });
+    await cargar();
+    $('#prev').innerHTML = `<p><b>Listo:</b> ${r.creados} creados, ${r.actualizados} actualizados.</p>${r.errores.length ? `<p class="mut" style="color:var(--bad)">${r.errores.length} filas con error:<br>${r.errores.slice(0, 30).map(esc).join('<br>')}<br>Corregí (por ejemplo elegí un vendedor arriba) y volvé a tocar Importar.</p><button class="btn" data-act="importarClientes">Importar de nuevo</button>` : ''}`;
+  } catch (e) { toast(e.message); }
+}
+function plantillaClientes() {
+  if (!window.XLSX) return toast('No cargó el generador de Excel (revisá la conexión)');
+  const ws = XLSX.utils.aoa_to_sheet([['Código cliente', 'Nombre y apellido', 'Dirección', 'Teléfono'], ['C001', 'Juan Pérez', 'Mitre 123', '3454111222']]);
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Clientes'); XLSX.writeFile(wb, 'plantilla-clientes.xlsx');
 }
 function vElegir() {
   $('#main').innerHTML = `<button class="btn sec" data-act="nuevoCliente" style="margin-bottom:10px">+ Nuevo cliente</button>` + buscador(selVend());
@@ -504,7 +543,7 @@ document.addEventListener('click', async e => {
   if (d.go) { if (d.nuevo) nuevoDraft(); go(d.go); }
   else if (d.act === 'atras') {
     if (eligiendoPromo) { eligiendoPromo = false; return render(); }
-    go({ producto: 'productos', usuario: 'usuarios', cliente: clienteVolver === 'elegir' ? 'elegir' : 'clientes', clientes: 'menu', elegir: 'pedido', pedido: draft && draft.id ? 'pedidos' : 'menu' }[view] || 'menu');
+    go({ producto: 'productos', usuario: 'usuarios', cliente: clienteVolver === 'elegir' ? 'elegir' : 'clientes', importarc: 'clientes', clientes: 'menu', elegir: 'pedido', pedido: draft && draft.id ? 'pedidos' : 'menu' }[view] || 'menu');
   }
   else if (d.act === 'salir') salir();
   else if (d.act === 'guardarPedido') guardarPedido();
@@ -517,6 +556,8 @@ document.addEventListener('click', async e => {
   else if (d.act === 'pdf') exportarPdf();
   else if (d.act === 'nuevoCliente') { clienteVolver = view === 'elegir' ? 'elegir' : 'clientes'; editC = {}; go('cliente'); }
   else if (d.act === 'cambiarCliente') go('elegir');
+  else if (d.act === 'importarClientes') importarClientes();
+  else if (d.act === 'plantillaClientes') plantillaClientes();
   else if (d.act === 'borrarCliente') {
     if (!confirm('¿Eliminar el cliente? Sus pedidos se conservan.')) return;
     try { await api('DELETE', 'p/clientes/' + editC.id); await cargar(); go('clientes'); } catch (er) { toast(er.message); }
