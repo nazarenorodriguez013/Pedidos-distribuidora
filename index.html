@@ -62,7 +62,21 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .estado.ok{background:#dcfce7;color:#166534}
 .detalle{margin-top:10px}
 .detalle .row{padding:6px 0}
-.detalle .qty button{width:34px;height:34px;font-size:18px}
+.drow{padding:9px 0;border-bottom:1px solid var(--bd)}
+.drow:last-of-type{border-bottom:0}
+.dtop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.dn{min-width:0;flex:1}
+.dn b{display:block;font-size:15px;line-height:1.2;overflow-wrap:anywhere}
+.dn .mut{font-size:12px}
+.dp{text-align:right;font-size:11px;line-height:1.25;color:var(--mut);white-space:nowrap;flex:none}
+.dp b{display:block;font-size:13px;color:var(--tx)}
+.dsub{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:3px}
+.dcode{min-width:0;flex:1;font-size:12px;color:var(--mut);overflow-wrap:anywhere}
+.dctl{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex:none}
+.drow .qty{gap:4px}
+.drow .qty button{width:30px;height:30px;border-radius:8px;font-size:17px;padding:0}
+.drow .qin{width:52px;min-height:30px;height:30px;font-size:15px;padding:2px;border-radius:8px}
+.drow .xq{width:30px;min-height:30px;height:30px;padding:0;color:var(--bad);flex:none;border-radius:8px;font-size:14px}
 .dtot{border-top:1px solid var(--bd)!important}
 .qin{width:68px;text-align:center;font-size:18px;font-weight:700;padding:6px;min-height:42px}
 .tabs{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--bd);z-index:7;padding-bottom:env(safe-area-inset-bottom)}
@@ -373,8 +387,10 @@ function pintarDetalle() {
   const sel = productos.filter(enPed);
   for (const p of sel) if (promoPorCant(p) && draft.items[p.id] >= promoCantDe(p) && !draft.promos[p.id] && !draft.avisado[p.id]) { draft.avisado[p.id] = true; toast(`🏷️ Promo disponible en ${p.nombre}`); }
   for (const c of combos) if (comboCumple(c) && !draft.combos[c.id] && !draft.avisadoC[c.id]) { draft.avisadoC[c.id] = true; toast(`🏷️ Promo disponible: ${c.nombre}`); }
-  $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + bloqueCombos() + sel.map(p => { const pl = precioLinea(p); return `<div class="row" data-pid="${p.id}" style="flex-wrap:wrap"><div class="nm"><b>${esc(p.nombre)}</b>${draft.estado === 'cargado' && draft.items[p.id] > cargadaDe(p.id) ? `<span class="tag bad">Agregar${cargadaDe(p.id) ? ' +' + (draft.items[p.id] - cargadaDe(p.id)) : ''}</span> ` : draft.estado === 'cargado' && draft.items[p.id] < cargadaDe(p.id) ? `<span class="tag warn">−${cargadaDe(p.id) - draft.items[p.id]}</span> ` : ''}<span class="mut">${pl < p.precio ? `<s>${money(p.precio)}</s> ` : ''}${money(pl)} c/u${multiploDe(p) > 1 ? ' · unidad ' + multiploDe(p) : ''} · subtotal <b data-sub>${money(draft.items[p.id] * pl)}</b></span></div>
-      <div class="qty"><button data-q="-1">−</button><input class="qin" type="number" inputmode="numeric" min="0" step="${multiploDe(p)}" data-qin="${p.id}" value="${draft.items[p.id]}"><button data-q="1">+</button></div><button class="btn sec" data-quitar="${p.id}" aria-label="Quitar del pedido" style="width:38px;min-height:38px;padding:0;color:var(--bad);flex:none">✕</button>${bloquePromo(p)}</div>`; }).join('') + (draft.estado === 'cargado' ? (draft.cargadoItems || []).filter(o => !(draft.items[o.pid] > 0)).map(o => `<div class="row" style="border:0"><span class="tag warn">Quitado</span><span class="mut">${esc(o.nombre)} ×${o.cant}</span></div>`).join('') : '') + '<div id="dtotales"></div>' : '<span class="mut">Tocá un producto de la lista para agregarlo con cantidad 1. Después ajustás la cantidad acá.</span>';
+  $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + bloqueCombos() + sel.map(p => { const pl = precioLinea(p); const ex = draft.items[p.id], cc = cargadaDe(p.id);
+    return `<div class="drow" data-pid="${p.id}"><div class="dtop"><div class="dn"><b>${esc(p.nombre)}</b></div>
+      <div class="dp">${pl < p.precio ? `<s>${money(p.precio)}</s> ` : ''}${money(pl)} c/u<b data-sub>${money(ex * pl)}</b></div></div>
+      <div class="dsub"><div class="dcode">${esc(p.codigo)}${multiploDe(p) > 1 ? ' · unidad ' + multiploDe(p) : ''}${draft.estado === 'cargado' && ex > cc ? ` <span class="tag bad">Agregar${cc ? ' +' + (ex - cc) : ''}</span>` : draft.estado === 'cargado' && ex < cc ? ` <span class="tag warn">−${cc - ex}</span>` : ''}</div><div class="dctl"><div class="qty"><button data-q="-1">−</button><input class="qin" type="number" inputmode="numeric" min="0" step="${multiploDe(p)}" data-qin="${p.id}" value="${ex}"><button data-q="1">+</button></div><button class="btn sec xq" data-quitar="${p.id}" aria-label="Quitar del pedido">✕</button></div></div>${bloquePromo(p)}</div>`; }).join('') + (draft.estado === 'cargado' ? (draft.cargadoItems || []).filter(o => !(draft.items[o.pid] > 0)).map(o => `<div class="row" style="border:0"><span class="tag warn">Quitado</span><span class="mut">${esc(o.nombre)} ×${o.cant}</span></div>`).join('') : '') + '<div id="dtotales"></div>' : '<span class="mut">Tocá un producto de la lista para agregarlo con cantidad 1. Después ajustás la cantidad acá.</span>';
 }
 let editNota = false;
 function pintarNota() {
@@ -881,7 +897,7 @@ document.addEventListener('input', e => {
   const pid = e.target.dataset && e.target.dataset.qin; if (!pid) return;
   const c = parseInt(e.target.value);
   if (c > 0) draft.items[pid] = Math.min(c, 99999); else if (e.target.value !== '') delete draft.items[pid];
-  const p = productos.find(x => x.id == pid), sub = e.target.closest('.row').querySelector('[data-sub]');
+  const p = productos.find(x => x.id == pid), sub = e.target.closest('[data-pid]').querySelector('[data-sub]');
   if (sub && c > 0) sub.textContent = money(c * precioLinea(p));
   pintarLista(); pintarTotal();
 });
