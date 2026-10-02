@@ -102,6 +102,9 @@ function cleanCliente(b, prev, admin, yo) {
 
 // Arma un pedido nuevo/editado con las líneas y su precio.
 function armarPedido(b, viejo, quien, admin) {
+  // Pedido ya cargado por administración: el vendedor solo puede agregar (lo cargado no se toca)
+  const bloqueado = !admin && !!viejo && viejo.estado === 'cargado';
+  if (bloqueado) b = { ...b, clienteId: viejo.clienteId, cliente: viejo.cliente, dia: viejo.dia, turno: viejo.turno, nota: viejo.nota };
   let cli = null;
   if (b.clienteId) {
     cli = state.clientes.find(c => c.id === Number(b.clienteId));
@@ -140,9 +143,21 @@ function armarPedido(b, viejo, quien, admin) {
     const unit = aplica ? precioPromoDe(p) : p.precio;
     items.push({ pid, codigo: p.codigo, nombre: p.nombre, precio: old && !!old.promo === aplica ? old.precio : unit, precioLista: p.precio, promo: aplica || undefined, cant });
   }
+  let agregoAhora = false;
+  if (viejo && viejo.estado === 'cargado') {
+    for (const o of viejo.items) {   // lo ya cargado no se puede quitar ni bajar (solo el administrador)
+      const cc = o.cantCargada ?? o.cant, n = items.find(i => i.pid === o.pid);
+      if (bloqueado && (!n || n.cant < cc)) throw { code: 403, msg: 'El pedido ya fue cargado por administración: solo se pueden agregar productos' };
+    }
+    for (const i of items) {
+      const o = viejas.get(i.pid);
+      i.cantCargada = admin ? i.cant : (o ? o.cantCargada ?? o.cant : 0);   // el admin que edita deja todo como cargado
+      if (i.cant > i.cantCargada) agregoAhora = true;
+    }
+  }
   const subtotal = Math.round(items.reduce((s, i) => s + i.precio * i.cant, 0) * 100) / 100;
   const total = redondear(subtotal);
-  return { cliente, nota: String(b.nota || '').trim(), items, subtotal, redondeo: Math.round((total - subtotal) * 100) / 100, total, clienteId: cli ? cli.id : undefined, dia: dia || undefined, turno: turno || undefined, vendedorId: vend ? vend.id : viejo ? viejo.vendedorId : quien.id, vendedor: vend ? vend.nombre : viejo ? viejo.vendedor : quien.nombre };
+  return { ...(agregoAhora ? { agregadoEn: new Date().toISOString() } : {}), ...(admin && viejo && viejo.estado === 'cargado' ? { agregadoEn: undefined } : {}), cliente, nota: String(b.nota || '').trim(), items, subtotal, redondeo: Math.round((total - subtotal) * 100) / 100, total, clienteId: cli ? cli.id : undefined, dia: dia || undefined, turno: turno || undefined, vendedorId: vend ? vend.id : viejo ? viejo.vendedorId : quien.id, vendedor: vend ? vend.nombre : viejo ? viejo.vendedor : quien.nombre };
 }
 
 // ---- sesiones: token firmado con el usuario; el rol se lee de la base en cada pedido ----
@@ -342,6 +357,24 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       throw { code: 405, msg: 'Método no permitido' };
     }
 
+    if (rec === 'cargar' && req.method === 'PUT') {   // el administrador marca el pedido como cargado / pendiente / agregados revisados
+      soloAdmin();
+      const o = s.pedidos.find(x => x.id === id);
+      if (!o) throw { code: 404, msg: 'No existe' };
+      const { accion } = await body(req, 1e4), ahora = new Date().toISOString();
+      if (accion === 'cargado' || accion === 'visto') {
+        if (accion === 'cargado' || !o.cargadoEn) o.cargadoEn = ahora;
+        o.estado = 'cargado'; o.cargadoPor = yo.nombre;
+        for (const i of o.items) i.cantCargada = i.cant;
+        delete o.agregadoEn;
+      } else if (accion === 'pendiente') {
+        o.estado = 'pendiente'; delete o.cargadoEn; delete o.cargadoPor; delete o.agregadoEn;
+        for (const i of o.items) delete i.cantCargada;
+      } else throw { code: 400, msg: 'Acción inválida' };
+      await save(pool);
+      return send(res, 200, o);
+    }
+
     if (rec !== 'productos' && rec !== 'pedidos') throw { code: 404, msg: 'No encontrado' };
     const list = s[rec];
     // el vendedor solo ve y toca sus propios pedidos
@@ -365,6 +398,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         obj = armarPedido(b, null, yo, admin);
         if (uid) obj.uid = uid;
         obj.id = s.seq.o++;
+        obj.estado = 'pendiente';
         obj.creado = obj.editado = new Date().toISOString();
       }
       list.push(obj);
@@ -387,6 +421,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       return send(res, 200, list[idx]);
     }
     if (req.method === 'DELETE') {
+      if (rec === 'pedidos' && !admin && list[idx].estado === 'cargado') throw { code: 403, msg: 'El pedido ya fue cargado por administración' };
       list.splice(idx, 1);
       await save(pool);
       return send(res, 200, { ok: true });
