@@ -315,11 +315,13 @@ function comboDeLinea(p) {   // promo combinada aceptada y cumplida que alcanza 
 }
 const promoAplicada = p => hayPromo(p) && (promoCantDe(p) <= 1 || (draft.promos[p.id] === 'si' && (draft.items[p.id] || 0) >= promoCantDe(p)));
 const precioLinea = p => {
-  const o = draft.orig[p.id], cb = comboDeLinea(p);
-  if (cb) return o && o.comboId === cb.id ? o.precio : precioComboDe(cb, p);
-  const ap = promoAplicada(p);
-  if (o && !o.comboId && !!o.promo === ap && (o.promo !== undefined || !ap)) return o.precio;   // en pedidos ya cargados se respeta el precio con que se vendió
-  return ap ? precioPromoDe(p) : p.precio;
+  const o = draft.orig[p.id], cb = comboDeLinea(p), ap = promoAplicada(p);
+  const qtyNow = !cb && promoPorCant(p) && ap;
+  if (o) {   // un producto que ya estaba en el pedido conserva el precio con que se vendió; solo cambia si se acepta o quita una promo
+    const oldQty = o.promoQty ?? (!!o.promo && promoPorCant(p));
+    if ((o.comboId || 0) === (cb ? cb.id : 0) && oldQty === qtyNow) return o.precio;
+  }
+  return cb ? precioComboDe(cb, p) : ap ? precioPromoDe(p) : p.precio;
 };
 const REDONDEO = 50;   // el total de cada pedido se redondea hacia arriba a múltiplo de 50
 const redondear50 = x => Math.ceil(Math.round(x * 100) / (REDONDEO * 100)) * REDONDEO;
@@ -663,7 +665,8 @@ function cerrarModal() {
 }
 async function setProd(id, campos) {
   const p = productos.find(x => x.id === id);
-  try { Object.assign(p, await api('PUT', 'p/productos/' + id, { ...p, ...campos })); } catch (e) { toast(e.message); }
+  // no se manda la unidad de venta: tocar activo/promo no la fija
+  try { const { multiplo, multiploSet, ...resto } = p; Object.assign(p, await api('PUT', 'p/productos/' + id, { ...resto, ...campos })); } catch (e) { toast(e.message); }
 }
 
 /* ---------- promociones ---------- */
@@ -777,7 +780,7 @@ async function filasDePdf(file) {
 }
 function vImportar() {
   $('#main').innerHTML = `<div class="card"><h3 style="margin:0 0 6px">Importar lista</h3>
-    <p class="mut">Subí el <b>PDF de la lista de precios</b> del proveedor (código, artículo, IVA, precio; los de precio 0 quedan desactivados), o un archivo Excel (.xlsx) / CSV con columnas: <b>Código</b>, <b>Nombre</b>, <b>Precio</b> y, si querés, <b>Unidad de venta</b> (de a cuántas unidades se vende: 1, 5, 10…) y <b>Activo</b> (si/no). Si el archivo trae una columna Stock, se ignora. Los productos se identifican por código: los existentes se actualizan (nombre, precio, unidad de venta) y los nuevos se crean. <b>No se borra nada</b> y las promos (de producto y combinadas) se conservan.</p>
+    <p class="mut">Subí el <b>PDF de la lista de precios</b> del proveedor (código, artículo, IVA, precio; los de precio 0 quedan desactivados), o un archivo Excel (.xlsx) / CSV con columnas: <b>Código</b>, <b>Nombre</b>, <b>Precio</b> y, si querés, <b>Unidad de venta</b> (de a cuántas unidades se vende: 1, 5, 10…). Solo se carga en productos que todavía no la tienen definida: <b>nunca pisa una unidad ya configurada</b> y <b>Activo</b> (si/no). Si el archivo trae una columna Stock, se ignora. Los productos se identifican por código: los existentes se actualizan (nombre, precio, unidad de venta) y los nuevos se crean. <b>No se borra nada</b> y las promos (de producto y combinadas) se conservan.</p>
     <input id="arch" type="file" accept=".pdf,.xlsx,.xls,.csv"><div id="prev"></div></div>
     <div class="card"><h3 style="margin:0 0 6px">Exportar</h3><p class="mut">Descarga el listado actual en Excel; podés editarlo y volver a importarlo.</p><button class="btn sec" data-act="exportarExcel">Descargar Excel</button></div>`;
   $('#arch').onchange = async e => {
