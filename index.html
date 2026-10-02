@@ -256,10 +256,21 @@ function login() {
     } catch (er) { $('#err').textContent = er.message; }
   };
 }
+/* borrador: el pedido nuevo que se está cargando queda guardado en el navegador aunque se salga sin guardarlo */
+const claveBorrador = () => 'pd_borrador_' + (user && user.id);
+function guardarBorrador() {
+  if (!draft || draft.id || !user) return;
+  const vacio = !draft.clienteId && !Object.keys(draft.items).length && !draft.nota;
+  try { vacio ? localStorage.removeItem(claveBorrador()) : localStorage.setItem(claveBorrador(), JSON.stringify(draft)); } catch {}
+}
+function leerBorrador() { try { const d = JSON.parse(localStorage.getItem(claveBorrador())); return d && !d.id && d.items ? d : null; } catch { return null; } }
+function descartarBorrador() { try { localStorage.removeItem(claveBorrador()); } catch {} }
+function abrirNuevoPedido() { const b = leerBorrador(); if (b) draft = b; else nuevoDraft(); }   // si había uno sin guardar, se sigue con ese
 function vMenu() {
   const a = esAdmin(), hoyP = pedidos.filter(p => p.dia === hoy());
   $('#main').innerHTML = `${a && !dbOk ? '<div class="hint" style="background:#fee2e2;color:#7f1d1d;padding:10px;border-radius:8px;margin-bottom:10px"><b>Base de datos no conectada.</b> Los usuarios y pedidos se borran en cada deploy. Revisá la variable DATABASE_URL en Railway.</div>' : ''}${a && pedidos.some(hayAgregados) ? `<button class="btn" data-tab="pedidos" data-festado="agregados" style="background:var(--bad);margin-bottom:10px">⚠️ ${pedidos.filter(hayAgregados).length} pedido(s) modificados por el vendedor después de cargarlos (Agregar)</button>` : ''}<p class="mut">${esc(user.nombre)}${user.nombre === 'Administrador' || !a ? '' : ' · Administrador'}${!a ? ' · Vendedor' : ''}</p>
-    <div class="menu"><button class="main" data-go="pedido" data-nuevo="1"><span>🛒</span>Cargar pedido</button>
+    ${(() => { const b = leerBorrador(); if (!b) return ''; const k = Object.keys(b.items).length; return `<div class="card" style="border-color:var(--warn);margin-bottom:10px"><b>📝 Pedido sin guardar</b><br><span class="mut">${b.cliente ? esc(b.cliente) : 'Sin cliente'} · ${k} ${k === 1 ? 'producto' : 'productos'}</span><div class="row" style="border:0;padding:8px 0 0;gap:8px"><button class="btn" data-go="pedido" data-nuevo="1">Continuar</button><button class="btn sec" data-act="descartarBorrador">Descartar</button></div></div>`; })()}
+    <div class="menu"><button class="main" data-go="pedido" data-nuevo="1"><span>🛒</span>${leerBorrador() ? 'Continuar pedido' : 'Cargar pedido'}</button>
     <button data-go="promos"><span>🏷️</span>Promos de la semana</button>
     <button data-tab="pedidos"><span>📋</span>Para hoy<br><small class="mut">${hoyP.length} pedidos · ${money(hoyP.reduce((t, p) => t + p.total, 0))}</small></button></div>`;
 }
@@ -315,7 +326,7 @@ function cambiosDe(ped) {
 const snapDraft = () => JSON.stringify([Object.entries(draft.items).sort(), draft.nota, draft.dia, draft.turno, draft.clienteId, Object.entries(draft.promos).sort(), Object.entries(draft.combos).sort()]);
 const hayCambios = () => !!draft.id && draft.snap !== snapDraft();   // el que mira el pedido lo modificó en pantalla
 const etiquetaBoton = () => !draft.id ? 'Guardar pedido' : !esAdmin() ? 'Guardar cambios' : hayCambios() ? 'Guardar cambios' : (draft.estado !== 'cargado' || draft.agregar) ? 'Cargar' : '✓ Cargado';
-function actualizarBoton() { guardarNav(); const b = $('#btnGuardar'); if (b) { b.textContent = etiquetaBoton(); b.disabled = esAdmin() && draft.id && !hayCambios() && draft.estado === 'cargado' && !draft.agregar; } }
+function actualizarBoton() { guardarNav(); guardarBorrador(); const b = $('#btnGuardar'); if (b) { b.textContent = etiquetaBoton(); b.disabled = esAdmin() && draft.id && !hayCambios() && draft.estado === 'cargado' && !draft.agregar; } }
 function nuevoDraft(ped) {
   draft = ped ? { id: ped.id, orden: ped.items.map(i => i.pid), clienteCodigo: ped.clienteCodigo ?? (clientes.find(c => c.id === ped.clienteId) || {}).codigo, combos: Object.fromEntries(ped.items.filter(i => i.comboId).map(i => [i.comboId, 'si'])), avisadoC: {}, cargadoPor: ped.cargadoPor, agregar: !!ped.agregar, cambios: cambiosDe(ped), cargadoItems: ped.cargadoItems || [], estado: ped.estado || 'pendiente', cargada: Object.fromEntries(ped.items.map(i => [i.pid, i.cantCargada ?? i.cant])), promos: Object.fromEntries(ped.items.filter(i => i.promo).map(i => [i.pid, 'si'])), avisado: {}, dia: ped.dia || diaSesion(), turno: ped.turno || '', clienteId: ped.clienteId || null, legacy: !ped.clienteId, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])) }
               : { id: null, orden: [], combos: {}, avisadoC: {}, estado: 'pendiente', cargada: {}, promos: {}, avisado: {}, dia: diaSesion(), turno: ss('pd_turno') || '', clienteId: null, uid: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)), cliente: '', nota: '', items: {}, orig: {} };
@@ -361,7 +372,7 @@ function vPedido() {
     <div id="detalle" class="card detalle"></div>
     <div id="notaBox" style="margin-top:10px"></div>
     ${esAdmin() && draft.id && draft.estado === 'cargado' ? '<div style="margin-top:14px"><button class="btn sec" data-estado="pendiente">Volver a pendiente</button></div>' : ''}
-    ${draft.id && !cargadoParaVendedor() ? '<div style="margin:24px 0 80px"><button class="btn bad" data-act="borrarPedido">Eliminar pedido</button></div>' : '<div style="height:80px"></div>'}
+    ${draft.id && !cargadoParaVendedor() ? '<div style="margin:24px 0 80px"><button class="btn bad" data-act="borrarPedido">Eliminar pedido</button></div>' : !draft.id ? '<div style="margin:24px 0 80px"><button class="btn sec" data-act="descartarPedido">Descartar este pedido</button></div>' : '<div style="height:80px"></div>'}
     <div class="bar"><div class="tot" id="tot"></div><button class="btn" id="btnGuardar" data-act="guardarPedido">${etiquetaBoton()}</button></div>`;
   editNota = false; pintarNota(); actualizarBoton();
   $('#dia').onchange = e => { draft.dia = e.target.value; if (!draft.id && draft.dia) ss('pd_dia', draft.dia); actualizarBoton(); };
@@ -464,6 +475,7 @@ async function guardarPedido() {
     if (draft.id) await api('PUT', 'p/pedidos/' + draft.id, body); else await api('POST', 'p/pedidos', { ...body, uid: draft.uid });
     await cargar();
     if (draft.id && esAdmin()) { nuevoDraft(pedidos.find(x => x.id === draft.id)); render(); toast('Cambios guardados. Ahora podés cargarlo.'); return; }   // el admin se queda en el pedido para cargarlo
+    if (!draft.id) descartarBorrador();
     toast('Pedido guardado'); volverA('pedidos');
   } catch (e) {
     if (!e.offline) return toast(e.message);
@@ -471,7 +483,7 @@ async function guardarPedido() {
     // sin señal: queda en el teléfono y se envía solo cuando vuelva
     const total = totalDraft();
     if (!lsSet('pd_cola', [...leerCola(), { uid: draft.uid, u: user.id, body, total, t: new Date().toISOString() }])) return toast('No hay espacio para guardar el pedido');
-    toast('Sin señal: pedido guardado, se enviará solo'); volverA('pedidos');
+    descartarBorrador(); toast('Sin señal: pedido guardado, se enviará solo'); volverA('pedidos');
   }
 }
 
@@ -860,7 +872,7 @@ document.addEventListener('click', async e => {
   else if (d.combo) { const cid = t.closest('[data-cid]').dataset.cid; if (d.combo === 'ask') delete draft.combos[cid]; else draft.combos[cid] = d.combo; const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); }
   else if (d.promo && row) { if (d.promo === 'ask') delete draft.promos[row.dataset.pid]; else draft.promos[row.dataset.pid] = d.promo; const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); }
   else if (d.sel) { q = ''; $('#q').value = ''; cambiarCant(+d.sel, 1); }   // tocar el producto lo agrega con cantidad 1; después se ajusta en el detalle
-  else if (d.go) { if (d.nuevo) nuevoDraft(); go(d.go); }
+  else if (d.go) { if (d.nuevo) abrirNuevoPedido(); go(d.go); }
   else if (d.act === 'atras') {
     if (eligiendoPromo) { eligiendoPromo = false; return render(); }
     pila.length > 1 ? history.back() : go('menu', true);
@@ -891,6 +903,11 @@ document.addEventListener('click', async e => {
   else if (d.turno) { draft.turno = d.turno; if (!draft.id) ss('pd_turno', d.turno); $('#turnos').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.turno === d.turno)); }
   else if (d.act === 'editarNota') { editNota = true; pintarNota(); }
   else if (d.act === 'cerrarNota') { editNota = false; pintarNota(); }
+  else if (d.act === 'descartarBorrador') { descartarBorrador(); render(); }
+  else if (d.act === 'descartarPedido') {
+    if (!t.dataset.seguro) { t.dataset.seguro = 1; t.textContent = 'Tocá de nuevo para descartar'; return; }
+    descartarBorrador(); nuevoDraft(); toast('Pedido descartado'); volverA('menu');
+  }
   else if (d.act === 'cambiarCliente') go('elegir');
   else if (d.act === 'importarClientes') importarClientes();
   else if (d.act === 'plantillaClientes') plantillaClientes();
