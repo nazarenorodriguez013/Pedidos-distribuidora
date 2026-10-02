@@ -241,7 +241,7 @@ function pintarLista() {
 function pintarDetalle() {
   const sel = productos.filter(enPed);
   $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + sel.map(p => `<div class="row" data-pid="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${money(precioLinea(p))} c/u · subtotal <b data-sub>${money(draft.items[p.id] * precioLinea(p))}</b></span></div>
-      <div class="qty"><button data-q="-1">−</button><input class="qin" type="number" inputmode="numeric" min="0" data-qin="${p.id}" value="${draft.items[p.id]}"><button data-q="1">+</button></div></div>`).join('') : '<span class="mut">Tocá un producto de la lista para agregarlo con cantidad 1. Después ajustás la cantidad acá.</span>';
+      <div class="qty"><button data-q="-1">−</button><input class="qin" type="number" inputmode="numeric" min="0" data-qin="${p.id}" value="${draft.items[p.id]}"><button data-q="1">+</button></div><button class="btn sec" data-quitar="${p.id}" aria-label="Quitar del pedido" style="width:38px;min-height:38px;padding:0;color:var(--bad);flex:none">✕</button></div>`).join('') : '<span class="mut">Tocá un producto de la lista para agregarlo con cantidad 1. Después ajustás la cantidad acá.</span>';
 }
 function pintarTotal() {
   const n = Object.values(draft.items).reduce((a, b) => a + b, 0);
@@ -571,7 +571,8 @@ document.addEventListener('click', async e => {
   const t = e.target.closest('button, [data-sel], [data-ped], [data-edit], [data-edituser], [data-editcli], [data-cli], [data-precio], [data-promoprecio], [data-nuevapromo]');
   if (!t || e.target.closest('[data-stop]')) return;
   const d = t.dataset, row = t.closest('[data-pid]');
-  if (d.sel) { verLista = false; q = ''; $('#q').value = ''; cambiarCant(+d.sel, 1); }   // tocar el producto lo agrega con cantidad 1; después se ajusta en el detalle
+  if (d.quitar) { delete draft.items[d.quitar]; const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); }
+  else if (d.sel) { verLista = false; q = ''; $('#q').value = ''; cambiarCant(+d.sel, 1); }   // tocar el producto lo agrega con cantidad 1; después se ajusta en el detalle
   else if (d.go) { if (d.nuevo) nuevoDraft(); go(d.go); }
   else if (d.act === 'atras') {
     if (eligiendoPromo) { eligiendoPromo = false; return render(); }
