@@ -296,8 +296,8 @@ const hayCambios = () => !!draft.id && draft.snap !== snapDraft();   // el que m
 const etiquetaBoton = () => !draft.id ? 'Guardar pedido' : !esAdmin() ? 'Guardar cambios' : hayCambios() ? 'Guardar cambios' : (draft.estado !== 'cargado' || draft.agregar) ? 'Cargar' : '✓ Cargado';
 function actualizarBoton() { const b = $('#btnGuardar'); if (b) { b.textContent = etiquetaBoton(); b.disabled = esAdmin() && draft.id && !hayCambios() && draft.estado === 'cargado' && !draft.agregar; } }
 function nuevoDraft(ped) {
-  draft = ped ? { id: ped.id, clienteCodigo: ped.clienteCodigo ?? (clientes.find(c => c.id === ped.clienteId) || {}).codigo, combos: Object.fromEntries(ped.items.filter(i => i.comboId).map(i => [i.comboId, 'si'])), avisadoC: {}, cargadoPor: ped.cargadoPor, agregar: !!ped.agregar, cambios: cambiosDe(ped), cargadoItems: ped.cargadoItems || [], estado: ped.estado || 'pendiente', cargada: Object.fromEntries(ped.items.map(i => [i.pid, i.cantCargada ?? i.cant])), promos: Object.fromEntries(ped.items.filter(i => i.promo).map(i => [i.pid, 'si'])), avisado: {}, dia: ped.dia || diaSesion(), turno: ped.turno || '', clienteId: ped.clienteId || null, legacy: !ped.clienteId, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])) }
-              : { id: null, combos: {}, avisadoC: {}, estado: 'pendiente', cargada: {}, promos: {}, avisado: {}, dia: diaSesion(), turno: ss('pd_turno') || '', clienteId: null, uid: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)), cliente: '', nota: '', items: {}, orig: {} };
+  draft = ped ? { id: ped.id, orden: ped.items.map(i => i.pid), clienteCodigo: ped.clienteCodigo ?? (clientes.find(c => c.id === ped.clienteId) || {}).codigo, combos: Object.fromEntries(ped.items.filter(i => i.comboId).map(i => [i.comboId, 'si'])), avisadoC: {}, cargadoPor: ped.cargadoPor, agregar: !!ped.agregar, cambios: cambiosDe(ped), cargadoItems: ped.cargadoItems || [], estado: ped.estado || 'pendiente', cargada: Object.fromEntries(ped.items.map(i => [i.pid, i.cantCargada ?? i.cant])), promos: Object.fromEntries(ped.items.filter(i => i.promo).map(i => [i.pid, 'si'])), avisado: {}, dia: ped.dia || diaSesion(), turno: ped.turno || '', clienteId: ped.clienteId || null, legacy: !ped.clienteId, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])) }
+              : { id: null, orden: [], combos: {}, avisadoC: {}, estado: 'pendiente', cargada: {}, promos: {}, avisado: {}, dia: diaSesion(), turno: ss('pd_turno') || '', clienteId: null, uid: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)), cliente: '', nota: '', items: {}, orig: {} };
   if (ped) draft.snap = snapDraft();
 }
 // promos combinadas (ver servidor): grupos de productos con una cantidad cada uno; si se cumple todo y el vendedor acepta, baja el precio
@@ -385,9 +385,13 @@ function bloquePromo(p) {
   if (st === 'no') return `<div class="promo-hint">Promo no aplicada <button class="btn sec" data-promo="ask">Aplicar</button></div>`;
   return `<div class="promo-offer"><b>🏷️ ¡Hay una promo!</b> ${esc(promoDesc(p))}. ¿La aplicás?<div class="row" style="border:0;padding:8px 0 0"><button class="btn" data-promo="si">Aceptar</button><button class="btn sec" data-promo="no">No, gracias</button></div></div>`;
 }
+function sincronizarOrden() {   // los productos van en el orden en que se cargaron (no alfabético)
+  draft.orden = (draft.orden || []).filter(pid => draft.items[pid] > 0);
+  for (const pid of Object.keys(draft.items).map(Number)) if (draft.items[pid] > 0 && !draft.orden.includes(pid)) draft.orden.push(pid);
+}
 function pintarDetalle() {
-  limpiarPromos(); limpiarCombos();
-  const sel = productos.filter(enPed);
+  limpiarPromos(); limpiarCombos(); sincronizarOrden();
+  const sel = draft.orden.map(pid => productos.find(p => p.id === pid)).filter(Boolean);
   for (const p of sel) if (promoPorCant(p) && draft.items[p.id] >= promoCantDe(p) && !draft.promos[p.id] && !draft.avisado[p.id]) { draft.avisado[p.id] = true; toast(`🏷️ Promo disponible en ${p.nombre}`); }
   for (const c of combos) if (comboCumple(c) && !draft.combos[c.id] && !draft.avisadoC[c.id]) { draft.avisadoC[c.id] = true; toast(`🏷️ Promo disponible: ${c.nombre}`); }
   $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + bloqueCombos() + sel.map(p => { const pl = precioLinea(p); const ex = draft.items[p.id], cc = cargadaDe(p.id), ref = (draft.estado === 'cargado' && draft.orig[p.id] && draft.orig[p.id].precioLista) || p.precio;   // precio de lista con el que se armó la línea
@@ -426,7 +430,8 @@ async function cargarPedido() {   // el administrador da el pedido por cargado
 }
 async function guardarPedido() {
   if (esAdmin() && draft.id && !hayCambios()) { if (draft.estado === 'cargado' && !draft.agregar) return; return cargarPedido(); }   // sin cambios: el botón dice "Cargar"
-  const items = Object.entries(draft.items).map(([pid, cant]) => { const p = productos.find(x => x.id == pid); return { pid: Number(pid), cant, promo: !!(p && !comboDeLinea(p) && promoPorCant(p) && promoAplicada(p)), combo: p && comboDeLinea(p) ? comboDeLinea(p).id : undefined }; });
+  sincronizarOrden();
+  const items = draft.orden.map(pid => [pid, draft.items[pid]]).map(([pid, cant]) => { const p = productos.find(x => x.id == pid); return { pid: Number(pid), cant, promo: !!(p && !comboDeLinea(p) && promoPorCant(p) && promoAplicada(p)), combo: p && comboDeLinea(p) ? comboDeLinea(p).id : undefined }; });
   const body = { clienteId: draft.clienteId, cliente: draft.cliente, nota: draft.nota, dia: draft.dia, turno: draft.turno, items };
   if (!draft.clienteId && !draft.legacy) return toast('Elegí un cliente');
   const mal = items.find(i => { const p = productos.find(x => x.id === i.pid); return p && i.cant % multiploDe(p); });
