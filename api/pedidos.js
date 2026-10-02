@@ -141,18 +141,20 @@ function importar(b) {
     if (f.precio !== undefined && f.precio !== '' && precio === null) return r.errores.push(`Fila ${fila} (${codigo}): precio inválido`);
     if (f.stock !== undefined && f.stock !== '' && stock === null) return r.errores.push(`Fila ${fila} (${codigo}): stock inválido`);
     let p = state.productos.find(x => x.codigo.toLowerCase() === codigo.toLowerCase());
+    const sinPrecio = precio === 0 && (f.activo === undefined || f.activo === '');   // precio 0 = sin precio: queda desactivado
     vistos.add(codigo.toLowerCase());
     if (!p) {
       const nombre = String(f.nombre ?? '').trim();
       if (!nombre || precio === null) return r.errores.push(`Fila ${fila} (${codigo}): producto nuevo necesita nombre y precio`);
-      state.productos.push({ id: state.seq.p++, codigo, nombre, precio, stock: Math.floor(stock ?? 0), activo: f.activo === undefined || f.activo === '' ? true : truthy(f.activo), promo: false, precioPromo: 0 });
+      state.productos.push({ id: state.seq.p++, codigo, nombre, precio, stock: Math.floor(stock ?? 0), activo: f.activo === undefined || f.activo === '' ? !sinPrecio : truthy(f.activo), promo: false, precioPromo: 0 });
       return r.creados++;
     }
     if (String(f.nombre ?? '').trim()) p.nombre = String(f.nombre).trim();
-    if (precio !== null) p.precio = precio;
+    if (precio !== null && !sinPrecio) p.precio = precio;
+    if (sinPrecio) p.activo = false;
     if (stock !== null) p.stock = Math.floor(stock);
     if (f.activo !== undefined && f.activo !== '') p.activo = truthy(f.activo);
-    else if (b.catalogoCompleto) p.activo = true;
+    else if (b.catalogoCompleto && !sinPrecio) p.activo = true;
     r.actualizados++;
   });
   if (b.catalogoCompleto) for (const p of state.productos) if (p.activo && !vistos.has(p.codigo.toLowerCase())) { p.activo = false; r.desactivados++; }
