@@ -450,7 +450,7 @@ async function guardarPedido() {
 /* ---------- clientes ---------- */
 let editC = null, clienteVolver = 'clientes', vendC = '';
 const nombreC = c => [c.nombre, c.apellido].filter(Boolean).join(' ');
-const vendNombre = id => (usuarios.find(u => u.id === id) || {}).nombre || '—';
+const vendNombre = id => { const u = usuarios.find(x => x.id === id); return u ? `${u.nombre} (ID ${u.id})` : '—'; };
 const filtrarC = l => { const n = norm(q); return l.filter(c => (!n || [c.nombre, c.apellido, c.codigo, c.telefono, c.direccion].some(x => norm(x).includes(n))) && (!vendC || String(c.vendedorId) === vendC)); };
 function listaClientes(l, attr) {
   return l.length ? `<div class="card">${l.map(c => `<div class="row" ${attr}="${c.id}"><div class="nm"><b>${esc(nombreC(c))}</b><span class="mut">${[c.codigo ? esc(c.codigo) : '', esc(c.direccion), esc(c.telefono), esAdmin() ? esc(vendNombre(c.vendedorId)) : ''].filter(Boolean).join(' · ')}</span></div>${esAdmin() && !c.codigo ? '<span class="tag warn">Sin código</span>' : ''}<span class="mut">›</span></div>`).join('')}</div>` : vacio('No hay clientes');
@@ -464,10 +464,11 @@ function vClientes() {
 }
 /* importar clientes (admin): Código cliente | Nombre y apellido | Dirección | Teléfono [| Vendedor] */
 let filasC = null;
-const COLS_C = { codigo: ['codigo', 'cod'], nombre: ['nombre', 'apellido', 'cliente', 'razon'], direccion: ['direccion', 'domicilio'], telefono: ['telefono', 'tel', 'celular', 'whatsapp'], vendedor: ['vendedor'] };
+const COLS_C = { codigo: ['codigo', 'cod'], nombre: ['nombre', 'apellido', 'cliente', 'razon'], direccion: ['direccion', 'domicilio'], telefono: ['telefono', 'tel', 'celular', 'whatsapp'], vendedor: ['id vendedor', 'idvendedor', 'id de vendedor', 'id vend', 'vendedor', 'id'] };
 function vImportarC() {
-  $('#main').innerHTML = `<div class="card"><p class="mut">Archivo Excel (.xlsx) o CSV con las columnas, en este orden: <b>Código cliente</b>, <b>Nombre y apellido</b>, <b>Dirección</b>, <b>Teléfono</b>. Opcional: una quinta columna <b>Vendedor</b> (usuario o nombre). Los clientes con el mismo código se actualizan; el resto se crea.</p>
-    <label>Vendedor para los clientes que no traigan la columna Vendedor</label>
+  $('#main').innerHTML = `<div class="card"><p class="mut">Archivo Excel (.xlsx) o CSV con las columnas, en este orden: <b>Código cliente</b>, <b>Nombre y apellido</b>, <b>Dirección</b>, <b>Teléfono</b> e <b>ID vendedor</b> (el número del vendedor al que se asigna cada cliente; si la columna no está o viene vacía se usa el vendedor elegido abajo). Los clientes con el mismo código se actualizan; el resto se crea.</p>
+    <div class="card" style="background:var(--bg)"><b>IDs de vendedores</b>${usuarios.filter(u => u.activo).map(u => `<div class="row" style="border:0;padding:3px 0;justify-content:space-between"><span>${esc(u.nombre)} <span class="mut">(${u.rol === 'admin' ? 'admin' : 'vendedor'})</span></span><b>ID ${u.id}</b></div>`).join('')}</div>
+    <label>Vendedor para los clientes sin ID de vendedor en el archivo</label>
     <select id="vimp" style="width:100%;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Elegir vendedor…</option>${usuarios.filter(u => u.activo).map(u => `<option value="${u.id}">${esc(u.nombre)}</option>`).join('')}</select>
     <label>Archivo</label><input id="arch" type="file" accept=".xlsx,.xls,.csv"><div id="prev"></div></div>
     <button class="btn sec" data-act="plantillaClientes">Descargar plantilla</button>`;
@@ -481,8 +482,8 @@ function vImportarC() {
       for (const [k, ks] of Object.entries(COLS_C)) { const i = cab.findIndex(c => ks.some(w => c === w || c.startsWith(w))); if (i >= 0) mapa[k] = i; }
       let datos = rows;
       if (mapa.codigo !== undefined || mapa.nombre !== undefined) datos = rows.slice(1);
-      else Object.assign(mapa, { codigo: 0, nombre: 1, direccion: 2, telefono: 3 });
-      if (mapa.nombre === undefined) Object.assign(mapa, { codigo: 0, nombre: 1, direccion: 2, telefono: 3 });
+      else Object.assign(mapa, { codigo: 0, nombre: 1, direccion: 2, telefono: 3, vendedor: 4 });
+      if (mapa.nombre === undefined) Object.assign(mapa, { codigo: 0, nombre: 1, direccion: 2, telefono: 3, vendedor: 4 });
       filasC = datos.map(r => Object.fromEntries(Object.entries(mapa).map(([k, i]) => [k, String(r[i] ?? '').trim()])));
       if (!filasC.length) return toast('No se encontraron clientes en el archivo');
       $('#prev').innerHTML = `<p><b>${filasC.length}</b> clientes leídos. Ejemplo: ${esc(Object.values(filasC[0]).join(' | '))}</p><button class="btn" data-act="importarClientes">Importar</button>`;
@@ -498,7 +499,7 @@ async function importarClientes() {
 }
 function plantillaClientes() {
   if (!window.XLSX) return toast('No cargó el generador de Excel (revisá la conexión)');
-  const ws = XLSX.utils.aoa_to_sheet([['Código cliente', 'Nombre y apellido', 'Dirección', 'Teléfono'], ['C001', 'Juan Pérez', 'Mitre 123', '3454111222']]);
+  const ws = XLSX.utils.aoa_to_sheet([['Código cliente', 'Nombre y apellido', 'Dirección', 'Teléfono', 'ID vendedor'], ['C001', 'Juan Pérez', 'Mitre 123', '3454111222', (usuarios.find(u => u.rol === 'vendedor' && u.activo) || usuarios[0] || {}).id || 2]]);
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Clientes'); XLSX.writeFile(wb, 'plantilla-clientes.xlsx');
 }
 function vElegir() {
@@ -711,11 +712,12 @@ function exportarPdf() {
 /* ---------- usuarios (admin) ---------- */
 let editU = null;
 function vUsuarios() {
-  $('#main').innerHTML = `<button class="btn" data-act="nuevoUsuario" style="margin-bottom:10px">+ Nuevo usuario</button><div class="card">${usuarios.map(u => `<div class="row ${u.activo ? '' : 'off'}" data-edituser="${u.id}"><div class="nm"><b>${esc(u.nombre)}</b><span class="mut">${esc(u.usuario)} · ${u.rol === 'admin' ? 'Administrador' : 'Vendedor'}${u.activo ? '' : ' · desactivado'}</span></div><span class="mut">›</span></div>`).join('')}</div>`;
+  $('#main').innerHTML = `<button class="btn" data-act="nuevoUsuario" style="margin-bottom:10px">+ Nuevo usuario</button><div class="card">${usuarios.map(u => `<div class="row ${u.activo ? '' : 'off'}" data-edituser="${u.id}"><div class="nm"><b>${esc(u.nombre)}</b><span class="mut">${esc(u.usuario)} · ${u.rol === 'admin' ? 'Administrador' : 'Vendedor'}${u.activo ? '' : ' · desactivado'}</span></div><span class="tag">ID ${u.id}</span><span class="mut">›</span></div>`).join('')}</div>`;
 }
 function vUsuario() {
   const u = editU, nuevo = !u.id;
   $('#main').innerHTML = `<form id="f" autocomplete="off">
+    ${nuevo ? '' : `<p class="mut" style="margin:0">ID de este usuario: <b>${u.id}</b> (se usa en la planilla de importación de clientes)</p>`}
     <label>Nombre</label><input name="nombre" value="${esc(u.nombre)}" required>
     <label>Usuario (para ingresar)</label><input name="usuario" value="${esc(u.usuario)}" autocapitalize="none" required>
     <label>${nuevo ? 'Contraseña' : 'Nueva contraseña (dejar vacío para no cambiarla)'}</label><input name="password" type="text" autocomplete="off" ${nuevo ? 'required' : ''}>
