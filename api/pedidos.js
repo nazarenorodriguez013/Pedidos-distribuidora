@@ -18,6 +18,8 @@ async function load(pool) {
   state = state || { seq: { p: 1, o: 1 }, productos: [], pedidos: [] };
   state.seq.u = state.seq.u || 1;
   state.usuarios = state.usuarios || [];
+  state.clientes = state.clientes || [];
+  state.seq.c = state.seq.c || 1;
   for (const p of state.productos) delete p.stock;   // ya no se maneja stock
   if (!state.usuarios.length) {   // primer arranque: el administrador sale de APP_USER / APP_PASS
     state.usuarios.push({ id: state.seq.u++, usuario: process.env.APP_USER || 'kevin', nombre: 'Administrador', rol: 'admin', activo: true, ...hashPass(process.env.APP_PASS || 'kevin123') });
@@ -67,10 +69,32 @@ function cleanProducto(b, prev = {}) {
   };
 }
 
+const nombreCliente = c => [c.nombre, c.apellido].filter(Boolean).join(' ');
+function cleanCliente(b, prev, admin, yo) {
+  const t = k => String(b[k] ?? prev?.[k] ?? '').trim();
+  const o = { nombre: t('nombre'), apellido: t('apellido'), direccion: t('direccion'), telefono: t('telefono') };
+  if (!o.nombre) throw { code: 400, msg: 'Falta el nombre' };
+  if (admin) {
+    o.codigo = t('codigo');
+    if (o.codigo && state.clientes.some(c => c.id !== prev?.id && c.codigo.toLowerCase() === o.codigo.toLowerCase())) throw { code: 409, msg: 'Ya existe un cliente con ese código' };
+    o.vendedorId = Number(b.vendedorId ?? prev?.vendedorId);
+    if (!state.usuarios.some(u => u.id === o.vendedorId)) throw { code: 400, msg: 'Asignale un vendedor al cliente' };
+  } else {   // el vendedor no pone código ni cambia el vendedor: el cliente queda a su nombre
+    o.codigo = prev ? prev.codigo : '';
+    o.vendedorId = prev ? prev.vendedorId : yo.id;
+  }
+  return o;
+}
+
 // Arma un pedido nuevo/editado con las líneas y su precio.
-function armarPedido(b, viejo, quien) {
-  const cliente = String(b.cliente || '').trim();
-  if (!cliente) throw { code: 400, msg: 'Falta el cliente' };
+function armarPedido(b, viejo, quien, admin) {
+  let cli = null;
+  if (b.clienteId) {
+    cli = state.clientes.find(c => c.id === Number(b.clienteId));
+    if (!cli || (!admin && cli.vendedorId !== quien.id)) throw { code: 400, msg: 'Cliente inexistente' };
+  } else if (!viejo || viejo.clienteId) throw { code: 400, msg: 'Elegí un cliente' };   // pedidos viejos sin cliente cargado se pueden seguir editando
+  const cliente = cli ? nombreCliente(cli) : viejo.cliente;
+  const vend = cli && state.usuarios.find(u => u.id === cli.vendedorId);
   const viejas = new Map((viejo ? viejo.items : []).map(i => [i.pid, i]));
   const nuevas = new Map();
   for (const it of Array.isArray(b.items) ? b.items : []) {
@@ -87,7 +111,7 @@ function armarPedido(b, viejo, quien) {
     items.push({ pid, codigo: p.codigo, nombre: p.nombre, precio: old ? old.precio : precioDe(p), cant });
   }
   const total = Math.round(items.reduce((s, i) => s + i.precio * i.cant, 0) * 100) / 100;
-  return { cliente, nota: String(b.nota || '').trim(), items, total, vendedorId: viejo ? viejo.vendedorId : quien.id, vendedor: viejo ? viejo.vendedor : quien.nombre };
+  return { cliente, nota: String(b.nota || '').trim(), items, total, clienteId: cli ? cli.id : undefined, vendedorId: vend ? vend.id : viejo ? viejo.vendedorId : quien.id, vendedor: vend ? vend.nombre : viejo ? viejo.vendedor : quien.nombre };
 }
 
 // ---- sesiones: token firmado con el usuario; el rol se lee de la base en cada pedido ----
@@ -197,7 +221,8 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       soloAdmin();
       if (!id && req.method === 'GET') return send(res, 200, { usuarios: s.usuarios.map(pub) });
       if (!id && req.method === 'POST') {
-        const u = { id: s.seq.u++, ...cleanUsuario(await body(req, 1e4)) };
+        const datos = cleanUsuario(await body(req, 1e4));
+        const u = { id: s.seq.u++, ...datos };
         s.usuarios.push(u); await save(pool);
         return send(res, 200, pub(u));
       }
@@ -211,8 +236,35 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       }
       if (req.method === 'DELETE') {
         if (u.id === yo.id) throw { code: 409, msg: 'No podés eliminar tu propio usuario' };
+        if (s.clientes.some(c => c.vendedorId === u.id)) throw { code: 409, msg: 'Tiene clientes asignados: reasignalos antes de eliminarlo' };
         if (u.rol === 'admin' && u.activo && adminsActivos().length === 1) throw { code: 409, msg: 'Tiene que quedar al menos un administrador' };
         s.usuarios.splice(s.usuarios.indexOf(u), 1); await save(pool);
+        return send(res, 200, { ok: true });
+      }
+      throw { code: 405, msg: 'Método no permitido' };
+    }
+
+    if (rec === 'clientes') {
+      const vis = c => admin || c.vendedorId === yo.id;
+      if (!id && req.method === 'GET') return send(res, 200, { clientes: s.clientes.filter(vis) });
+      if (!id && req.method === 'POST') {
+        const datos = cleanCliente(await body(req), null, admin, yo);
+        const c = { id: s.seq.c++, ...datos };
+        s.clientes.push(c); await save(pool);
+        return send(res, 200, c);
+      }
+      const c = s.clientes.find(x => x.id === id && vis(x));
+      if (!c) throw { code: 404, msg: 'No existe' };
+      if (req.method === 'GET') return send(res, 200, c);
+      if (req.method === 'PUT') {
+        Object.assign(c, cleanCliente(await body(req), c, admin, yo));
+        for (const p of s.pedidos) if (p.clienteId === c.id) p.cliente = nombreCliente(c);
+        await save(pool);
+        return send(res, 200, c);
+      }
+      if (req.method === 'DELETE') {
+        soloAdmin();
+        s.clientes.splice(s.clientes.indexOf(c), 1); await save(pool);
         return send(res, 200, { ok: true });
       }
       throw { code: 405, msg: 'Método no permitido' };
@@ -238,7 +290,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         const uid = String(b.uid || '').slice(0, 64);
         const dup = uid && list.find(x => x.uid === uid && x.vendedorId === yo.id);
         if (dup) return send(res, 200, dup);   // reenvío de un pedido que ya había llegado
-        obj = armarPedido(b, null, yo);
+        obj = armarPedido(b, null, yo, admin);
         if (uid) obj.uid = uid;
         obj.id = s.seq.o++;
         obj.creado = obj.editado = new Date().toISOString();
@@ -257,7 +309,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         if (list.some(p => p.id !== id && p.codigo.toLowerCase() === obj.codigo.toLowerCase())) throw { code: 409, msg: 'Ya existe un producto con ese código' };
         list[idx] = { ...list[idx], ...obj };
       } else {
-        list[idx] = { ...list[idx], ...armarPedido(b, list[idx], yo), editado: new Date().toISOString() };
+        list[idx] = { ...list[idx], ...armarPedido(b, list[idx], yo, admin), editado: new Date().toISOString() };
       }
       await save(pool);
       return send(res, 200, list[idx]);

@@ -84,7 +84,7 @@ const efectivo = p => (p.promo && p.precioPromo > 0 ? p.precioPromo : p.precio);
 let token = localStorage.getItem('pd_token'), user = null;
 try { user = JSON.parse(localStorage.getItem('pd_user')); } catch {}
 if (!user || !user.rol) token = null;
-let productos = [], pedidos = [], usuarios = [], dbOk = true;
+let productos = [], pedidos = [], usuarios = [], clientes = [], dbOk = true;
 const esAdmin = () => user && user.rol === 'admin';
 let view = 'menu', draft = null, q = '', filtro = 'todos';
 
@@ -102,10 +102,10 @@ async function api(method, url, data) {
 /* ---------- sin señal: datos en el teléfono y cola de pedidos pendientes ---------- */
 const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } };
-const cacheDatos = () => lsSet('pd_cache', { productos, pedidos: pedidos.slice(0, 200) });
+const cacheDatos = () => lsSet('pd_cache', { productos, clientes, pedidos: pedidos.slice(0, 200) });
 const leerCola = () => lsGet('pd_cola', []);
 const colaMia = () => leerCola().filter(x => x.u === user.id);
-function usarCache() { const c = lsGet('pd_cache', null); if (c) { productos = c.productos; pedidos = c.pedidos; } else toast('Sin señal y sin datos guardados todavía'); }
+function usarCache() { const c = lsGet('pd_cache', null); if (c) { productos = c.productos; pedidos = c.pedidos; clientes = c.clientes || []; } else toast('Sin señal y sin datos guardados todavía'); }
 function estado() {
   const el = $('#estado'); if (!el) return;
   const n = colaMia().filter(x => !x.error).length, rech = colaMia().filter(x => x.error).length;
@@ -135,7 +135,8 @@ window.addEventListener('offline', estado);
 setInterval(sincronizar, 30000);
 
 async function cargar() {
-  const [a, b, c, y] = await Promise.all([api('GET', 'p/productos'), api('GET', 'p/pedidos'), esAdmin() ? api('GET', 'p/usuarios') : { usuarios: [] }, api('GET', 'p/yo')]);
+  const [a, b, c, y, cl] = await Promise.all([api('GET', 'p/productos'), api('GET', 'p/pedidos'), esAdmin() ? api('GET', 'p/usuarios') : { usuarios: [] }, api('GET', 'p/yo'), api('GET', 'p/clientes')]);
+  clientes = cl.clientes;
   dbOk = y.db;
   productos = a.productos.sort((x, y) => x.nombre.localeCompare(y.nombre));
   pedidos = b.pedidos;
@@ -146,12 +147,12 @@ function salir() { localStorage.removeItem('pd_token'); token = null; view = 'me
 function go(v) { view = v; q = ''; filtro = 'todos'; window.scrollTo(0, 0); render(); }
 
 /* ---------- vistas ---------- */
-const TITULOS = { menu: 'Distribuidora', pedido: 'Cargar pedido', pedidos: 'Pedidos', productos: 'Productos', producto: 'Producto', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', clave: 'Mi contraseña', promos: 'Promociones de la semana', precios: 'Lista de precios' };
+const TITULOS = { menu: 'Distribuidora', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', producto: 'Producto', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', clave: 'Mi contraseña', promos: 'Promociones de la semana', precios: 'Lista de precios' };
 function render() {
   if (!token) return login();
   $('#app').innerHTML = `<header>${view !== 'menu' ? '<button data-act="atras">←</button>' : ''}<h1>${TITULOS[view]}</h1>${view === 'menu' ? `<button data-act="salir">Salir</button>` : ''}</header><div id="estado" class="estado" hidden></div><main id="main"></main>`;
   estado();
-  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, productos: vProductos, producto: vProducto, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, clave: vClave, promos: vPromos, precios: vPrecios })[view]();
+  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, cliente: vCliente, elegir: vElegir, productos: vProductos, producto: vProducto, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, clave: vClave, promos: vPromos, precios: vPrecios })[view]();
 }
 function login() {
   $('#app').innerHTML = `<form class="login"><h1>Distribuidora</h1>
@@ -175,6 +176,7 @@ function vMenu() {
   $('#main').innerHTML = `${a && !dbOk ? '<div class="hint" style="background:#fee2e2;color:#7f1d1d;padding:10px;border-radius:8px;margin-bottom:10px"><b>Base de datos no conectada.</b> Los usuarios y pedidos se borran en cada deploy. Revisá la variable DATABASE_URL en Railway.</div>' : ''}<p class="mut">${esc(user.nombre)} · ${a ? 'Administrador' : 'Vendedor'}</p><div class="menu">
     <button class="main" data-go="pedido" data-nuevo="1"><span>🛒</span>Cargar pedido</button>
     <button data-go="pedidos"><span>📋</span>${a ? 'Todos los pedidos' : 'Mis pedidos'} (${pedidos.length})</button>
+    <button data-go="clientes"><span>👤</span>Clientes (${clientes.length})</button>
     <button data-go="precios"><span>💲</span>Precios y PDF</button>
     <button data-go="promos"><span>🏷️</span>Promos de la semana</button>
     ${a ? `<button data-go="productos"><span>📦</span>Productos (${productos.length})</button>
@@ -194,17 +196,16 @@ const precioHtml = p => p.promo && p.precioPromo > 0 ? `<span class="price"><s>$
 
 /* ---------- cargar / editar pedido ---------- */
 function nuevoDraft(ped) {
-  draft = ped ? { id: ped.id, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])) }
-              : { id: null, uid: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)), cliente: '', nota: '', items: {}, orig: {} };
+  draft = ped ? { id: ped.id, clienteId: ped.clienteId || null, legacy: !ped.clienteId, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])) }
+              : { id: null, clienteId: null, uid: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)), cliente: '', nota: '', items: {}, orig: {} };
 }
 const precioLinea = p => draft.orig[p.id] ? draft.orig[p.id].precio : efectivo(p);
 function totalDraft() { return productos.reduce((s, p) => s + (draft.items[p.id] || 0) * precioLinea(p), 0); }
 function vPedido() {
-  $('#main').innerHTML = `<label>Cliente</label><input id="cli" value="${esc(draft.cliente)}" placeholder="Nombre del cliente" autocomplete="off">
+  $('#main').innerHTML = `<label>Cliente</label><button class="btn sec" data-act="cambiarCliente" style="text-align:left;display:flex;justify-content:space-between"><span>${draft.cliente ? '👤 ' + esc(draft.cliente) : 'Elegir cliente…'}</span><span class="mut">${draft.cliente ? 'Cambiar' : '›'}</span></button>
     <label>Nota (opcional)</label><input id="nota" value="${esc(draft.nota)}" placeholder="Ej: entregar el jueves">
     <div style="height:10px"></div>${buscador()}
     <div class="bar"><div class="tot" id="tot"></div><button class="btn" data-act="guardarPedido">${draft.id ? 'Guardar cambios' : 'Guardar pedido'}</button></div>`;
-  $('#cli').oninput = e => draft.cliente = e.target.value;
   $('#nota').oninput = e => draft.nota = e.target.value;
   enlazarBuscador(pintarPedido);
 }
@@ -229,8 +230,8 @@ function cambiarCant(pid, d, fijo) {
 }
 async function guardarPedido() {
   const items = Object.entries(draft.items).map(([pid, cant]) => ({ pid: Number(pid), cant }));
-  const body = { cliente: draft.cliente, nota: draft.nota, items };
-  if (!body.cliente.trim()) return toast('Falta el cliente');
+  const body = { clienteId: draft.clienteId, cliente: draft.cliente, nota: draft.nota, items };
+  if (!draft.clienteId && !draft.legacy) return toast('Elegí un cliente');
   if (!items.length) return toast('El pedido no tiene productos');
   try {
     if (draft.id) await api('PUT', 'p/pedidos/' + draft.id, body); else await api('POST', 'p/pedidos', { ...body, uid: draft.uid });
@@ -243,6 +244,45 @@ async function guardarPedido() {
     if (!lsSet('pd_cola', [...leerCola(), { uid: draft.uid, u: user.id, body, total, t: new Date().toISOString() }])) return toast('No hay espacio para guardar el pedido');
     toast('Sin señal: pedido guardado, se enviará solo'); go('pedidos');
   }
+}
+
+/* ---------- clientes ---------- */
+let editC = null, clienteVolver = 'clientes', vendC = '';
+const nombreC = c => [c.nombre, c.apellido].filter(Boolean).join(' ');
+const vendNombre = id => (usuarios.find(u => u.id === id) || {}).nombre || '—';
+const filtrarC = l => { const n = norm(q); return l.filter(c => (!n || [c.nombre, c.apellido, c.codigo, c.telefono, c.direccion].some(x => norm(x).includes(n))) && (!vendC || String(c.vendedorId) === vendC)); };
+function listaClientes(l, attr) {
+  return l.length ? `<div class="card">${l.map(c => `<div class="row" ${attr}="${c.id}"><div class="nm"><b>${esc(nombreC(c))}</b><span class="mut">${[c.codigo ? esc(c.codigo) : '', esc(c.direccion), esc(c.telefono), esAdmin() ? esc(vendNombre(c.vendedorId)) : ''].filter(Boolean).join(' · ')}</span></div>${esAdmin() && !c.codigo ? '<span class="tag warn">Sin código</span>' : ''}<span class="mut">›</span></div>`).join('')}</div>` : vacio('No hay clientes');
+}
+const selVend = () => esAdmin() ? `<select id="vendc" style="width:100%;margin:8px 0;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Todos los vendedores</option>${usuarios.filter(u => clientes.some(c => c.vendedorId === u.id)).map(u => `<option value="${u.id}" ${String(u.id) === vendC ? 'selected' : ''}>${esc(u.nombre)}</option>`).join('')}</select>` : '';
+function conSelVend(pintar) { if (esAdmin()) $('#vendc').onchange = e => { vendC = e.target.value; pintar(); }; }
+function vClientes() {
+  $('#main').innerHTML = `<button class="btn" data-act="nuevoCliente" style="margin-bottom:10px">+ Nuevo cliente</button>` + buscador(selVend());
+  const pintar = () => { $('#lista').innerHTML = listaClientes(filtrarC(clientes), 'data-editcli'); };
+  conSelVend(pintar); enlazarBuscador(pintar);
+}
+function vElegir() {
+  $('#main').innerHTML = `<button class="btn sec" data-act="nuevoCliente" style="margin-bottom:10px">+ Nuevo cliente</button>` + buscador(selVend());
+  const pintar = () => { $('#lista').innerHTML = listaClientes(filtrarC(clientes), 'data-cli'); };
+  conSelVend(pintar); enlazarBuscador(pintar);
+}
+function vCliente() {
+  const c = editC, a = esAdmin(), campo = (k, et, extra = '') => `<label>${et}</label><input name="${k}" value="${esc(c[k])}" ${extra}>`;
+  $('#main').innerHTML = `<form id="f" autocomplete="off">
+    ${a ? campo('codigo', 'Código (lo asigna el administrador)') : `<p class="mut">${c.codigo ? 'Código: ' + esc(c.codigo) : 'Sin código: lo asigna el administrador.'}<br>Este cliente queda asignado a vos.</p>`}
+    ${a ? `<label>Vendedor</label><select name="vendedorId" required style="width:100%;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Elegir vendedor…</option>${usuarios.filter(u => u.activo || u.id === c.vendedorId).map(u => `<option value="${u.id}" ${u.id === c.vendedorId ? 'selected' : ''}>${esc(u.nombre)} (${u.rol === 'admin' ? 'admin' : 'vendedor'})</option>`).join('')}</select>` : ''}
+    ${campo('nombre', 'Nombre', 'required')}${campo('apellido', 'Apellido')}${campo('direccion', 'Dirección')}${campo('telefono', 'Teléfono', 'inputmode="tel"')}
+    <div style="height:14px"></div><button class="btn">Guardar</button>
+    ${a && c.id ? '<div style="height:10px"></div><button type="button" class="btn bad" data-act="borrarCliente">Eliminar cliente</button>' : ''}</form>`;
+  $('#f').onsubmit = async e => {
+    e.preventDefault();
+    const d = Object.fromEntries(new FormData(e.target));
+    try {
+      const r = c.id ? await api('PUT', 'p/clientes/' + c.id, d) : await api('POST', 'p/clientes', d);
+      await cargar(); toast('Cliente guardado');
+      if (!c.id && clienteVolver === 'elegir') { draft.clienteId = r.id; draft.cliente = nombreC(r); go('pedido'); } else go('clientes');
+    } catch (er) { toast(er.message); }
+  };
 }
 
 /* ---------- pedidos cargados ---------- */
@@ -458,13 +498,13 @@ function exportarExcel() {
 
 /* ---------- eventos ---------- */
 document.addEventListener('click', async e => {
-  const t = e.target.closest('button, [data-ped], [data-edit], [data-edituser], [data-precio], [data-promoprecio], [data-nuevapromo]');
+  const t = e.target.closest('button, [data-ped], [data-edit], [data-edituser], [data-editcli], [data-cli], [data-precio], [data-promoprecio], [data-nuevapromo]');
   if (!t || e.target.closest('[data-stop]')) return;
   const d = t.dataset, row = t.closest('[data-pid]');
   if (d.go) { if (d.nuevo) nuevoDraft(); go(d.go); }
   else if (d.act === 'atras') {
     if (eligiendoPromo) { eligiendoPromo = false; return render(); }
-    go({ producto: 'productos', usuario: 'usuarios', pedido: draft && draft.id ? 'pedidos' : 'menu' }[view] || 'menu');
+    go({ producto: 'productos', usuario: 'usuarios', cliente: clienteVolver === 'elegir' ? 'elegir' : 'clientes', clientes: 'menu', elegir: 'pedido', pedido: draft && draft.id ? 'pedidos' : 'menu' }[view] || 'menu');
   }
   else if (d.act === 'salir') salir();
   else if (d.act === 'guardarPedido') guardarPedido();
@@ -475,6 +515,14 @@ document.addEventListener('click', async e => {
   }
   else if (d.act === 'agregarPromo') { eligiendoPromo = true; vElegirPromo(); }
   else if (d.act === 'pdf') exportarPdf();
+  else if (d.act === 'nuevoCliente') { clienteVolver = view === 'elegir' ? 'elegir' : 'clientes'; editC = {}; go('cliente'); }
+  else if (d.act === 'cambiarCliente') go('elegir');
+  else if (d.act === 'borrarCliente') {
+    if (!confirm('¿Eliminar el cliente? Sus pedidos se conservan.')) return;
+    try { await api('DELETE', 'p/clientes/' + editC.id); await cargar(); go('clientes'); } catch (er) { toast(er.message); }
+  }
+  else if (d.editcli) { clienteVolver = 'clientes'; editC = { ...clientes.find(c => c.id == d.editcli) }; go('cliente'); }
+  else if (d.cli) { const c = clientes.find(x => x.id == d.cli); draft.clienteId = c.id; draft.cliente = nombreC(c); go('pedido'); }
   else if (d.act === 'nuevoUsuario') { editU = { rol: 'vendedor', activo: true }; go('usuario'); }
   else if (d.act === 'borrarUsuario') {
     if (!confirm('¿Eliminar el usuario? Sus pedidos se conservan.')) return;
