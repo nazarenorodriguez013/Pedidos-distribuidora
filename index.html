@@ -80,7 +80,6 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const money = n => Number(n || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
 const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 const efectivo = p => (p.promo && p.precioPromo > 0 ? p.precioPromo : p.precio);
-const STOCK_BAJO = 5;
 
 let token = localStorage.getItem('pd_token'), user = null;
 try { user = JSON.parse(localStorage.getItem('pd_user')); } catch {}
@@ -147,12 +146,12 @@ function salir() { localStorage.removeItem('pd_token'); token = null; view = 'me
 function go(v) { view = v; q = ''; filtro = 'todos'; window.scrollTo(0, 0); render(); }
 
 /* ---------- vistas ---------- */
-const TITULOS = { menu: 'Distribuidora', pedido: 'Cargar pedido', pedidos: 'Pedidos', productos: 'Productos', producto: 'Producto', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', clave: 'Mi contraseña', promos: 'Promociones de la semana', stock: 'Stock', precios: 'Lista de precios' };
+const TITULOS = { menu: 'Distribuidora', pedido: 'Cargar pedido', pedidos: 'Pedidos', productos: 'Productos', producto: 'Producto', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', clave: 'Mi contraseña', promos: 'Promociones de la semana', precios: 'Lista de precios' };
 function render() {
   if (!token) return login();
   $('#app').innerHTML = `<header>${view !== 'menu' ? '<button data-act="atras">←</button>' : ''}<h1>${TITULOS[view]}</h1>${view === 'menu' ? `<button data-act="salir">Salir</button>` : ''}</header><div id="estado" class="estado" hidden></div><main id="main"></main>`;
   estado();
-  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, productos: vProductos, producto: vProducto, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, clave: vClave, promos: vPromos, stock: vStock, precios: vPrecios })[view]();
+  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, productos: vProductos, producto: vProducto, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, clave: vClave, promos: vPromos, precios: vPrecios })[view]();
 }
 function login() {
   $('#app').innerHTML = `<form class="login"><h1>Distribuidora</h1>
@@ -172,7 +171,6 @@ function login() {
   };
 }
 function vMenu() {
-  const pend = productos.filter(p => p.activo && p.stock <= STOCK_BAJO).length;
   const a = esAdmin();
   $('#main').innerHTML = `${a && !dbOk ? '<div class="hint" style="background:#fee2e2;color:#7f1d1d;padding:10px;border-radius:8px;margin-bottom:10px"><b>Base de datos no conectada.</b> Los usuarios y pedidos se borran en cada deploy. Revisá la variable DATABASE_URL en Railway.</div>' : ''}<p class="mut">${esc(user.nombre)} · ${a ? 'Administrador' : 'Vendedor'}</p><div class="menu">
     <button class="main" data-go="pedido" data-nuevo="1"><span>🛒</span>Cargar pedido</button>
@@ -180,7 +178,6 @@ function vMenu() {
     <button data-go="precios"><span>💲</span>Precios y PDF</button>
     <button data-go="promos"><span>🏷️</span>Promos de la semana</button>
     ${a ? `<button data-go="productos"><span>📦</span>Productos (${productos.length})</button>
-    <button data-go="stock"><span>📊</span>Stock${pend ? ` · ${pend} bajo` : ''}</button>
     <button data-go="importar"><span>📥</span>Importar / exportar Excel</button>
     <button data-go="usuarios"><span>👥</span>Usuarios</button>` : ''}
     <button data-go="clave"><span>🔑</span>Mi contraseña</button></div>`;
@@ -194,14 +191,12 @@ function filtrar(arr) { const n = norm(q); return n ? arr.filter(p => norm(p.nom
 function enlazarBuscador(pintar) { $('#q').oninput = e => { q = e.target.value; pintar(); }; pintar(); }
 const vacio = t => `<p class="mut" style="text-align:center;padding:24px 0">${t}</p>`;
 const precioHtml = p => p.promo && p.precioPromo > 0 ? `<span class="price"><s>${money(p.precio)}</s>${money(p.precioPromo)}</span>` : `<span class="price">${money(p.precio)}</span>`;
-const stockTag = p => p.stock <= 0 ? '<span class="tag bad">Sin stock</span>' : p.stock <= STOCK_BAJO ? `<span class="tag warn">Stock ${p.stock}</span>` : `<span class="mut">Stock ${p.stock}</span>`;
 
 /* ---------- cargar / editar pedido ---------- */
 function nuevoDraft(ped) {
   draft = ped ? { id: ped.id, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])) }
               : { id: null, uid: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)), cliente: '', nota: '', items: {}, orig: {} };
 }
-const disp = p => p.stock + (draft.orig[p.id] ? draft.orig[p.id].cant : 0);
 const precioLinea = p => draft.orig[p.id] ? draft.orig[p.id].precio : efectivo(p);
 function totalDraft() { return productos.reduce((s, p) => s + (draft.items[p.id] || 0) * precioLinea(p), 0); }
 function vPedido() {
@@ -218,9 +213,9 @@ function pintarPedido() {
   const base = productos.filter(p => p.activo || enPed(p));
   const lista = filtrar(base).sort((a, b) => enPed(b) - enPed(a));
   $('#lista').innerHTML = lista.length ? `<div class="card">${lista.map(p => {
-    const max = disp(p), c = draft.items[p.id] || 0;
-    return `<div class="row ${max <= 0 && !c ? 'off' : ''}" data-pid="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · </span>${p.promo && p.precioPromo > 0 ? '<span class="tag promo">PROMO</span> ' : ''}${precioHtml({ ...p, precio: p.precio, precioPromo: draft.orig[p.id] ? 0 : p.precioPromo, promo: !draft.orig[p.id] && p.promo })} · ${stockTag({ ...p, stock: max })}</div>
-      <div class="qty"><button data-q="-1" ${c ? '' : 'disabled'}>−</button><b data-q="set">${c}</b><button data-q="1" ${c >= max ? 'disabled' : ''}>+</button></div></div>`;
+    const c = draft.items[p.id] || 0;
+    return `<div class="row" data-pid="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · </span>${p.promo && p.precioPromo > 0 ? '<span class="tag promo">PROMO</span> ' : ''}${precioHtml({ ...p, precio: p.precio, precioPromo: draft.orig[p.id] ? 0 : p.precioPromo, promo: !draft.orig[p.id] && p.promo })}</div>
+      <div class="qty"><button data-q="-1" ${c ? '' : 'disabled'}>−</button><b data-q="set">${c}</b><button data-q="1" >+</button></div></div>`;
   }).join('')}</div>` : vacio('Sin resultados');
   const n = Object.values(draft.items).reduce((a, b) => a + b, 0);
   $('#tot').textContent = `${money(totalDraft())} · ${n} u.`;
@@ -228,7 +223,7 @@ function pintarPedido() {
 function cambiarCant(pid, d, fijo) {
   const p = productos.find(x => x.id === pid); if (!p || Number.isNaN(fijo)) return;
   let c = fijo !== undefined ? fijo : (draft.items[pid] || 0) + d;
-  c = Math.max(0, Math.min(c, disp(p)));
+  c = Math.max(0, Math.min(c, 99999));
   if (c) draft.items[pid] = c; else delete draft.items[pid];
   const y = window.scrollY; pintarPedido(); window.scrollTo(0, y);
 }
@@ -246,8 +241,7 @@ async function guardarPedido() {
     // sin señal: queda en el teléfono y se envía solo cuando vuelva
     const total = Math.round(items.reduce((a, i) => a + i.cant * precioLinea(productos.find(p => p.id === i.pid)), 0) * 100) / 100;
     if (!lsSet('pd_cola', [...leerCola(), { uid: draft.uid, u: user.id, body, total, t: new Date().toISOString() }])) return toast('No hay espacio para guardar el pedido');
-    for (const i of items) { const p = productos.find(x => x.id === i.pid); if (p) p.stock = Math.max(0, p.stock - i.cant); }
-    cacheDatos(); toast('Sin señal: pedido guardado, se enviará solo'); go('pedidos');
+    toast('Sin señal: pedido guardado, se enviará solo'); go('pedidos');
   }
 }
 
@@ -270,7 +264,7 @@ function vPedidos() {
   pintar();
 }
 async function borrarPedido() {
-  if (!confirm('¿Eliminar el pedido? El stock vuelve a sumarse.')) return;
+  if (!confirm('¿Eliminar el pedido?')) return;
   try { await api('DELETE', 'p/pedidos/' + draft.id); await cargar(); toast('Pedido eliminado'); go('pedidos'); } catch (e) { toast(e.message); }
 }
 
@@ -279,7 +273,7 @@ function vProductos() {
   $('#main').innerHTML = `<button class="btn" data-act="nuevoProd" style="margin-bottom:10px">+ Nuevo producto</button>` + buscador(`<div class="chips">${['todos', 'activos', 'inactivos'].map(f => `<button data-f="${f}" class="${filtro === f ? 'on' : ''}">${f[0].toUpperCase() + f.slice(1)}</button>`).join('')}</div>`);
   enlazarBuscador(() => {
     const l = filtrar(productos).filter(p => filtro === 'todos' || (filtro === 'activos') === p.activo);
-    $('#lista').innerHTML = l.length ? `<div class="card">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" data-edit="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · ${stockTag(p).replace(/<[^>]+>/g, '')}</span></div>${p.promo ? '<span class="tag promo">PROMO</span>' : ''}${precioHtml(p)}
+    $('#lista').innerHTML = l.length ? `<div class="card">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" data-edit="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}</span></div>${p.promo ? '<span class="tag promo">PROMO</span>' : ''}${precioHtml(p)}
       <label class="sw" data-stop><input type="checkbox" data-activo="${p.id}" ${p.activo ? 'checked' : ''}><i></i></label></div>`).join('')}</div>` : vacio('Sin productos');
   });
 }
@@ -290,7 +284,6 @@ function vProducto() {
     <label>Código</label><input name="codigo" value="${esc(p.codigo)}" required>
     <label>Nombre</label><input name="nombre" value="${esc(p.nombre)}" required>
     <label>Precio</label><input name="precio" inputmode="decimal" value="${p.precio || ''}" required>
-    <label>Stock</label><input name="stock" inputmode="numeric" value="${p.stock ?? 0}">
     <div class="row" style="border:0"><div class="nm"><b>Activo</b><span class="mut">Si está apagado no se puede pedir ni sale en el PDF</span></div><label class="sw" style="margin:0"><input type="checkbox" name="activo" ${p.activo ? 'checked' : ''}><i></i></label></div>
     <div class="row" style="border:0"><div class="nm"><b>En promoción</b></div><label class="sw" style="margin:0"><input type="checkbox" name="promo" ${p.promo ? 'checked' : ''}><i></i></label></div>
     <label>Precio promo</label><input name="precioPromo" inputmode="decimal" value="${p.precioPromo || ''}">
@@ -324,26 +317,6 @@ function vElegirPromo() {
     const l = filtrar(productos.filter(p => p.activo && !p.promo));
     $('#lista').innerHTML = l.length ? `<div class="card">${l.map(p => `<div class="row" data-nuevapromo="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}</span></div>${precioHtml(p)}</div>`).join('')}</div>` : vacio('Sin resultados');
   });
-}
-
-/* ---------- stock ---------- */
-function vStock() {
-  $('#main').innerHTML = buscador(`<div class="chips">${['todos', 'bajo', 'sin stock'].map(f => `<button data-f="${f}" class="${filtro === f ? 'on' : ''}">${f[0].toUpperCase() + f.slice(1)}</button>`).join('')}</div>`);
-  enlazarBuscador(pintarStock);
-}
-function pintarStock() {
-  const l = filtrar(productos).filter(p => filtro === 'todos' || (filtro === 'bajo' ? p.stock <= STOCK_BAJO : p.stock <= 0));
-  $('#lista').innerHTML = l.length ? `<div class="card">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" data-pid="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}</span></div>
-    <div class="qty"><button data-s="-1" ${p.stock <= 0 ? 'disabled' : ''}>−</button><b data-s="set" style="${p.stock <= 0 ? 'color:var(--bad)' : p.stock <= STOCK_BAJO ? 'color:var(--warn)' : ''}">${p.stock}</b><button data-s="1">+</button></div></div>`).join('')}</div>` : vacio('Sin resultados');
-}
-const guardarStock = {};
-function cambiarStock(id, d, fijo) {
-  if (Number.isNaN(fijo)) return;
-  const p = productos.find(x => x.id === id);
-  p.stock = Math.max(0, fijo !== undefined ? fijo : p.stock + d);
-  const y = window.scrollY; pintarStock(); window.scrollTo(0, y);
-  clearTimeout(guardarStock[id]);
-  guardarStock[id] = setTimeout(() => api('PUT', 'p/productos/' + id, p).catch(e => toast(e.message)), 400);
 }
 
 /* ---------- precios + PDF ---------- */
@@ -410,7 +383,7 @@ function vClave() {
 
 /* ---------- Excel (admin) ---------- */
 let importFilas = null;
-const COLS = { codigo: ['codigo', 'cod', 'sku', 'code'], nombre: ['nombre', 'descripcion', 'producto', 'articulo', 'detalle'], precio: ['precio', 'price', 'importe', 'pvp'], stock: ['stock', 'existencia', 'cantidad', 'unidades'], activo: ['activo', 'habilitado'] };
+const COLS = { codigo: ['codigo', 'cod', 'sku', 'code'], nombre: ['nombre', 'descripcion', 'producto', 'articulo', 'detalle'], precio: ['precio', 'price', 'importe', 'pvp'], activo: ['activo', 'habilitado'] };
 function leerHoja(rows) {
   rows = rows.filter(r => r.some(c => String(c ?? '').trim() !== ''));
   const mapa = {};
@@ -418,7 +391,7 @@ function leerHoja(rows) {
   for (const [k, ks] of Object.entries(COLS)) { const i = cab.findIndex(c => ks.some(w => c === w || c.startsWith(w))); if (i >= 0) mapa[k] = i; }
   let datos = rows;
   if (mapa.codigo !== undefined) datos = rows.slice(1);
-  else Object.assign(mapa, { codigo: 0, nombre: 1, precio: 2, stock: 3 });   // sin encabezados: A=código, B=nombre, C=precio, D=stock
+  else Object.assign(mapa, { codigo: 0, nombre: 1, precio: 2 });   // sin encabezados: A=código, B=nombre, C=precio
   return datos.map(r => Object.fromEntries(Object.entries(mapa).map(([k, i]) => [k, r[i] ?? ''])));
 }
 /* PDF de lista de precios: cada línea "código  artículo  IVA  precio". Precio 0 = sin precio: queda desactivado. */
@@ -450,7 +423,7 @@ async function filasDePdf(file) {
 }
 function vImportar() {
   $('#main').innerHTML = `<div class="card"><h3 style="margin:0 0 6px">Importar lista</h3>
-    <p class="mut">Subí el <b>PDF de la lista de precios</b> del proveedor (código, artículo, IVA, precio; los de precio 0 quedan desactivados), o un archivo Excel (.xlsx) / CSV con columnas: <b>Código</b>, <b>Nombre</b>, <b>Precio</b>, <b>Stock</b> y, si querés, <b>Activo</b> (si/no). Los productos se identifican por código: los existentes se actualizan y los nuevos se crean. Las columnas que falten no se tocan.</p>
+    <p class="mut">Subí el <b>PDF de la lista de precios</b> del proveedor (código, artículo, IVA, precio; los de precio 0 quedan desactivados), o un archivo Excel (.xlsx) / CSV con columnas: <b>Código</b>, <b>Nombre</b>, <b>Precio</b> y, si querés, <b>Activo</b> (si/no). Si el archivo trae una columna Stock, se ignora. Los productos se identifican por código: los existentes se actualizan y los nuevos se crean.</p>
     <input id="arch" type="file" accept=".pdf,.xlsx,.xls,.csv"><div id="prev"></div></div>
     <div class="card"><h3 style="margin:0 0 6px">Exportar</h3><p class="mut">Descarga el listado actual en Excel; podés editarlo y volver a importarlo.</p><button class="btn sec" data-act="exportarExcel">Descargar Excel</button></div>`;
   $('#arch').onchange = async e => {
@@ -478,7 +451,7 @@ async function importarConfirmar() {
 }
 function exportarExcel() {
   if (!window.XLSX) return toast('No cargó el generador de Excel (revisá la conexión)');
-  const ws = XLSX.utils.json_to_sheet(productos.map(p => ({ 'Código': p.codigo, 'Nombre': p.nombre, 'Precio': p.precio, 'Stock': p.stock, 'Activo': p.activo ? 'si' : 'no' })));
+  const ws = XLSX.utils.json_to_sheet(productos.map(p => ({ 'Código': p.codigo, 'Nombre': p.nombre, 'Precio': p.precio, 'Activo': p.activo ? 'si' : 'no' })));
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Productos');
   XLSX.writeFile(wb, 'productos-' + new Date().toISOString().slice(0, 10) + '.xlsx');
 }
@@ -495,7 +468,7 @@ document.addEventListener('click', async e => {
   }
   else if (d.act === 'salir') salir();
   else if (d.act === 'guardarPedido') guardarPedido();
-  else if (d.act === 'nuevoProd') { editando = { activo: true, stock: 0 }; go('producto'); }
+  else if (d.act === 'nuevoProd') { editando = { activo: true }; go('producto'); }
   else if (d.act === 'borrarProd') {
     if (!confirm('¿Eliminar el producto?')) return;
     try { await api('DELETE', 'p/productos/' + editando.id); await cargar(); go('productos'); } catch (er) { toast(er.message); }
@@ -512,7 +485,6 @@ document.addEventListener('click', async e => {
   else if (d.delcola) {
     if (!confirm('¿Eliminar este pedido pendiente? No se va a enviar.')) return;
     const it = leerCola().find(x => x.uid === d.delcola);
-    if (it && !it.error) for (const i of it.body.items) { const p = productos.find(x => x.id === i.pid); if (p) p.stock += i.cant; }
     lsSet('pd_cola', leerCola().filter(x => x.uid !== d.delcola)); cacheDatos(); render();
   }
   else if (d.act === 'importarConfirmar') importarConfirmar();
@@ -522,7 +494,6 @@ document.addEventListener('click', async e => {
   else if (d.edit) { editando = { ...productos.find(p => p.id == d.edit) }; go('producto'); }
   else if (d.f) { filtro = d.f; render(); }
   else if (d.q && row) cambiarCant(+row.dataset.pid, +d.q, d.q === 'set' ? +(prompt('Cantidad', draft.items[row.dataset.pid] || 0) ?? NaN) : undefined);
-  else if (d.s && row) cambiarStock(+row.dataset.pid, +d.s, d.s === 'set' ? +(prompt('Stock', productos.find(p => p.id == row.dataset.pid).stock) ?? NaN) : undefined);
   else if (d.quitarpromo) { await setProd(+d.quitarpromo, { promo: false }); render(); }
   else if (d.promoprecio) { const p = productos.find(x => x.id == d.promoprecio), v = prompt('Precio promo', p.precioPromo || ''); if (v !== null) { await setProd(p.id, { precioPromo: v }); render(); } }
   else if (d.nuevapromo) { const p = productos.find(x => x.id == d.nuevapromo), v = prompt('Precio promo para ' + p.nombre); if (v) { await setProd(p.id, { promo: true, precioPromo: v }); eligiendoPromo = false; render(); } }
