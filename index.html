@@ -254,9 +254,9 @@ function vPedido() {
   $('#main').innerHTML = `<label>Cliente</label><button class="btn sec" data-act="cambiarCliente" style="text-align:left;display:flex;justify-content:space-between"><span>${draft.cliente ? '👤 ' + esc(draft.cliente) : 'Elegir cliente…'}</span><span class="mut">${draft.cliente ? 'Cambiar' : '›'}</span></button>
     <div class="row" style="border:0;align-items:flex-end"><div style="flex:1.2"><label>Día de entrega</label><input id="dia" type="date" value="${esc(draft.dia)}"></div>
       <div style="flex:1"><label>Turno</label><div class="chips" style="margin:0" id="turnos">${Object.entries(TURNOS).map(([k, v]) => `<button type="button" data-turno="${k}" class="${draft.turno === k ? 'on' : ''}" style="flex:1;min-height:46px">${v}</button>`).join('')}</div></div></div>
+    <div style="height:10px"></div>${buscador()}
     <div id="detalle" class="card detalle"></div>
     <div id="notaBox" style="margin-top:10px"></div>
-    <div style="height:10px"></div>${buscador()}
     ${draft.id ? '<div style="margin:24px 0 80px"><button class="btn bad" data-act="borrarPedido">Eliminar pedido</button></div>' : ''}
     <div class="bar"><div class="tot" id="tot"></div><button class="btn" data-act="guardarPedido">${draft.id ? 'Guardar cambios' : 'Guardar pedido'}</button></div>`;
   editNota = false; pintarNota();
