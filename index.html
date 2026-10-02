@@ -421,18 +421,49 @@ function leerHoja(rows) {
   else Object.assign(mapa, { codigo: 0, nombre: 1, precio: 2, stock: 3 });   // sin encabezados: A=código, B=nombre, C=precio, D=stock
   return datos.map(r => Object.fromEntries(Object.entries(mapa).map(([k, i]) => [k, r[i] ?? ''])));
 }
+/* PDF de lista de precios: cada línea "código  artículo  IVA  precio". Precio 0 = sin precio: queda desactivado. */
+const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+async function cargarPdfjs() {
+  if (window.pdfjsLib) return window.pdfjsLib;
+  await new Promise((ok, ko) => { const el = document.createElement('script'); el.src = PDFJS + 'pdf.min.js'; el.onload = ok; el.onerror = ko; document.head.appendChild(el); });
+  const w = await (await fetch(PDFJS + 'pdf.worker.min.js')).text();
+  pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([w], { type: 'text/javascript' }));
+  return pdfjsLib;
+}
+async function filasDePdf(file) {
+  const lib = await cargarPdfjs();
+  const pdf = await lib.getDocument({ data: await file.arrayBuffer() }).promise;
+  const rx = /^(\S+)\s+(.+?)\s+(\d{1,2}(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)$/, filas = [];
+  for (let n = 1; n <= pdf.numPages; n++) {
+    const items = (await (await pdf.getPage(n)).getTextContent()).items.filter(i => i.str.trim());
+    const lineas = [];
+    for (const i of items.sort((a, b) => b.transform[5] - a.transform[5])) {
+      const l = lineas.find(x => Math.abs(x.y - i.transform[5]) < 2);
+      l ? l.it.push(i) : lineas.push({ y: i.transform[5], it: [i] });
+    }
+    for (const l of lineas) {
+      const m = rx.exec(l.it.sort((a, b) => a.transform[4] - b.transform[4]).map(i => i.str.trim()).join(' ').replace(/\s+/g, ' '));
+      if (m) { const precio = parseFloat(m[4].replace(',', '.')); filas.push({ codigo: m[1], nombre: m[2], precio, activo: precio > 0 ? 'si' : 'no' }); }
+    }
+  }
+  return filas;
+}
 function vImportar() {
   $('#main').innerHTML = `<div class="card"><h3 style="margin:0 0 6px">Importar lista</h3>
-    <p class="mut">Archivo Excel (.xlsx) o CSV con columnas: <b>Código</b>, <b>Nombre</b>, <b>Precio</b>, <b>Stock</b> y, si querés, <b>Activo</b> (si/no). Los productos se identifican por código: los existentes se actualizan y los nuevos se crean. Las columnas que falten no se tocan.</p>
-    <input id="arch" type="file" accept=".xlsx,.xls,.csv"><div id="prev"></div></div>
+    <p class="mut">Subí el <b>PDF de la lista de precios</b> del proveedor (código, artículo, IVA, precio; los de precio 0 quedan desactivados), o un archivo Excel (.xlsx) / CSV con columnas: <b>Código</b>, <b>Nombre</b>, <b>Precio</b>, <b>Stock</b> y, si querés, <b>Activo</b> (si/no). Los productos se identifican por código: los existentes se actualizan y los nuevos se crean. Las columnas que falten no se tocan.</p>
+    <input id="arch" type="file" accept=".pdf,.xlsx,.xls,.csv"><div id="prev"></div></div>
     <div class="card"><h3 style="margin:0 0 6px">Exportar</h3><p class="mut">Descarga el listado actual en Excel; podés editarlo y volver a importarlo.</p><button class="btn sec" data-act="exportarExcel">Descargar Excel</button></div>`;
   $('#arch').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
-    if (!window.XLSX) return toast('No cargó el lector de Excel (revisá la conexión)');
     try {
+      if (/\.pdf$/i.test(f.name)) importFilas = await filasDePdf(f);
+      else {
+      if (!window.XLSX) return toast('No cargó el lector de Excel (revisá la conexión)');
       const wb = /\.csv$/i.test(f.name) ? XLSX.read(await f.text(), { type: 'string', raw: true }) : XLSX.read(await f.arrayBuffer(), { type: 'array' });
       importFilas = leerHoja(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true }));
-      $('#prev').innerHTML = `<p><b>${importFilas.length}</b> filas leídas. Ejemplo: ${esc(Object.values(importFilas[0] || {}).join(' | '))}</p>
+      }
+      if (!importFilas.length) return toast('No se encontraron productos en el archivo');
+      $('#prev').innerHTML = `<p><b>${importFilas.length}</b> filas leídas${importFilas.some(r => r.activo === 'no') ? ` (${importFilas.filter(r => r.activo === 'no').length} sin precio, quedan desactivadas)` : ''}. Ejemplo: ${esc(Object.values(importFilas[0] || {}).join(' | '))}</p>
         <div class="row" style="border:0"><div class="nm"><b>La lista es el catálogo completo</b><span class="mut">Activa los que están y desactiva los que no figuran</span></div><label class="sw" style="margin:0"><input type="checkbox" id="cat"><i></i></label></div>
         <button class="btn" data-act="importarConfirmar">Importar</button>`;
     } catch { toast('No se pudo leer el archivo'); }
