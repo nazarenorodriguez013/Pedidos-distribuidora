@@ -34,7 +34,30 @@ async function load(pool) {
   }
   return state;
 }
+// Los pedidos pendientes siguen los precios y promos vigentes; al cargarlos (estado 'cargado') quedan con el precio de ese momento.
+function totalesDe(items) {
+  const subtotal = Math.round(items.reduce((t, i) => t + i.precio * i.cant, 0) * 100) / 100, total = redondear(subtotal);
+  return { subtotal, redondeo: Math.round((total - subtotal) * 100) / 100, total };
+}
+function repreciarPendientes() {
+  for (const o of state.pedidos) {
+    if (o.estado === 'cargado') continue;
+    const cant = new Map(o.items.map(i => [i.pid, i.cant]));
+    for (const i of o.items) {
+      const p = state.productos.find(x => x.id === i.pid); if (!p) continue;
+      let combo = null;
+      if (i.comboId) { const c = state.combos.find(x => x.id === i.comboId); if (c && comboIncluye(c, i.pid) && comboCumple(c, cant)) combo = c; }
+      const qty = !combo && !!i.promoQty && hayPromo(p) && promoCantDe(p) > 1 && i.cant >= promoCantDe(p);
+      const auto = !combo && !qty && hayPromo(p) && promoCantDe(p) <= 1;
+      const unit = combo ? precioComboDe(combo, p) : (qty || auto) ? precioPromoDe(p) : p.precio;
+      if (!(unit > 0)) continue;   // producto sin precio: se deja el último
+      Object.assign(i, { nombre: p.nombre, codigo: p.codigo, precio: unit, precioLista: p.precio, promo: (qty || auto) || undefined, promoQty: qty || undefined, comboId: combo ? combo.id : undefined, comboNombre: combo ? combo.nombre : undefined });
+    }
+    Object.assign(o, totalesDe(o.items));
+  }
+}
 function save(pool) {
+  repreciarPendientes();
   const json = JSON.stringify(state);
   queue = queue.then(async () => {
     if (pool) await pool.query("INSERT INTO kv (key, value) VALUES ('pedidos', $1) ON CONFLICT (key) DO UPDATE SET value=$1", [json]);
@@ -182,7 +205,7 @@ function armarPedido(b, viejo, quien, admin) {
     // solo se recalcula si el vendedor acepta o quita una promo (por cantidad o combinada) en esa línea.
     const qtyNow = !combo && !!quierePromo.get(pid);
     const oldQty = old ? old.promoQty ?? (!!old.promo && promoCantDe(p) > 1) : false;
-    const mismo = old && (old.comboId || 0) === (combo ? combo.id : 0) && oldQty === qtyNow;
+    const mismo = old && viejo.estado === 'cargado' && (old.comboId || 0) === (combo ? combo.id : 0) && oldQty === qtyNow;   // los pendientes siguen el precio vigente
     items.push({ pid, codigo: p.codigo, nombre: p.nombre, precio: mismo ? old.precio : unit, precioLista: mismo ? old.precioLista ?? p.precio : p.precio, promo: aplica || undefined, promoQty: qtyNow || undefined, comboId: combo ? combo.id : undefined, comboNombre: combo ? combo.nombre : undefined, cant });
   }
   // Pedido ya cargado por administración: si lo edita el vendedor queda marcado "agregar" para que el admin lo vea
@@ -196,9 +219,8 @@ function armarPedido(b, viejo, quien, admin) {
       if (!igual) extra = { agregar: true, agregadoEn: new Date().toISOString() };
     }
   }
-  const subtotal = Math.round(items.reduce((s, i) => s + i.precio * i.cant, 0) * 100) / 100;
-  const total = redondear(subtotal);
-  return { ...extra, cliente, clienteCodigo: cli ? cli.codigo : viejo ? viejo.clienteCodigo : undefined, nota, items, subtotal, redondeo: Math.round((total - subtotal) * 100) / 100, total, clienteId: cli ? cli.id : undefined, dia: dia || undefined, turno: turno || undefined, vendedorId: vend ? vend.id : viejo ? viejo.vendedorId : quien.id, vendedor: vend ? vend.nombre : viejo ? viejo.vendedor : quien.nombre };
+  const { subtotal, redondeo, total } = totalesDe(items);
+  return { ...extra, cliente, clienteCodigo: cli ? cli.codigo : viejo ? viejo.clienteCodigo : undefined, nota, items, subtotal, redondeo, total, clienteId: cli ? cli.id : undefined, dia: dia || undefined, turno: turno || undefined, vendedorId: vend ? vend.id : viejo ? viejo.vendedorId : quien.id, vendedor: vend ? vend.nombre : viejo ? viejo.vendedor : quien.nombre };
 }
 
 // ---- sesiones: token firmado con el usuario; el rol se lee de la base en cada pedido ----
