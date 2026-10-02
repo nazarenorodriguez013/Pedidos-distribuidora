@@ -108,6 +108,7 @@ function armarPedido(b, viejo, quien, admin) {
     const old = viejas.get(pid);
     if (!p) throw { code: 400, msg: 'Producto inexistente' };
     if (!old && !p.activo) throw { code: 409, msg: `"${p.nombre}" está desactivado` };
+    if (!old && !(precioDe(p) > 0)) throw { code: 409, msg: `"${p.nombre}" no tiene precio` };
     items.push({ pid, codigo: p.codigo, nombre: p.nombre, precio: old ? old.precio : precioDe(p), cant });
   }
   const total = Math.round(items.reduce((s, i) => s + i.precio * i.cant, 0) * 100) / 100;
