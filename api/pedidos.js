@@ -198,7 +198,7 @@ function armarPedido(b, viejo, quien, admin) {
   let cli = null;
   if (b.clienteId) {
     cli = state.clientes.find(c => c.id === Number(b.clienteId));
-    if (!cli || (!admin && cli.vendedorId !== quien.id)) throw { code: 400, msg: 'Cliente inexistente' };
+    if (!cli || (!admin && cli.vendedorId !== quien.id && !(viejo && viejo.clienteId === cli.id))) throw { code: 400, msg: 'Cliente inexistente' };   // un vendedor solo elige entre sus clientes (en un pedido que ya era suyo puede conservar el cliente que tenía)
   } else if (!viejo || viejo.clienteId) throw { code: 400, msg: 'Elegí un cliente' };   // pedidos viejos sin cliente cargado se pueden seguir editando
   const dia = String(b.dia || '').trim(), turno = String(b.turno || '').trim();
   if (!(viejo && !viejo.dia && !dia && !turno)) {   // pedidos viejos sin día/turno se pueden editar tal cual
