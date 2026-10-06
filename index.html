@@ -268,6 +268,7 @@ const escritorio = () => window.matchMedia('(min-width:900px)').matches;
 const TABS = ['menu', 'pedidos', 'clientes', 'precios', 'config'];   // pantallas con barra de botones abajo
 function render() {
   if (!token) return login();
+  if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc'].includes(view)) view = 'menu';
   const tab = TABS.includes(view), desk = escritorio();
   document.body.classList.toggle('hay-tabs', desk || tab);
   $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : ''}<h1>${TITULOS[view]}</h1><span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab || desk ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '📦', 'Listado'], ['config', '⚙️', 'Config']].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}</nav>` : ''}`;
@@ -671,6 +672,7 @@ function formProducto(p) {
     <div class="row" style="border:0;padding:10px 0 0"><button type="button" class="btn sec" data-modal="cerrar">Cancelar</button>${p.id ? '<button type="button" class="btn bad" data-act="borrarProd">Eliminar</button>' : ''}</div></form>`;
 }
 function abrirProducto(p) {
+  if (!esAdmin()) return;
   editando = { ...p };
   const el = document.createElement('div'); el.id = 'modal'; el.className = 'modal';
   el.innerHTML = `<div class="modal-card"><div class="row" style="border:0;padding:0 0 4px"><h2 style="flex:1;margin:0;font-size:19px">${p.id ? 'Editar producto' : 'Nuevo producto'}</h2><button class="btn sec" data-modal="cerrar" aria-label="Cerrar" style="width:40px;min-height:40px;padding:0;flex:none">✕</button></div>${formProducto(editando)}</div>`;
@@ -690,6 +692,7 @@ function abrirProducto(p) {
 /* ventana para crear/editar una promo combinada (administrador) */
 let comboEd = null;
 function abrirCombo(c) {
+  if (!esAdmin()) return;
   comboEd = c ? JSON.parse(JSON.stringify(c)) : { nombre: '', activa: true, tipo: 'pct', pct: '', precios: {}, grupos: [{ cant: 10, pids: [] }] };
   const el = document.createElement('div'); el.id = 'modal'; el.className = 'modal';
   el.innerHTML = `<div class="modal-card"><div class="row" style="border:0;padding:0 0 4px"><h2 style="flex:1;margin:0;font-size:19px">${c ? 'Editar promo combinada' : 'Nueva promo combinada'}</h2><button class="btn sec" data-modal="cerrar" aria-label="Cerrar" style="width:40px;min-height:40px;padding:0;flex:none">✕</button></div><div id="cform"></div></div>`;
