@@ -638,7 +638,7 @@ async function borrarPedido() {
 
 /* ---------- productos ---------- */
 function vProductos() {
-  $('#main').innerHTML = `<button class="btn" data-act="nuevoProd" style="margin-bottom:10px">+ Nuevo producto</button>` + buscador(`<div class="chips">${['todos', 'activos', 'inactivos'].map(f => `<button data-f="${f}" class="${filtro === f ? 'on' : ''}">${f[0].toUpperCase() + f.slice(1)}</button>`).join('')}</div>`);
+  $('#main').innerHTML = `<div class="row" style="border:0;padding:0 0 10px;gap:10px"><button class="btn sec" data-act="nuevoProd">+ Nuevo producto</button><button class="btn" data-go="importar">📥 Importar lista de precios</button></div>` + buscador(`<div class="chips">${['todos', 'activos', 'inactivos'].map(f => `<button data-f="${f}" class="${filtro === f ? 'on' : ''}">${f[0].toUpperCase() + f.slice(1)}</button>`).join('')}</div>`);
   enlazarBuscador(() => {
     const l = filtrar(productos).filter(p => filtro === 'todos' || (filtro === 'activos') === p.activo);
     $('#lista').innerHTML = l.length ? `<div class="card cols2">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" data-edit="${p.id}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}</span></div>${p.promo ? '<span class="tag promo">PROMO</span>' : ''}${precioHtml(p)}
@@ -768,7 +768,7 @@ function vElegirPromo() {
 
 /* ---------- precios + PDF ---------- */
 function vPrecios() {
-  $('#main').innerHTML = `${esAdmin() ? '<button class="btn" data-act="nuevoProd" style="margin-bottom:10px">+ Cargar un producto</button>' : ''}<button class="btn ${esAdmin() ? 'sec' : ''}" data-act="pdf" style="margin-bottom:10px">📄 Exportar lista de precios (PDF)</button>` + buscador();
+  $('#main').innerHTML = `${esAdmin() ? '<div class="row" style="border:0;padding:0 0 10px;gap:10px"><button class="btn" data-go="importar">📥 Importar lista de precios (PDF o Excel)</button><button class="btn sec" data-act="nuevoProd">+ Cargar un producto</button></div>' : ''}<button class="btn ${esAdmin() ? 'sec' : ''}" data-act="pdf" style="margin-bottom:10px">📄 Exportar lista de precios (PDF)</button>` + buscador();
   enlazarBuscador(() => {
     const l = filtrar(productos).filter(p => esAdmin() || p.activo || sinPrecio(p));
     $('#lista').innerHTML = l.length ? `<div class="card cols2">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" ${esAdmin() ? `data-precio="${p.id}"` : ''}><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}${p.activo ? '' : p.precio > 0 ? ' · inactivo' : ' · sin precio'}</span></div>${p.promo ? '<span class="tag promo">PROMO</span>' : ''}${precioHtml(p)}</div>`).join('')}</div>` : vacio('Sin resultados');
