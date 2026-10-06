@@ -215,7 +215,8 @@ async function cargar() {
   usuarios = c.usuarios;
   cacheDatos();
 }
-function salir() { localStorage.removeItem('pd_token'); localStorage.removeItem('pd_nav'); token = null; view = 'menu'; render(); }
+function salir() { localStorage.removeItem('pd_token'); localStorage.removeItem('pd_nav'); localStorage.removeItem('pd_cache');   // no queda nada del usuario en el navegador
+  token = null; view = 'menu'; render(); }
 /* navegación con el botón "atrás" del celular: vuelve a la sección anterior; en el menú pregunta antes de salir */
 let pila = [];   // secciones visitadas, en el mismo orden que el historial del navegador
 function go(v, reemplazar) {
@@ -285,6 +286,7 @@ function login() {
     e.preventDefault();
     try {
       const j = await api('POST', 'p/login', { user: $('#u').value.trim(), pass: $('#pw').value });
+      try { localStorage.removeItem('pd_cache'); } catch {}
       token = j.token; user = j.user; localStorage.setItem('pd_token', token); localStorage.setItem('pd_user', JSON.stringify(user));
       await cargar(); go('menu', true);
     } catch (er) { $('#err').textContent = er.message; }
