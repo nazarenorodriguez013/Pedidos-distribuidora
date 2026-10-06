@@ -293,9 +293,11 @@ function importar(b) {
 
 function importarClientes(b, quien) {
   const marca = { editadoEn: new Date().toISOString(), editadoPor: quien.nombre };   // última edición y quién
-  const r = { creados: 0, actualizados: 0, errores: [] };
+  const filas = Array.isArray(b.rows) ? b.rows : [];
+  const r = { leidas: filas.length, creados: 0, actualizados: 0, errores: [], avisos: [] };
   const porDefecto = state.usuarios.find(u => u.id === Number(b.vendedorId));
-  (Array.isArray(b.rows) ? b.rows : []).forEach((f, n) => {
+  const enEsteArchivo = new Map();   // código -> fila: no se pisa un cliente cargado en esta misma importación
+  filas.forEach((f, n) => {
     const t = k => String(f[k] ?? '').trim();
     const fila = `Fila ${n + 1}${t('nombre') ? ' (' + t('nombre') + ')' : ''}`;
     if (!t('nombre')) return r.errores.push(`Fila ${n + 1}: sin nombre`);
@@ -306,8 +308,13 @@ function importarClientes(b, quien) {
       if (!vend) return r.errores.push(`${fila}: no existe el vendedor con ID "${t('vendedor')}" (el ID está en Usuarios)`);
     }
     if (!vend) return r.errores.push(`${fila}: falta asignarle un vendedor`);
-    const codigo = t('codigo');
+    let codigo = t('codigo');
+    if (codigo && enEsteArchivo.has(codigo.toLowerCase())) {   // el código ya lo usó otra fila de este archivo: se carga igual, sin código, y se avisa
+      r.avisos.push(`${fila}: el código ${codigo} ya está en la fila ${enEsteArchivo.get(codigo.toLowerCase())}; se cargó sin código (asignalo después)`);
+      codigo = '';
+    }
     const c = codigo && state.clientes.find(x => x.codigo.toLowerCase() === codigo.toLowerCase());
+    if (codigo) enEsteArchivo.set(codigo.toLowerCase(), n + 1);
     if (c) {
       c.nombre = t('nombre'); c.apellido = '';
       if (t('direccion')) c.direccion = t('direccion');

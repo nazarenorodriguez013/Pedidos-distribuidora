@@ -535,7 +535,7 @@ const selVend = () => esAdmin() ? `<select id="vendc" style="width:100%;margin:8
 function conSelVend(pintar) { if (esAdmin()) $('#vendc').onchange = e => { vendC = e.target.value; pintar(); }; }
 function vClientes() {
   $('#main').innerHTML = `<button class="btn" data-act="nuevoCliente" style="margin-bottom:10px">+ Nuevo cliente</button>${esAdmin() ? '<button class="btn sec" data-go="importarc" style="margin-bottom:10px">📥 Importar clientes desde Excel</button>' : ''}` + buscador(selVend());
-  const pintar = () => { $('#lista').innerHTML = listaClientes(filtrarC(clientes), 'data-editcli'); };
+  const pintar = () => { const l = filtrarC(clientes); $('#lista').innerHTML = `<p class="mut" style="margin:4px 0">${l.length} ${l.length === 1 ? 'cliente' : 'clientes'}${l.length !== clientes.length ? ` de ${clientes.length}` : ''}</p>` + listaClientes(l, 'data-editcli'); };
   conSelVend(pintar); enlazarBuscador(pintar);
 }
 /* importar clientes (admin): Código cliente | Nombre y apellido | Dirección | Teléfono [| Vendedor] */
@@ -553,14 +553,17 @@ function vImportarC() {
     if (!window.XLSX) return toast('No cargó el lector de Excel (revisá la conexión)');
     try {
       const wb = /\.csv$/i.test(f.name) ? XLSX.read(await f.text(), { type: 'string', raw: true }) : XLSX.read(await f.arrayBuffer(), { type: 'array' });
-      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true }).filter(r => r.some(c => String(c ?? '').trim() !== ''));
-      const cab = rows[0].map(c => norm(c).trim()), mapa = {};
-      for (const [k, ks] of Object.entries(COLS_C)) { const i = cab.findIndex(c => ks.some(w => c === w || c.startsWith(w))); if (i >= 0) mapa[k] = i; }
-      let datos = rows;
-      if (mapa.codigo !== undefined || mapa.nombre !== undefined) datos = rows.slice(1);
-      else Object.assign(mapa, { codigo: 0, nombre: 1, direccion: 2, telefono: 3, vendedor: 4 });
-      if (mapa.nombre === undefined) Object.assign(mapa, { codigo: 0, nombre: 1, direccion: 2, telefono: 3, vendedor: 4 });
-      filasC = datos.map(r => Object.fromEntries(Object.entries(mapa).map(([k, i]) => [k, String(r[i] ?? '').trim()])));
+      filasC = [];
+      for (const hoja of wb.SheetNames) {   // se leen todas las hojas del archivo
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[hoja], { header: 1, raw: true }).filter(r => r.some(c => String(c ?? '').trim() !== ''));
+        if (!rows.length) continue;
+        const cab = rows[0].map(c => norm(c).trim()), mapa = {};
+        for (const [k, ks] of Object.entries(COLS_C)) { const i = cab.findIndex(c => ks.some(w => c === w || c.startsWith(w))); if (i >= 0) mapa[k] = i; }
+        let datos = rows;
+        if (Object.keys(mapa).length >= 2 && mapa.nombre !== undefined) datos = rows.slice(1);   // la primera fila es el encabezado solo si coincide con varias columnas conocidas
+        else Object.assign(mapa, { codigo: 0, nombre: 1, direccion: 2, telefono: 3, vendedor: 4 });   // sin encabezado: A=código, B=nombre, C=dirección, D=teléfono, E=ID vendedor
+        filasC.push(...datos.map(r => Object.fromEntries(Object.entries(mapa).map(([k, i]) => [k, String(r[i] ?? '').trim()]))));
+      }
       if (!filasC.length) return toast('No se encontraron clientes en el archivo');
       $('#prev').innerHTML = `<p><b>${filasC.length}</b> clientes leídos. Ejemplo: ${esc(Object.values(filasC[0]).join(' | '))}</p><button class="btn" data-act="importarClientes">Importar</button>`;
     } catch { toast('No se pudo leer el archivo'); }
@@ -570,7 +573,8 @@ async function importarClientes() {
   try {
     const r = await api('POST', 'p/importarclientes', { rows: filasC, vendedorId: $('#vimp').value });
     await cargar();
-    $('#prev').innerHTML = `<p><b>Listo:</b> ${r.creados} creados, ${r.actualizados} actualizados.</p>${r.errores.length ? `<p class="mut" style="color:var(--bad)">${r.errores.length} filas con error:<br>${r.errores.slice(0, 30).map(esc).join('<br>')}<br>Corregí (por ejemplo elegí un vendedor arriba) y volvé a tocar Importar.</p><button class="btn" data-act="importarClientes">Importar de nuevo</button>` : ''}`;
+    const lista = (t, cls, l) => l.length ? `<p class="mut" style="color:var(--${cls});max-height:240px;overflow:auto">${t}<br>${l.map(esc).join('<br>')}</p>` : '';
+    $('#prev').innerHTML = `<p><b>Listo:</b> ${r.leidas} filas leídas → ${r.creados} clientes nuevos, ${r.actualizados} actualizados${r.errores.length ? `, <b>${r.errores.length} con error (no se cargaron)</b>` : ''}${r.avisos.length ? `, ${r.avisos.length} con aviso` : ''}.</p>${lista('Filas con error:', 'bad', r.errores)}${lista('Avisos:', 'warn', r.avisos)}${r.errores.length ? '<p class="mut">Corregí el archivo (o elegí un vendedor arriba) y volvé a importar: los clientes que ya se cargaron se actualizan, no se duplican.</p><button class="btn" data-act="importarClientes">Importar de nuevo</button>' : ''}`;
   } catch (e) { toast(e.message); }
 }
 function plantillaClientes() {
