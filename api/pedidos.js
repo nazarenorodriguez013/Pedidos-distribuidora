@@ -21,6 +21,7 @@ async function load(pool) {
   state.clientes = state.clientes || [];
   state.seq.c = state.seq.c || 1;
   state.combos = state.combos || [];
+  for (const c of state.combos) for (const g of c.grupos) if (!g.codigos) g.codigos = g.pids.map(pid => (state.productos.find(p => p.id === pid) || {}).codigo).filter(Boolean);
   state.seq.k = state.seq.k || 1;
   for (const c of state.combos) if (c.tipo === 'precio' && !c.precios) { c.precios = {}; for (const g of c.grupos) for (const pid of g.pids) c.precios[pid] = c.precio; delete c.precio; }
   for (const o of state.pedidos) if (o.clienteId && o.clienteCodigo === undefined) { const c = state.clientes.find(x => x.id === o.clienteId); if (c) o.clienteCodigo = c.codigo; }
@@ -116,14 +117,46 @@ const sumaGrupo = (g, cant) => g.pids.reduce((t, pid) => t + (cant.get(pid) || 0
 const comboCumple = (c, cant) => c.activa && c.grupos.every(g => sumaGrupo(g, cant) >= g.cant);
 const comboIncluye = (c, pid) => c.grupos.some(g => g.pids.includes(pid));
 const precioComboDe = (c, p) => (c.tipo === 'precio' ? (c.precios || {})[p.id] || p.precio : Math.round(p.precio * (100 - c.pct)) / 100);   // 'precio': cada producto tiene el suyo
+// Las promos y la unidad de venta se guardan por CÓDIGO de producto: si un producto se borra (por ejemplo al reemplazar la lista)
+// su configuración queda guardada y se vuelve a aplicar cuando aparezca otro producto con ese mismo código.
+const CONFIG_PRODUCTO = ['promo', 'promoCant', 'promoPct', 'precioPromo', 'multiplo', 'multiploSet'];
+const mismoCodigo = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+function quitarProductos(ids) {
+  state.configPorCodigo = state.configPorCodigo || {};
+  for (const p of state.productos.filter(x => ids.has(x.id))) {
+    if (p.promo || p.multiploSet) { const c = {}; for (const k of CONFIG_PRODUCTO) if (p[k] !== undefined) c[k] = p[k]; state.configPorCodigo[p.codigo.toLowerCase()] = c; }
+    for (const c of state.combos) {   // en las promos combinadas el producto queda reservado por su código
+      for (const g of c.grupos) if (g.pids.includes(p.id)) {
+        g.pids = g.pids.filter(pid => pid !== p.id);
+        g.codigos = [...new Set([...(g.codigos || []), p.codigo])];
+      }
+      if (c.precios && c.precios[p.id] !== undefined) { c.preciosCod = { ...(c.preciosCod || {}), [p.codigo]: c.precios[p.id] }; delete c.precios[p.id]; }
+    }
+  }
+  state.productos = state.productos.filter(x => !ids.has(x.id));
+}
+function restaurarProducto(p) {   // producto nuevo: recupera la promo/unidad guardadas y vuelve a sus promos combinadas
+  const c = (state.configPorCodigo || {})[p.codigo.toLowerCase()];
+  if (c) { Object.assign(p, c); delete state.configPorCodigo[p.codigo.toLowerCase()]; }
+  for (const co of state.combos) {
+    for (const g of co.grupos) if ((g.codigos || []).some(x => mismoCodigo(x, p.codigo)) && !g.pids.includes(p.id)) g.pids.push(p.id);
+    const pr = co.preciosCod && Object.entries(co.preciosCod).find(([k]) => mismoCodigo(k, p.codigo));
+    if (pr && co.tipo === 'precio') { co.precios = co.precios || {}; co.precios[p.id] = pr[1]; delete co.preciosCod[pr[0]]; }
+  }
+}
+const grupoConPerdidos = (g, vivos) => ({ ...g, perdidos: (g.codigos || []).filter(cod => !vivos.some(p => mismoCodigo(p.codigo, cod))) });
 function cleanCombo(b) {
   const nombre = String(b.nombre || '').trim();
   if (!nombre) throw { code: 400, msg: 'Falta el nombre de la promo' };
-  const grupos = (Array.isArray(b.grupos) ? b.grupos : []).map(g => ({ cant: Math.floor(num(g.cant)), pids: [...new Set((Array.isArray(g.pids) ? g.pids : []).map(Number))] }));
+  const grupos = (Array.isArray(b.grupos) ? b.grupos : []).map(g => {
+    const pids = [...new Set((Array.isArray(g.pids) ? g.pids : []).map(Number))];
+    const cods = pids.map(pid => (state.productos.find(p => p.id === pid) || {}).codigo).filter(Boolean);
+    return { cant: Math.floor(num(g.cant)), pids, codigos: [...new Set([...cods, ...(Array.isArray(g.perdidos) ? g.perdidos : [])])] };   // 'perdidos': códigos reservados de productos que hoy no están en la lista
+  });
   if (!grupos.length) throw { code: 400, msg: 'Agregá al menos un grupo de productos' };
   for (const g of grupos) {
     if (!(g.cant >= 1)) throw { code: 400, msg: 'Cada grupo necesita una cantidad de 1 o más' };
-    if (!g.pids.length || g.pids.some(pid => !state.productos.some(p => p.id === pid))) throw { code: 400, msg: 'Cada grupo necesita al menos un producto' };
+    if (!g.codigos.length || g.pids.some(pid => !state.productos.some(p => p.id === pid))) throw { code: 400, msg: 'Cada grupo necesita al menos un producto' };
   }
   const tipo = b.tipo === 'precio' ? 'precio' : 'pct';
   const pct = Math.min(100, num(b.pct));
@@ -134,7 +167,7 @@ function cleanCombo(b) {
     if (!(v > 0)) throw { code: 400, msg: `Poné el precio promo de "${state.productos.find(p => p.id === pid).nombre}"` };
     precios[pid] = v;
   }
-  return { nombre, activa: b.activa === undefined ? true : !!b.activa, grupos, tipo, pct: tipo === 'pct' ? pct : 0, precios };
+  return { nombre, activa: b.activa === undefined ? true : !!b.activa, grupos, tipo, pct: tipo === 'pct' ? pct : 0, precios, preciosCod: b.preciosCod || {} };
 }
 
 const REDONDEO = 50;   // el total de cada pedido se redondea hacia arriba a múltiplo de 50
@@ -276,7 +309,8 @@ function importar(b) {
     if (!p) {
       const nombre = String(f.nombre ?? '').trim();
       if (!nombre || precio === null) return r.errores.push(`Fila ${fila} (${codigo}): producto nuevo necesita nombre y precio`);
-      state.productos.push({ id: state.seq.p++, codigo, nombre, precio, multiplo: mult ? Math.floor(mult) : 1, multiploSet: !!mult, activo: f.activo === undefined || f.activo === '' ? !sinPrecio : truthy(f.activo), promo: false, precioPromo: 0 });
+      const nuevoProd = { id: state.seq.p++, codigo, nombre, precio, multiplo: mult ? Math.floor(mult) : 1, multiploSet: !!mult, activo: f.activo === undefined || f.activo === '' ? !sinPrecio : truthy(f.activo), promo: false, precioPromo: 0 };
+      state.productos.push(nuevoProd); restaurarProducto(nuevoProd);
       return r.creados++;
     }
     if (String(f.nombre ?? '').trim()) p.nombre = String(f.nombre).trim();
@@ -292,13 +326,7 @@ function importar(b) {
     if (!vistos.size) r.errores.push('No se encontraron productos válidos en el archivo: no se borró nada');
     else {
       const ids = new Set(state.productos.filter(p => !vistos.has(p.codigo.toLowerCase())).map(p => p.id));
-      state.productos = state.productos.filter(p => !ids.has(p.id)); r.borrados = ids.size;
-      for (const c of state.combos) {   // las promos combinadas pierden los productos borrados; si se quedan sin productos se desactivan
-        for (const g of c.grupos) g.pids = g.pids.filter(pid => !ids.has(pid));
-        c.grupos = c.grupos.filter(g => g.pids.length);
-        for (const pid of Object.keys(c.precios || {})) if (ids.has(Number(pid))) delete c.precios[pid];
-        if (!c.grupos.length) c.activa = false;
-      }
+      quitarProductos(ids); r.borrados = ids.size;   // se borran, pero sus promos y su unidad de venta quedan guardadas por código
     }
   }
   return r;
@@ -419,7 +447,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     }
 
     if (rec === 'combos') {
-      if (!id && req.method === 'GET') return send(res, 200, { combos: s.combos });
+      if (!id && req.method === 'GET') return send(res, 200, { combos: s.combos.map(c => ({ ...c, grupos: c.grupos.map(g => grupoConPerdidos(g, s.productos)) })) });
       soloAdmin();
       if (!id && req.method === 'POST') {
         const datos = cleanCombo(await body(req, 1e5));
@@ -506,6 +534,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         obj.creado = obj.editado = new Date().toISOString();
       }
       list.push(obj);
+      if (rec === 'productos') restaurarProducto(obj);
       await save(pool);
       return send(res, 200, obj);
     }
@@ -526,7 +555,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     }
     if (req.method === 'DELETE') {
       if (rec === 'pedidos' && !admin && list[idx].estado === 'cargado') throw { code: 403, msg: 'El pedido ya fue cargado por administración' };
-      list.splice(idx, 1);
+      if (rec === 'productos') quitarProductos(new Set([list[idx].id])); else list.splice(idx, 1);   // el producto se borra pero su promo queda guardada por código
       await save(pool);
       return send(res, 200, { ok: true });
     }

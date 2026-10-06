@@ -371,7 +371,7 @@ const comboIncluye = (c, pid) => c.grupos.some(g => g.pids.includes(pid));
 const precioComboDe = (c, p) => (c.tipo === 'precio' ? (c.precios || {})[p.id] || p.precio : Math.round(p.precio * (100 - c.pct)) / 100);   // 'precio': cada producto con el suyo
 const nombresGrupo = (g, c) => { const n = g.pids.map(pid => { const p = productos.find(x => x.id === pid) || {}; return (p.nombre || '?') + (c && c.tipo === 'precio' && c.precios && c.precios[pid] ? ' ' + money(c.precios[pid]) : ''); }); return n.slice(0, 3).join(' / ') + (n.length > 3 ? ` y ${n.length - 3} más` : ''); };
 const comboBeneficio = c => (c.tipo === 'precio' ? 'precio especial' : c.pct + '% de descuento');
-const comboTxt = c => c.grupos.map(g => `${g.cant} ${nombresGrupo(g, c)}`).join(' + ') + (c.tipo === 'precio' ? '' : ' → ' + comboBeneficio(c));
+const comboTxt = c => c.grupos.map(g => `${g.cant} ${nombresGrupo(g, c) || ((g.perdidos || []).length ? 'productos fuera de la lista (' + g.perdidos.join(', ') + ')' : '')}`).join(' + ') + (c.tipo === 'precio' ? '' : ' → ' + comboBeneficio(c));
 function comboDeLinea(p) {   // promo combinada aceptada y cumplida que alcanza a este producto (la de menor precio)
   let best = null;
   for (const c of combos) if (draft.combos[c.id] === 'si' && comboCumple(c) && comboIncluye(c, p.id) && (!best || precioComboDe(c, p) < precioComboDe(best, p))) best = c;
@@ -702,6 +702,7 @@ function pintarCombo() {
     ${c.grupos.map((g, i) => `<div class="card" style="background:var(--bg)"><div class="row" style="border:0;padding:0;align-items:flex-end"><div style="flex:none;width:96px"><label>Cantidad</label><input class="gc" data-gi="${i}" inputmode="numeric" value="${g.cant}"></div>
       <div class="nm"><label>Grupo ${i + 1}</label><input class="gb" data-gi="${i}" placeholder="Buscar producto…" autocomplete="off"></div>${c.grupos.length > 1 ? `<button type="button" class="btn sec" data-gdelg="${i}" style="width:40px;min-height:46px;padding:0;flex:none;color:var(--bad)">✕</button>` : ''}</div>
       <div id="gres${i}"></div>
+      ${(g.perdidos || []).length ? `<div class="mut" style="margin-top:6px">Productos que hoy no están en la lista (la promo vuelve a funcionar cuando el código reaparezca): ${g.perdidos.map(cod => `<span class="tag" style="margin:2px 4px 2px 0;padding:4px 8px">${esc(cod)} <button type="button" data-gdelp="${i}:${esc(cod)}" style="border:0;background:none;color:var(--bad);font-size:16px">×</button></span>`).join('')}</div>` : ''}
       <div style="margin-top:8px">${!g.pids.length ? '<span class="mut">Sin productos todavía</span>' : c.tipo === 'precio'
         ? `<label>Mismo precio para todo el grupo (opcional)</label><input class="gp" data-gi="${i}" inputmode="decimal" placeholder="Ej: 450">` + g.pids.map(pid => { const pr = productos.find(x => x.id === pid) || {}; return `<div class="row" style="border:0;padding:6px 0"><div class="nm"><b>${esc(pr.nombre || '?')}</b><span class="mut">lista ${money(pr.precio)}</span></div><input class="pp" data-gi="${i}" data-pid="${pid}" inputmode="decimal" placeholder="Precio promo" value="${(c.precios || {})[pid] || ''}" style="width:120px;flex:none"><button type="button" data-gdel="${i}:${pid}" style="border:0;background:none;color:var(--bad);font-size:20px;flex:none">×</button></div>`; }).join('')
         : g.pids.map(pid => `<span class="tag" style="margin:2px 4px 2px 0;padding:4px 8px">${esc((productos.find(p => p.id === pid) || {}).nombre || '?')} <button type="button" data-gdel="${i}:${pid}" style="border:0;background:none;color:var(--bad);font-size:16px">×</button></span>`).join('')}</div></div>`).join('')}
@@ -733,7 +734,7 @@ function pintarCombo() {
   });
 }
 async function guardarCombo() {
-  const c = comboEd, d = { nombre: c.nombre, activa: c.activa, tipo: c.tipo, pct: c.pct, precios: c.precios, grupos: c.grupos.map(g => ({ cant: g.cant, pids: g.pids })) };
+  const c = comboEd, d = { nombre: c.nombre, activa: c.activa, tipo: c.tipo, pct: c.pct, precios: c.precios, grupos: c.grupos.map(g => ({ cant: g.cant, pids: g.pids, perdidos: g.perdidos || [] })), preciosCod: c.preciosCod };
   try {
     if (c.id) await api('PUT', 'p/combos/' + c.id, d); else await api('POST', 'p/combos', d);
     await cargar(); toast('Promo guardada'); cerrarModal();
@@ -875,7 +876,7 @@ function vImportar() {
       if (!importFilas.length) return toast('No se encontraron productos en el archivo');
       $('#prev').innerHTML = `<p><b>${importFilas.length}</b> filas leídas${importFilas.some(r => r.activo === 'no') ? ` (${importFilas.filter(r => r.activo === 'no').length} sin precio, quedan desactivadas)` : ''}. Ejemplo: ${esc(Object.values(importFilas[0] || {}).join(' | '))}</p>
         <p id="resumenImp"></p>
-        <div class="row" style="border:0"><div class="nm"><b>Reemplazar toda la lista</b><span class="mut">Borra los productos que no figuren en el archivo (con sus promos) y carga la lista nueva. Los que figuran se actualizan y conservan sus promos.</span></div><label class="sw" style="margin:0"><input type="checkbox" id="cat" checked><i></i></label></div>
+        <div class="row" style="border:0"><div class="nm"><b>Reemplazar toda la lista</b><span class="mut">Borra los productos que no figuren en el archivo y carga la lista nueva. Las promos y la unidad de venta quedan guardadas por código: se conservan en los que figuran y se recuperan solas si un producto borrado vuelve a aparecer.</span></div><label class="sw" style="margin:0"><input type="checkbox" id="cat" checked><i></i></label></div>
         <button class="btn" id="btnImp" data-act="importarConfirmar">Importar</button>`;
       resumenImportacion(); $('#cat').onchange = resumenImportacion;
     } catch { toast('No se pudo leer el archivo'); }
@@ -940,6 +941,7 @@ document.addEventListener('click', async e => {
   else if (d.gdelg !== undefined) { comboEd.grupos.splice(+d.gdelg, 1); pintarCombo(); }
   else if (d.gadd) { const [i, pid] = d.gadd.split(':').map(Number); comboEd.grupos[i].pids.push(pid); pintarCombo(); }
   else if (d.gdel) { const [i, pid] = d.gdel.split(':').map(Number); comboEd.grupos[i].pids = comboEd.grupos[i].pids.filter(x => x !== pid); pintarCombo(); }
+  else if (d.gdelp) { const [i, ...r] = d.gdelp.split(':'); comboEd.grupos[+i].perdidos = comboEd.grupos[+i].perdidos.filter(x => x !== r.join(':')); pintarCombo(); }
   else if (d.ctipo) { comboEd.tipo = d.ctipo; pintarCombo(); }
   else if (d.csave !== undefined) guardarCombo();
   else if (d.cdel !== undefined) {
