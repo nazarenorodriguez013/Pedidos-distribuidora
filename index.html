@@ -359,6 +359,7 @@ const hayCambios = () => !!draft.id && draft.snap !== snapDraft();   // el que m
 const etiquetaBoton = () => !draft.id ? 'Guardar pedido' : !esAdmin() ? 'Guardar cambios' : hayCambios() ? 'Guardar cambios' : (draft.estado !== 'cargado' || draft.agregar) ? 'Cargar' : '✓ Cargado';
 function actualizarBoton() { guardarNav(); guardarBorrador(); const b = $('#btnGuardar'); if (b) { b.textContent = etiquetaBoton(); b.disabled = esAdmin() && draft.id && !hayCambios() && draft.estado === 'cargado' && !draft.agregar; } }
 function nuevoDraft(ped) {
+  if (ped) for (const i of ped.items) if (!productos.some(p => p.id === i.pid)) productos.push({ id: i.pid, codigo: i.codigo, nombre: i.nombre, precio: i.precioLista ?? i.precio, activo: false, multiplo: 1, promo: false, borrado: true });   // producto que ya no está en la lista
   draft = ped ? { id: ped.id, orden: ped.items.map(i => i.pid), clienteCodigo: ped.clienteCodigo ?? (clientes.find(c => c.id === ped.clienteId) || {}).codigo, combos: Object.fromEntries(ped.items.filter(i => i.comboId).map(i => [i.comboId, 'si'])), avisadoC: {}, cargadoPor: ped.cargadoPor, agregar: !!ped.agregar, cambios: cambiosDe(ped), cargadoItems: ped.cargadoItems || [], estado: ped.estado || 'pendiente', cargada: Object.fromEntries(ped.items.map(i => [i.pid, i.cantCargada ?? i.cant])), promos: Object.fromEntries(ped.items.filter(i => i.promo).map(i => [i.pid, 'si'])), avisado: {}, dia: ped.dia || diaSesion(), turno: ped.turno || '', clienteId: ped.clienteId || null, legacy: !ped.clienteId, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])) }
               : { id: null, orden: [], combos: {}, avisadoC: {}, estado: 'pendiente', cargada: {}, promos: {}, avisado: {}, dia: diaSesion(), turno: ss('pd_turno') || '', clienteId: null, uid: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)), cliente: '', nota: '', items: {}, orig: {} };
   if (ped) draft.snap = snapDraft();
@@ -873,16 +874,30 @@ function vImportar() {
       }
       if (!importFilas.length) return toast('No se encontraron productos en el archivo');
       $('#prev').innerHTML = `<p><b>${importFilas.length}</b> filas leídas${importFilas.some(r => r.activo === 'no') ? ` (${importFilas.filter(r => r.activo === 'no').length} sin precio, quedan desactivadas)` : ''}. Ejemplo: ${esc(Object.values(importFilas[0] || {}).join(' | '))}</p>
-        <div class="row" style="border:0"><div class="nm"><b>La lista es el catálogo completo</b><span class="mut">Activa los que están y desactiva (no borra) los que no figuran. Sus promos se conservan.</span></div><label class="sw" style="margin:0"><input type="checkbox" id="cat"><i></i></label></div>
-        <button class="btn" data-act="importarConfirmar">Importar</button>`;
+        <p id="resumenImp"></p>
+        <div class="row" style="border:0"><div class="nm"><b>Reemplazar toda la lista</b><span class="mut">Borra los productos que no figuren en el archivo (con sus promos) y carga la lista nueva. Los que figuran se actualizan y conservan sus promos.</span></div><label class="sw" style="margin:0"><input type="checkbox" id="cat" checked><i></i></label></div>
+        <button class="btn" id="btnImp" data-act="importarConfirmar">Importar</button>`;
+      resumenImportacion(); $('#cat').onchange = resumenImportacion;
     } catch { toast('No se pudo leer el archivo'); }
   };
 }
-async function importarConfirmar() {
+const codImp = r => String(r.codigo ?? '').trim().toLowerCase();
+function conteoImportacion() {
+  const archivo = new Set(importFilas.map(codImp)), existentes = new Set(productos.map(p => p.codigo.toLowerCase()));
+  return { nuevos: [...archivo].filter(c => c && !existentes.has(c)).length, actualizar: [...archivo].filter(c => existentes.has(c)).length, borrar: $('#cat').checked ? productos.filter(p => !archivo.has(p.codigo.toLowerCase())).length : 0 };
+}
+function resumenImportacion() {
+  const c = conteoImportacion(), btn = $('#btnImp'); delete btn.dataset.seguro;
+  $('#resumenImp').innerHTML = `Se crean <b>${c.nuevos}</b> productos nuevos y se actualizan <b>${c.actualizar}</b>.${c.borrar ? ` <b style="color:var(--bad)">Se borran ${c.borrar} productos</b> que hoy están cargados y no figuran en el archivo.` : ''}`;
+  btn.textContent = c.borrar ? `Reemplazar la lista (borra ${c.borrar})` : 'Importar';
+}
+async function importarConfirmar(btn) {
+  const c = conteoImportacion();
+  if (c.borrar && btn && !btn.dataset.seguro) { btn.dataset.seguro = 1; btn.textContent = `Tocá de nuevo para borrar ${c.borrar} productos e importar`; return; }   // confirmación antes de borrar
   try {
-    const r = await api('POST', 'p/importar', { rows: importFilas, catalogoCompleto: $('#cat').checked });
+    const r = await api('POST', 'p/importar', { rows: importFilas, reemplazar: $('#cat').checked });
     await cargar();
-    $('#prev').innerHTML = `<p><b>Listo:</b> ${r.creados} creados, ${r.actualizados} actualizados, ${r.desactivados} desactivados.</p>${r.errores.length ? `<p class="mut" style="color:var(--bad)">${r.errores.length} filas con error:<br>${r.errores.slice(0, 30).map(esc).join('<br>')}</p>` : ''}`;
+    $('#prev').innerHTML = `<p><b>Listo:</b> ${r.creados} creados, ${r.actualizados} actualizados${r.borrados ? `, <b>${r.borrados} borrados</b>` : ''}.</p>${r.errores.length ? `<p class="mut" style="color:var(--bad)">${r.errores.length} filas con error:<br>${r.errores.slice(0, 30).map(esc).join('<br>')}</p>` : ''}`;
   } catch (e) { toast(e.message); }
 }
 function exportarExcel() {
@@ -968,7 +983,7 @@ document.addEventListener('click', async e => {
     const it = leerCola().find(x => x.uid === d.delcola);
     lsSet('pd_cola', leerCola().filter(x => x.uid !== d.delcola)); cacheDatos(); render();
   }
-  else if (d.act === 'importarConfirmar') importarConfirmar();
+  else if (d.act === 'importarConfirmar') importarConfirmar(t);
   else if (d.act === 'exportarExcel') exportarExcel();
   else if (d.act === 'borrarPedido') borrarPedido();
   else if (d.ped) {

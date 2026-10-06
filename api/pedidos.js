@@ -187,7 +187,7 @@ function armarPedido(b, viejo, quien, admin) {
   for (const [pid, cant] of nuevas) {
     const p = state.productos.find(x => x.id === pid);
     const old = viejas.get(pid);
-    if (!p) throw { code: 400, msg: 'Producto inexistente' };
+    if (!p) { if (old) { items.push({ ...old, cant }); continue; } throw { code: 400, msg: 'Producto inexistente' }; }   // producto borrado de la lista: la línea del pedido queda como estaba
     if (!old && !p.activo) throw { code: 409, msg: `"${p.nombre}" está desactivado` };
     const m = p.multiplo || 1;
     if (cant % m && !(old && old.cant === cant)) throw { code: 400, msg: `"${p.nombre}" tiene unidad de venta ${m}: la cantidad tiene que ser múltiplo de ${m}` };
@@ -260,7 +260,7 @@ const adminsActivos = () => state.usuarios.filter(u => u.rol === 'admin' && u.ac
 
 function importar(b) {
   const filas = Array.isArray(b.rows) ? b.rows : [];
-  const r = { creados: 0, actualizados: 0, desactivados: 0, errores: [] };
+  const r = { creados: 0, actualizados: 0, desactivados: 0, borrados: 0, errores: [] };
   const vistos = new Set();
   filas.forEach((f, n) => {
     const codigo = String(f.codigo ?? '').trim();
@@ -288,6 +288,19 @@ function importar(b) {
     r.actualizados++;
   });
   if (b.catalogoCompleto) for (const p of state.productos) if (p.activo && !vistos.has(p.codigo.toLowerCase())) { p.activo = false; r.desactivados++; }
+  if (b.reemplazar) {   // la lista nueva reemplaza a la anterior: se borran los productos que no figuran en el archivo
+    if (!vistos.size) r.errores.push('No se encontraron productos válidos en el archivo: no se borró nada');
+    else {
+      const ids = new Set(state.productos.filter(p => !vistos.has(p.codigo.toLowerCase())).map(p => p.id));
+      state.productos = state.productos.filter(p => !ids.has(p.id)); r.borrados = ids.size;
+      for (const c of state.combos) {   // las promos combinadas pierden los productos borrados; si se quedan sin productos se desactivan
+        for (const g of c.grupos) g.pids = g.pids.filter(pid => !ids.has(pid));
+        c.grupos = c.grupos.filter(g => g.pids.length);
+        for (const pid of Object.keys(c.precios || {})) if (ids.has(Number(pid))) delete c.precios[pid];
+        if (!c.grupos.length) c.activa = false;
+      }
+    }
+  }
   return r;
 }
 
