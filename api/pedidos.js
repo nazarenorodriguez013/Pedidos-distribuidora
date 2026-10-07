@@ -108,6 +108,8 @@ function cleanProducto(b, prev = {}) {
     precioPromo: num(b.precioPromo, prev.precioPromo ?? 0),
     promoCant: Math.max(1, Math.floor(num(b.promoCant, prev.promoCant ?? 1))),
     promoPct: Math.min(100, num(b.promoPct, prev.promoPct ?? 0)),
+    usaStock: b.usaStock === undefined ? !!prev.usaStock : !!b.usaStock,   // stock opcional por producto: se descuenta con cada pedido
+    stock: Math.max(0, Math.floor(num(b.stock, prev.stock ?? 0))),
   };
 }
 
@@ -191,6 +193,21 @@ function cleanCliente(b, prev, admin, yo) {
   return o;
 }
 
+// Stock (opcional por producto): cada pedido descuenta lo que lleva; al editarlo, eliminarlo o rechazarlo se ajusta o se repone.
+const cantsStock = o => new Map(o && !o.stockRepuesto ? o.items.map(i => [i.pid, i.cant]) : []);
+function ajustarStock(viejo, nuevo) {
+  const a = cantsStock(viejo), b = cantsStock(nuevo);
+  for (const pid of new Set([...a.keys(), ...b.keys()])) {
+    const p = state.productos.find(x => x.id === pid);
+    if (p && p.usaStock) p.stock = Math.max(0, (p.stock || 0) - ((b.get(pid) || 0) - (a.get(pid) || 0)));
+  }
+}
+function reponerStock(o, reponer) {   // pedido rechazado: la mercadería vuelve al stock; si se quita el rechazo, se descuenta de nuevo
+  if (reponer === !!o.stockRepuesto) return;
+  if (reponer) { ajustarStock(o, { ...o, stockRepuesto: true }); o.stockRepuesto = true; }
+  else { ajustarStock({ ...o, stockRepuesto: true }, { ...o, stockRepuesto: false }); o.stockRepuesto = false; }
+}
+
 // Arma un pedido nuevo/editado con las líneas y su precio.
 function armarPedido(b, viejo, quien, admin) {
   // una vez cargado el pedido, el vendedor ya no puede cambiar la nota
@@ -244,6 +261,11 @@ function armarPedido(b, viejo, quien, admin) {
     const oldQty = old ? old.promoQty ?? (!!old.promo && promoCantDe(p) > 1) : false;
     const mismo = old && viejo.estado === 'cargado' && (old.comboId || 0) === (combo ? combo.id : 0) && oldQty === qtyNow;   // los pendientes siguen el precio vigente
     items.push({ pid, codigo: p.codigo, nombre: p.nombre, precio: mismo ? old.precio : unit, precioLista: mismo ? old.precioLista ?? p.precio : p.precio, promo: aplica || undefined, promoQty: qtyNow || undefined, comboId: combo ? combo.id : undefined, comboNombre: combo ? combo.nombre : undefined, cant });
+  }
+  const antes = cantsStock(viejo);
+  for (const i of items) {
+    const p = state.productos.find(x => x.id === i.pid);
+    if (p && p.usaStock && i.cant - (antes.get(i.pid) || 0) > (p.stock || 0)) throw { code: 409, msg: `Stock insuficiente de "${p.nombre}": quedan ${p.stock || 0}` };
   }
   // Pedido ya cargado por administración: si lo edita el vendedor queda marcado "agregar" para que el admin lo vea
   let extra = {};
@@ -306,18 +328,21 @@ function importar(b) {
     let p = state.productos.find(x => x.codigo.toLowerCase() === codigo.toLowerCase());
     const mult = f.multiplo === undefined || f.multiplo === '' ? null : parseNum(f.multiplo);
     if (f.multiplo !== undefined && f.multiplo !== '' && !(mult >= 1)) return r.errores.push(`Fila ${fila} (${codigo}): unidad de venta inválida`);
+    const stk = f.stock === undefined || f.stock === '' ? null : parseNum(f.stock);
+    if (f.stock !== undefined && f.stock !== '' && (stk === null || stk < 0)) return r.errores.push(`Fila ${fila} (${codigo}): stock inválido`);
     const sinPrecio = precio === 0;   // precio 0 = sin precio: queda desactivado
     vistos.add(codigo.toLowerCase());
     if (!p) {
       const nombre = String(f.nombre ?? '').trim();
       if (!nombre || precio === null) return r.errores.push(`Fila ${fila} (${codigo}): producto nuevo necesita nombre y precio`);
-      const nuevoProd = { id: state.seq.p++, codigo, nombre, precio, multiplo: mult ? Math.floor(mult) : 1, multiploSet: !!mult, activo: sinPrecio ? false : f.activo === undefined || f.activo === '' ? true : truthy(f.activo), promo: false, precioPromo: 0 };
+      const nuevoProd = { id: state.seq.p++, codigo, nombre, precio, multiplo: mult ? Math.floor(mult) : 1, multiploSet: !!mult, ...(stk !== null ? { usaStock: true, stock: Math.floor(stk) } : {}), activo: sinPrecio ? false : f.activo === undefined || f.activo === '' ? true : truthy(f.activo), promo: false, precioPromo: 0 };
       state.productos.push(nuevoProd); restaurarProducto(nuevoProd);
       return r.creados++;
     }
     if (String(f.nombre ?? '').trim()) p.nombre = String(f.nombre).trim();
     if (precio !== null) p.precio = precio;   // precio 0: queda en 0 (y desactivado)
     if (mult && !p.multiploSet) { p.multiplo = Math.floor(mult); p.multiploSet = true; }   // la unidad de venta solo se carga si todavía no estaba definida
+    if (stk !== null) { p.usaStock = true; p.stock = Math.floor(stk); }   // la planilla trae stock: el producto pasa a controlar stock
     if (sinPrecio) p.activo = false;
     else if (f.activo !== undefined && f.activo !== '') p.activo = truthy(f.activo);
     else if (precio !== null) p.activo = true;   // lista nueva: precio 0 queda desactivado y con precio queda activo
@@ -521,6 +546,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       const ids = new Set((Array.isArray(b.ids) ? b.ids : []).map(Number));
       let n = 0;
       for (const o of s.pedidos) if (ids.has(o.id)) {
+        reponerStock(o, false);
         if (b.accion === 'limpiar') delete o.entrega; else o.entrega = { estado: 'entregado', motivo: '', por: yo.nombre, en: new Date().toISOString() };
         n++;
       }
@@ -538,10 +564,11 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         if (!numero) throw { code: 400, msg: 'Indicá el número de la nota de crédito' };
         o.notaCredito = { numero, monto: monto > 0 ? monto : undefined, por: yo.nombre, en: new Date().toISOString() };
       } else if (accion === 'quitarCredito') delete o.notaCredito;
-      else if (accion === 'limpiar') delete o.entrega;
+      else if (accion === 'limpiar') { delete o.entrega; reponerStock(o, false); }
       else if (['entregado', 'devoluciones', 'rechazado'].includes(accion)) {
         if (accion !== 'entregado' && !m) throw { code: 400, msg: 'Indicá el motivo' };
         o.entrega = { estado: accion, motivo: m, por: yo.nombre, en: new Date().toISOString() };
+        reponerStock(o, accion === 'rechazado');
       } else throw { code: 400, msg: 'Acción inválida' };
       await save(pool);
       return send(res, 200, o);
@@ -572,6 +599,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         obj.id = s.seq.o++;
         obj.estado = 'pendiente';
         obj.creado = obj.editado = new Date().toISOString();
+        ajustarStock(null, obj);
       }
       list.push(obj);
       if (rec === 'productos') restaurarProducto(obj);
@@ -589,14 +617,16 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         if (list.some(p => p.id !== id && p.codigo.toLowerCase() === obj.codigo.toLowerCase())) throw { code: 409, msg: 'Ya existe un producto con ese código' };
         list[idx] = { ...list[idx], ...obj };
       } else {
-        list[idx] = { ...list[idx], ...armarPedido(b, list[idx], yo, admin), editado: new Date().toISOString() };
+        const antes = list[idx];
+        list[idx] = { ...antes, ...armarPedido(b, antes, yo, admin), editado: new Date().toISOString() };
+        ajustarStock(antes, list[idx]);
       }
       await save(pool);
       return send(res, 200, list[idx]);
     }
     if (req.method === 'DELETE') {
       if (rec === 'pedidos' && !admin && list[idx].estado === 'cargado') throw { code: 403, msg: 'El pedido ya fue cargado por administración' };
-      if (rec === 'productos') quitarProductos(new Set([list[idx].id])); else list.splice(idx, 1);   // el producto se borra pero su promo queda guardada por código
+      if (rec === 'productos') quitarProductos(new Set([list[idx].id])); else { ajustarStock(list[idx], null); list.splice(idx, 1); }   // el producto se borra pero su promo queda guardada por código
       await save(pool);
       return send(res, 200, { ok: true });
     }
