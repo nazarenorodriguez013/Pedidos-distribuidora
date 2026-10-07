@@ -132,9 +132,9 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 <div id="app"><p style="padding:24px;text-align:center">Cargando…</p></div>
 <noscript>Esta app necesita JavaScript.</noscript>
 <div id="toast"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js" integrity="sha384-fCAW/rDWORTbQXSiB7mOg0QtQ5c+r0f544y6XoKjuVva0nMBlCpNUjiFeG5iMdS3" crossorigin="anonymous" defer></script>
 <script>
 window.addEventListener('error', e => { const a = document.getElementById('app'); if (a && /Cargando/.test(a.textContent)) a.innerHTML = '<p style="padding:24px;color:#b91c1c">Error al iniciar: ' + String(e.message).replace(/</g, '&lt;') + '</p>'; });
 let instalar = null;
@@ -325,7 +325,7 @@ function vConfig() {
     e.preventDefault();
     const d = Object.fromEntries(new FormData(e.target));
     if (d.nueva !== d.rep) return toast('Las contraseñas nuevas no coinciden');
-    try { await api('PUT', 'p/clave', d); toast('Contraseña cambiada'); e.target.reset(); } catch (er) { toast(er.message); }
+    try { const r = await api('PUT', 'p/clave', d); if (r.token) { token = r.token; localStorage.setItem('pd_token', token); } toast('Contraseña cambiada'); e.target.reset(); } catch (er) { toast(er.message); }
   };
 }
 
@@ -844,8 +844,8 @@ function leerHoja(rows) {
 const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
 async function cargarPdfjs() {
   if (window.pdfjsLib) return window.pdfjsLib;
-  await new Promise((ok, ko) => { const el = document.createElement('script'); el.src = PDFJS + 'pdf.min.js'; el.onload = ok; el.onerror = ko; document.head.appendChild(el); });
-  const w = await (await fetch(PDFJS + 'pdf.worker.min.js')).text();
+  await new Promise((ok, ko) => { const el = document.createElement('script'); el.src = PDFJS + 'pdf.min.js'; el.integrity = 'sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e'; el.crossOrigin = 'anonymous'; el.onload = ok; el.onerror = ko; document.head.appendChild(el); });
+  const w = await (await fetch(PDFJS + 'pdf.worker.min.js', { integrity: 'sha384-SnzOobpRMLXZ52iJvZm/C0fYw0OQemTXzTjIsdsfMcrCtCEe9qgzxTd3RSklO5x2' })).text();
   pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([w], { type: 'text/javascript' }));
   return pdfjsLib;
 }
