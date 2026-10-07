@@ -781,12 +781,13 @@ function vPedidos() {
   const selTurno = `<select id="fturno" style="${est}"><option value="">Turno: todos</option>${Object.entries(TURNOS).map(([k, v]) => `<option value="${k}" ${fturno === k ? 'selected' : ''}>${v}</option>`).join('')}</select>`;
   const btnHoy = `<button class="btn sec" id="fhoy" style="min-height:46px;padding:0 10px">${fdia === hoy() ? 'Todos los días' : 'Hoy'}</button>`;
   const fecha = `<div style="display:flex;gap:6px;min-width:0"><button class="btn sec" id="fprev" aria-label="Día anterior" style="flex:none;width:40px;min-width:0;padding:0">‹</button><input id="fdia" type="date" value="${esc(fdia)}" title="Filtrar por día" style="flex:1 1 0;min-width:0;padding-left:6px;padding-right:4px;font-size:15px"><button class="btn sec" id="fsig" aria-label="Día siguiente" style="flex:none;width:40px;min-width:0;padding:0">›</button></div>`;
-  const chips = esAdmin() ? `<div class="chips dos" id="festados">${[['', 'Todos'], ['pendiente', 'Pendientes'], ['cargado', 'Cargados'], ['agregados', '⚠ Agregar'], ['sinentregar', '🚚 Sin entregar'], ['entregado', 'Entregados'], ['devoluciones', 'Con devoluciones'], ['rechazado', 'Rechazados']].map(([k, t]) => `<button data-festado="${k}" class="${festado === k ? 'on' : ''}">${t}${k === 'agregados' && pedidos.some(hayAgregados) ? ' (' + pedidos.filter(hayAgregados).length + ')' : ''}</button>`).join('')}</div>` : '';
+  const opcEstado = [['', 'Estado: todos'], ['pendiente', 'Pendientes'], ['cargado', 'Cargados'], ...(esAdmin() ? [['agregados', '⚠ Agregar' + (pedidos.some(hayAgregados) ? ' (' + pedidos.filter(hayAgregados).length + ')' : '')]] : []), ['sinentregar', '🚚 Sin entregar'], ['entregado', 'Entregados'], ['devoluciones', 'Con devoluciones'], ['rechazado', 'Rechazados']];
+  const selEstado = `<select id="festado" style="${est}">${opcEstado.map(([k, t]) => `<option value="${k}" ${festado === k ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
   $('#main').innerHTML = `<button class="btn" data-go="pedido" data-nuevo="1" style="margin-bottom:10px">🛒 ${leerBorrador() ? 'Continuar pedido' : 'Cargar pedido'}</button>
     <input id="q" type="search" placeholder="Buscar por cliente o número" value="${esc(q)}">
-    <div class="fgrid">${esAdmin() ? selVend + selTurno : selTurno + btnHoy}</div>
-    <div class="fgrid" style="${esAdmin() ? 'grid-template-columns:1.9fr 1fr' : 'grid-template-columns:1fr'}">${fecha}${esAdmin() ? btnHoy : ''}</div>
-    ${chips}${esAdmin() ? '<div id="selTools" class="fgrid" style="margin-top:8px"></div>' : ''}<div id="lista" class="grid2" style="margin-top:10px"></div><div id="selBar"></div>`;
+    <div class="fgrid">${esAdmin() ? selVend + selEstado : selEstado + selTurno}</div>
+    ${esAdmin() ? `<div class="fgrid">${selTurno}${btnHoy}</div><div class="fgrid" style="grid-template-columns:1fr">${fecha}</div>` : `<div class="fgrid" style="grid-template-columns:1.9fr 1fr">${fecha}${btnHoy}</div>`}
+    ${esAdmin() ? '<div id="selTools" class="fgrid" style="margin-top:8px"></div>' : ''}<div id="lista" class="grid2" style="margin-top:10px"></div><div id="selBar"></div>`;
   const pintar = () => {
     const n = norm(q), l = pedidos.filter(p => (!n || norm(p.cliente).includes(n) || String(p.id) === n) && (!vend || p.vendedor === vend) && (!fdia || p.dia === fdia) && (!fturno || p.turno === fturno) && (!festado || (festado === 'sinentregar' ? p.estado === 'cargado' && !p.entrega : ['entregado', 'devoluciones', 'rechazado'].includes(festado) ? p.entrega && p.entrega.estado === festado : festado === 'agregados' ? hayAgregados(p) : festado === 'cargado' ? p.estado === 'cargado' : p.estado !== 'cargado')));
     visiblesPeds = l; const tot = l.reduce((a, p) => a + p.total, 0);
@@ -804,6 +805,7 @@ function vPedidos() {
   $('#fprev').onclick = () => mover(-1); $('#fsig').onclick = () => mover(1);
   $('#fhoy').onclick = () => { fdia = fdia === hoy() ? '' : hoy(); $('#fdia').value = fdia; $('#fhoy').textContent = fdia === hoy() ? 'Todos los días' : 'Hoy'; pintar(); };
   $('#fturno').onchange = e => { fturno = e.target.value; pintar(); };
+  $('#festado').onchange = e => { festado = e.target.value; pintar(); };
   if (esAdmin()) $('#vend').onchange = e => { vend = e.target.value; pintar(); };
   pintar();
   // se pide la lista actualizada (por ejemplo, un pedido que el administrador marcó como cargado)
