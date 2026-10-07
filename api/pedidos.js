@@ -554,39 +554,25 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       return send(res, 200, o);
     }
 
-    if (rec === 'entrega' && req.method === 'PUT' && !id) {   // varios pedidos a la vez: entregado / quitar etiqueta
+    if (rec === 'entrega' && req.method === 'PUT') {   // el administrador marca varios pedidos cargados: entregado / con devoluciones / rechazado (con motivo) / nota de crédito
       soloAdmin();
-      const b = await body(req, 1e5);
-      if (!['entregado', 'limpiar'].includes(b.accion)) throw { code: 400, msg: 'Acción inválida' };
-      const ids = new Set((Array.isArray(b.ids) ? b.ids : []).map(Number));
-      let n = 0;
-      for (const o of s.pedidos) if (ids.has(o.id)) {
-        reponerStock(o, false);
-        if (b.accion === 'limpiar') delete o.entrega; else o.entrega = { estado: 'entregado', motivo: '', por: yo.nombre, en: new Date().toISOString() };
-        n++;
+      const b = await body(req, 1e5), accion = b.accion, m = String(b.motivo || '').trim().slice(0, 300);
+      const ids = new Set((id ? [id] : Array.isArray(b.ids) ? b.ids : []).map(Number));
+      const lista = s.pedidos.filter(o => ids.has(o.id));
+      if (!lista.length) throw { code: 404, msg: 'No existen esos pedidos' };
+      const numero = String(b.numero || '').trim().slice(0, 40), monto = num(b.monto, 0), ahora = new Date().toISOString();
+      if (!['entregado', 'devoluciones', 'rechazado', 'limpiar', 'credito', 'quitarCredito'].includes(accion)) throw { code: 400, msg: 'Acción inválida' };
+      if (['entregado', 'devoluciones', 'rechazado', 'credito'].includes(accion) && lista.some(o => o.estado !== 'cargado')) throw { code: 400, msg: 'Solo se pueden marcar pedidos ya cargados' };
+      if ((accion === 'devoluciones' || accion === 'rechazado') && !m) throw { code: 400, msg: 'Indicá el motivo' };
+      if (accion === 'credito' && !numero) throw { code: 400, msg: 'Indicá el número de la nota de crédito' };
+      for (const o of lista) {
+        if (accion === 'credito') o.notaCredito = { numero, monto: monto > 0 ? monto : undefined, por: yo.nombre, en: ahora };
+        else if (accion === 'quitarCredito') delete o.notaCredito;
+        else if (accion === 'limpiar') { delete o.entrega; reponerStock(o, false); }
+        else { o.entrega = { estado: accion, motivo: accion === 'entregado' ? '' : m, por: yo.nombre, en: ahora }; reponerStock(o, accion === 'rechazado'); }
       }
-      if (!n) throw { code: 404, msg: 'No existen esos pedidos' };
       await save(pool);
-      return send(res, 200, { ok: true, n });
-    }
-    if (rec === 'entrega' && req.method === 'PUT') {   // el administrador etiqueta el pedido: entregado / con devoluciones / rechazado (con motivo)
-      soloAdmin();
-      const o = s.pedidos.find(x => x.id === id);
-      if (!o) throw { code: 404, msg: 'No existe' };
-      const b = await body(req, 1e4), { accion, motivo } = b, m = String(motivo || '').trim().slice(0, 300);
-      if (accion === 'credito') {   // nota de crédito del pedido: número y, si se sabe, el monto
-        const numero = String(b.numero || '').trim().slice(0, 40), monto = num(b.monto, 0);
-        if (!numero) throw { code: 400, msg: 'Indicá el número de la nota de crédito' };
-        o.notaCredito = { numero, monto: monto > 0 ? monto : undefined, por: yo.nombre, en: new Date().toISOString() };
-      } else if (accion === 'quitarCredito') delete o.notaCredito;
-      else if (accion === 'limpiar') { delete o.entrega; reponerStock(o, false); }
-      else if (['entregado', 'devoluciones', 'rechazado'].includes(accion)) {
-        if (accion !== 'entregado' && !m) throw { code: 400, msg: 'Indicá el motivo' };
-        o.entrega = { estado: accion, motivo: m, por: yo.nombre, en: new Date().toISOString() };
-        reponerStock(o, accion === 'rechazado');
-      } else throw { code: 400, msg: 'Acción inválida' };
-      await save(pool);
-      return send(res, 200, o);
+      return send(res, 200, { ok: true, n: lista.length });
     }
 
     if (rec !== 'productos' && rec !== 'pedidos') throw { code: 404, msg: 'No encontrado' };
