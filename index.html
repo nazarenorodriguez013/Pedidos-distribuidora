@@ -164,8 +164,13 @@ const promoQue = p => p.precioPromo > 0 ? money(precioPromoDe(p)) + ' c/u' : (p.
 const promoTxt = p => promoPorCant(p) ? `${promoCantDe(p)}+ · ${promoQue(p)}` : promoQue(p);
 const promoDesc = p => promoPorCant(p) ? `${promoQue(p)} llevando ${promoCantDe(p)} o más` : promoQue(p);
 
-let token = localStorage.getItem('pd_token'), user = null;
-try { user = JSON.parse(localStorage.getItem('pd_user')); } catch {}
+// En la PC la sesión dura mientras la ventana de la app esté abierta (al cerrarla se cierra la sesión; recargar la mantiene); en el celular dura 30 días
+const esPC = window.matchMedia('(min-width:900px)').matches;
+const guardaSesion = esPC ? sessionStorage : localStorage;
+let token = null, user = null;
+try { token = guardaSesion.getItem('pd_token'); user = JSON.parse(guardaSesion.getItem('pd_user')); } catch {}
+if (esPC) { try { localStorage.removeItem('pd_token'); localStorage.removeItem('pd_user'); } catch {} }
+if (esPC) window.addEventListener('beforeunload', e => { if (token) { e.preventDefault(); e.returnValue = ''; } });   // al cerrar la ventana el navegador pregunta si querés salir
 if (!user || !user.rol) token = null;
 let productos = [], pedidos = [], usuarios = [], clientes = [], combos = [], dbOk = true;
 const esAdmin = () => user && user.rol === 'admin';
@@ -226,7 +231,7 @@ async function cargar() {
   usuarios = c.usuarios;
   cacheDatos();
 }
-function salir() { localStorage.removeItem('pd_token'); localStorage.removeItem('pd_nav'); localStorage.removeItem('pd_cache');   // no queda nada del usuario en el navegador
+function salir() { guardaSesion.removeItem('pd_token'); guardaSesion.removeItem('pd_user'); localStorage.removeItem('pd_nav'); localStorage.removeItem('pd_cache');   // no queda nada del usuario en el navegador
   token = null; view = 'menu'; render(); }
 /* navegación con el botón "atrás" del celular: vuelve a la sección anterior; en el menú pregunta antes de salir */
 let pila = [];   // secciones visitadas, en el mismo orden que el historial del navegador
@@ -245,7 +250,7 @@ function guardarNav() {
 }
 function restaurarNav() {
   let n; try { n = JSON.parse(localStorage.getItem('pd_nav')); } catch { n = null; }
-  if (!n || n.u !== user.id || Date.now() - n.t > 12 * 3600e3 || !Array.isArray(n.pila) || !n.pila.length) return false;
+  if (!n || !user || n.u !== user.id || Date.now() - n.t > 12 * 3600e3 || !Array.isArray(n.pila) || !n.pila.length) return false;
   const v = n.pila[n.pila.length - 1];
   if (!(v in TITULOS) || v === 'menu' && n.pila.length === 1) return false;
   if (n.draft) draft = n.draft; if (n.editC) editC = n.editC; if (n.editU) editU = n.editU;
@@ -299,7 +304,7 @@ function login() {
     try {
       const j = await api('POST', 'p/login', { user: $('#u').value.trim(), pass: $('#pw').value });
       try { localStorage.removeItem('pd_cache'); } catch {}
-      token = j.token; user = j.user; localStorage.setItem('pd_token', token); localStorage.setItem('pd_user', JSON.stringify(user));
+      token = j.token; user = j.user; guardaSesion.setItem('pd_token', token); guardaSesion.setItem('pd_user', JSON.stringify(user));
       await cargar(); go('menu', true);
     } catch (er) { $('#err').textContent = er.message; }
   };
@@ -343,7 +348,7 @@ function vConfig() {
     e.preventDefault();
     const d = Object.fromEntries(new FormData(e.target));
     if (d.nueva !== d.rep) return toast('Las contraseñas nuevas no coinciden');
-    try { const r = await api('PUT', 'p/clave', d); if (r.token) { token = r.token; localStorage.setItem('pd_token', token); } toast('Contraseña cambiada'); e.target.reset(); } catch (er) { toast(er.message); }
+    try { const r = await api('PUT', 'p/clave', d); if (r.token) { token = r.token; guardaSesion.setItem('pd_token', token); } toast('Contraseña cambiada'); e.target.reset(); } catch (er) { toast(er.message); }
   };
 }
 
@@ -959,7 +964,7 @@ function vUsuario() {
     const f = new FormData(e.target), d = Object.fromEntries(f); d.activo = !!f.get('activo');
     try {
       if (nuevo) await api('POST', 'p/usuarios', d); else await api('PUT', 'p/usuarios/' + u.id, d);
-      if (u.id === user.id) { user = { ...user, nombre: d.nombre, usuario: d.usuario.toLowerCase(), rol: d.rol }; localStorage.setItem('pd_user', JSON.stringify(user)); }
+      if (u.id === user.id) { user = { ...user, nombre: d.nombre, usuario: d.usuario.toLowerCase(), rol: d.rol }; guardaSesion.setItem('pd_user', JSON.stringify(user)); }
       await cargar(); toast('Guardado'); volverA('usuarios');
     } catch (er) { toast(er.message); }
   };
