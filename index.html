@@ -54,6 +54,9 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .sw input:checked+i{background:var(--ok)}
 .sw input:checked+i:after{left:23px}
 .chips{display:flex;gap:8px;margin:8px 0;overflow-x:auto}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.chips.dos{display:grid;grid-template-columns:1fr 1fr;overflow:visible}
+.chips.dos button{width:100%;border-radius:12px;padding:10px 8px}
 .chips button{flex:none;padding:8px 14px;border-radius:99px;border:1px solid var(--bd);background:var(--card);color:var(--tx);font-size:14px}
 .chips button.on{background:var(--pri);color:#fff;border-color:var(--pri)}
 .price{font-weight:700;white-space:nowrap}
@@ -726,7 +729,7 @@ let selMode = false, selPeds = new Set(), repintarPeds = null, visiblesPeds = []
 const cargadosVisibles = () => visiblesPeds.filter(p => p.estado === 'cargado');
 function pintarSel() {
   const t = $('#selTools'), b = $('#selBar'); if (!t || !b) return;
-  if (!selMode) { t.innerHTML = '<button class="btn sec" data-act="selModo">☑ Seleccionar varios (cargados)</button>'; b.innerHTML = ''; return; }
+  if (!selMode) { t.innerHTML = '<button class="btn sec" data-act="selModo" style="grid-column:1/-1">☑ Seleccionar varios (cargados)</button>'; b.innerHTML = ''; return; }
   const cv = cargadosVisibles();
   t.innerHTML = `<button class="btn sec" data-act="selTodos">${cv.length && cv.every(p => selPeds.has(p.id)) ? 'Quitar selección' : `Seleccionar todos los cargados (${cv.length})`}</button><button class="btn sec" data-act="selModo">Cancelar</button>`;
   const n = selPeds.size;
@@ -773,12 +776,19 @@ async function guardarEntrega() {
 let vend = '', fdia = '', fturno = '', festado = '', fdiaInit = false;   // al entrar a Pedidos se muestran los de hoy
 function vPedidos() {
   if (!fdiaInit) { fdia = hoy(); fdiaInit = true; }
-  const sel = esAdmin() ? `<select id="vend" style="margin-top:8px;width:100%;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Todos los vendedores</option>${[...new Set(pedidos.map(p => p.vendedor))].filter(Boolean).sort().map(v => `<option ${v === vend ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>` : '';
-  $('#main').innerHTML = `<input id="q" type="search" placeholder="Buscar por cliente o número" value="${esc(q)}">${sel}
-    <div class="row" style="border:0;padding:8px 0 0;gap:6px"><button class="btn sec" id="fprev" aria-label="Día anterior" style="flex:none;width:44px;min-width:0;padding:0">‹</button><input id="fdia" type="date" value="${esc(fdia)}" title="Filtrar por día" style="flex:1 1 0;min-width:0"><button class="btn sec" id="fsig" aria-label="Día siguiente" style="flex:none;width:44px;min-width:0;padding:0">›</button><button class="btn sec" id="fhoy" style="flex:none;width:auto;min-width:0;padding:0 12px">${fdia === hoy() ? 'Todos' : 'Hoy'}</button></div>
-    <div class="row" style="border:0;padding:8px 0 0"><select id="fturno" style="flex:1 1 0;min-width:0;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Todos los turnos</option>${Object.entries(TURNOS).map(([k, v]) => `<option value="${k}" ${fturno === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>${esAdmin() ? `<div class="chips" id="festados">${[['', 'Todos'], ['pendiente', 'Pendientes'], ['cargado', 'Cargados'], ['agregados', '⚠ Agregar'], ['entregado', 'Entregados'], ['devoluciones', 'Con devoluciones'], ['rechazado', 'Rechazados']].map(([k, t]) => `<button data-festado="${k}" class="${festado === k ? 'on' : ''}">${t}${k === 'agregados' && pedidos.some(hayAgregados) ? ' (' + pedidos.filter(hayAgregados).length + ')' : ''}</button>`).join('')}</div>` : ''}${esAdmin() ? '<div id="selTools" class="row" style="border:0;padding:8px 0 0;gap:8px"></div>' : ''}<div id="lista" class="grid2" style="margin-top:10px"></div><div id="selBar"></div>`;
+  const est = 'width:100%;min-width:0;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)';
+  const selVend = esAdmin() ? `<select id="vend" style="${est}"><option value="">Vendedor: todos</option>${[...new Set(pedidos.map(p => p.vendedor))].filter(Boolean).sort().map(v => `<option ${v === vend ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>` : '';
+  const selTurno = `<select id="fturno" style="${est}"><option value="">Turno: todos</option>${Object.entries(TURNOS).map(([k, v]) => `<option value="${k}" ${fturno === k ? 'selected' : ''}>${v}</option>`).join('')}</select>`;
+  const btnHoy = `<button class="btn sec" id="fhoy" style="min-height:46px;padding:0 10px">${fdia === hoy() ? 'Todos los días' : 'Hoy'}</button>`;
+  const fecha = `<div style="display:flex;gap:6px;min-width:0"><button class="btn sec" id="fprev" aria-label="Día anterior" style="flex:none;width:40px;min-width:0;padding:0">‹</button><input id="fdia" type="date" value="${esc(fdia)}" title="Filtrar por día" style="flex:1 1 0;min-width:0;padding-left:6px;padding-right:4px;font-size:15px"><button class="btn sec" id="fsig" aria-label="Día siguiente" style="flex:none;width:40px;min-width:0;padding:0">›</button></div>`;
+  const chips = esAdmin() ? `<div class="chips dos" id="festados">${[['', 'Todos'], ['pendiente', 'Pendientes'], ['cargado', 'Cargados'], ['agregados', '⚠ Agregar'], ['sinentregar', '🚚 Sin entregar'], ['entregado', 'Entregados'], ['devoluciones', 'Con devoluciones'], ['rechazado', 'Rechazados']].map(([k, t]) => `<button data-festado="${k}" class="${festado === k ? 'on' : ''}">${t}${k === 'agregados' && pedidos.some(hayAgregados) ? ' (' + pedidos.filter(hayAgregados).length + ')' : ''}</button>`).join('')}</div>` : '';
+  $('#main').innerHTML = `<button class="btn" data-go="pedido" data-nuevo="1" style="margin-bottom:10px">🛒 ${leerBorrador() ? 'Continuar pedido' : 'Cargar pedido'}</button>
+    <input id="q" type="search" placeholder="Buscar por cliente o número" value="${esc(q)}">
+    <div class="fgrid">${esAdmin() ? selVend + selTurno : selTurno + btnHoy}</div>
+    <div class="fgrid" style="${esAdmin() ? 'grid-template-columns:1.9fr 1fr' : 'grid-template-columns:1fr'}">${fecha}${esAdmin() ? btnHoy : ''}</div>
+    ${chips}${esAdmin() ? '<div id="selTools" class="fgrid" style="margin-top:8px"></div>' : ''}<div id="lista" class="grid2" style="margin-top:10px"></div><div id="selBar"></div>`;
   const pintar = () => {
-    const n = norm(q), l = pedidos.filter(p => (!n || norm(p.cliente).includes(n) || String(p.id) === n) && (!vend || p.vendedor === vend) && (!fdia || p.dia === fdia) && (!fturno || p.turno === fturno) && (!festado || (['entregado', 'devoluciones', 'rechazado'].includes(festado) ? p.entrega && p.entrega.estado === festado : festado === 'agregados' ? hayAgregados(p) : festado === 'cargado' ? p.estado === 'cargado' : p.estado !== 'cargado')));
+    const n = norm(q), l = pedidos.filter(p => (!n || norm(p.cliente).includes(n) || String(p.id) === n) && (!vend || p.vendedor === vend) && (!fdia || p.dia === fdia) && (!fturno || p.turno === fturno) && (!festado || (festado === 'sinentregar' ? p.estado === 'cargado' && !p.entrega : ['entregado', 'devoluciones', 'rechazado'].includes(festado) ? p.entrega && p.entrega.estado === festado : festado === 'agregados' ? hayAgregados(p) : festado === 'cargado' ? p.estado === 'cargado' : p.estado !== 'cargado')));
     visiblesPeds = l; const tot = l.reduce((a, p) => a + p.total, 0);
     const pend = colaMia().filter(x => !n || norm(x.body.cliente).includes(n)).map(x => `<div class="card" style="border-color:${x.error ? 'var(--bad)' : 'var(--warn)'}"><div class="row" style="border:0;padding:0"><div class="nm"><b>${esc(x.body.cliente)}</b>
       <span class="mut">${x.body.dia ? esc(diaTxt(x.body.dia)) + ' · ' + (TURNOS[x.body.turno] || '') + ' · ' : ''}${x.error ? 'Rechazado: ' + esc(x.error) : '⏳ Esperando señal para enviarse'} · ${x.body.items.length} prod. · ${x.body.items.reduce((s, i) => s + i.cant, 0)} u.</span></div><span class="price">${money(x.total)}</span></div>
@@ -789,10 +799,10 @@ function vPedidos() {
   };
   repintarPeds = pintar;
   $('#q').oninput = e => { q = e.target.value; pintar(); };
-  $('#fdia').onchange = e => { fdia = e.target.value; $('#fhoy').textContent = fdia === hoy() ? 'Todos' : 'Hoy'; pintar(); };
-  const mover = n => { const d = new Date((fdia || hoy()) + 'T12:00:00'); d.setDate(d.getDate() + n); fdia = d.toISOString().slice(0, 10); $('#fdia').value = fdia; $('#fhoy').textContent = fdia === hoy() ? 'Todos' : 'Hoy'; pintar(); };
+  $('#fdia').onchange = e => { fdia = e.target.value; $('#fhoy').textContent = fdia === hoy() ? 'Todos los días' : 'Hoy'; pintar(); };
+  const mover = n => { const d = new Date((fdia || hoy()) + 'T12:00:00'); d.setDate(d.getDate() + n); fdia = d.toISOString().slice(0, 10); $('#fdia').value = fdia; $('#fhoy').textContent = fdia === hoy() ? 'Todos los días' : 'Hoy'; pintar(); };
   $('#fprev').onclick = () => mover(-1); $('#fsig').onclick = () => mover(1);
-  $('#fhoy').onclick = () => { fdia = fdia === hoy() ? '' : hoy(); $('#fdia').value = fdia; $('#fhoy').textContent = fdia === hoy() ? 'Todos' : 'Hoy'; pintar(); };
+  $('#fhoy').onclick = () => { fdia = fdia === hoy() ? '' : hoy(); $('#fdia').value = fdia; $('#fhoy').textContent = fdia === hoy() ? 'Todos los días' : 'Hoy'; pintar(); };
   $('#fturno').onchange = e => { fturno = e.target.value; pintar(); };
   if (esAdmin()) $('#vend').onchange = e => { vend = e.target.value; pintar(); };
   pintar();
