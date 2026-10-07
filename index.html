@@ -496,7 +496,7 @@ function vPedido() {
     ${esAdmin() && draft.id && draft.estado === 'cargado' ? '<div style="margin-top:14px"><button class="btn sec" data-estado="pendiente">Volver a pendiente</button></div>' : ''}
     ${draft.id && !cargadoParaVendedor() ? '<div style="margin:24px 0 80px"><button class="btn bad" data-act="borrarPedido">Eliminar pedido</button></div>' : !draft.id ? '<div style="margin:24px 0 80px"><button class="btn sec" data-act="descartarPedido">Descartar este pedido</button></div>' : '<div style="height:80px"></div>'}
     <div class="bar"><div class="tot" id="tot"></div><button class="btn" id="btnGuardar" data-act="guardarPedido">${etiquetaBoton()}</button></div></div></div>`;
-  editNota = false; entregaSel = null; pintarNota(); pintarEntrega(); actualizarBoton();
+  editNota = false; pintarNota(); pintarEntrega(); actualizarBoton();
   const cambiarDia = v => { draft.dia = v; $('#dia').value = v; if (!draft.id && draft.dia) ss('pd_dia', draft.dia); actualizarBoton(); guardarBorrador(); };
   $('#dia').onchange = e => cambiarDia(e.target.value);
   const mDia = n => { const d = new Date((draft.dia || hoy()) + 'T12:00:00'); d.setDate(d.getDate() + n); cambiarDia(d.toISOString().slice(0, 10)); };
@@ -572,26 +572,13 @@ function pintarDetalle() {
       <button class="btn sec xq" data-quitar="${p.id}" aria-label="Quitar del pedido">✕</button></div>
       <div class="dsub"><div class="dcode">${esc(p.codigo)}${draft.estado === 'cargado' && ex > cc ? ` <span class="tag bad">Agregar${cc ? ' +' + (ex - cc) : ''}</span>` : draft.estado === 'cargado' && ex < cc ? ` <span class="tag warn">−${cc - ex}</span>` : ''}</div><div class="dctl"><div class="qty"><button data-q="-1">−</button><input class="qin" type="number" inputmode="numeric" min="0" step="${multiploDe(p)}" data-qin="${p.id}" value="${ex}"><button data-q="1">+</button></div></div></div>${bloquePromo(p)}</div>`; }).join('') + (draft.estado === 'cargado' ? (draft.cargadoItems || []).filter(o => !(draft.items[o.pid] > 0)).map(o => `<div class="row" style="border:0"><span class="tag warn">Quitado</span><span class="mut">${esc(o.nombre)} ×${o.cant}</span></div>`).join('') : '') + '<div id="dtotales"></div>' : '<span class="mut">Tocá un producto de la lista para agregarlo con cantidad 1. Después ajustás la cantidad acá.</span>';
 }
-let editNota = false, entregaSel = null;
-function pintarEntrega() {   // estado de entrega del pedido: lo etiqueta el administrador; el vendedor lo ve
+let editNota = false;
+function pintarEntrega() {   // estado de entrega y nota de crédito del pedido (solo lectura: se marcan desde la lista de pedidos)
   const box = $(esAdmin() ? '#entregaBox' : '#entregaTop'); if (!box || !draft.id) return;
-  const e = draft.entrega, info = e && ENTREGAS[e.estado] ? `<div class="card" style="border-color:var(--${ENTREGAS[e.estado][1]})"><span class="tag ${ENTREGAS[e.estado][1]}">${ENTREGAS[e.estado][0]}</span> <span class="mut">${esc(fechaHora(e.en))} · ${esc(e.por)}</span>${e.motivo ? `<br><b>Motivo:</b> ${esc(e.motivo)}` : ''}</div>` : '';
-  const nc = draft.notaCredito, infoNc = nc ? `<div class="card" style="border-color:var(--warn)"><span class="tag warn">📄 Nota de crédito</span> <b>${esc(nc.numero)}</b>${nc.monto ? ` · ${money(nc.monto)}` : ''}<br><span class="mut">${esc(fechaHora(nc.en))} · ${esc(nc.por)}</span></div>` : '';
-  const sinE = !e ? '<div class="card"><span class="tag">🚚 Sin entregar</span> <span class="mut">todavía no figura como entregado</span></div>' : '';
-  if (!esAdmin()) { box.innerHTML = (info || sinE) + infoNc; return; }
-  const b = (k, on) => `<button type="button" class="btn sec ${on ? 'on' : ''}" data-ent="${k}" style="flex:1 1 140px;${on ? 'border-color:var(--pri);color:var(--pri)' : ''}">${ENTREGAS[k][0]}</button>`;
-  box.innerHTML = `${info || sinE}${infoNc}<div class="card"><b>Entrega</b><div class="row" style="border:0;padding:8px 0 0;gap:8px;flex-wrap:wrap">${['entregado', 'devoluciones', 'rechazado'].map(k => b(k, (entregaSel || (e && e.estado)) === k)).join('')}</div>
-    ${entregaSel && entregaSel !== 'entregado' ? `<label>Motivo ${entregaSel === 'rechazado' ? 'del rechazo' : 'de la devolución'}</label><textarea id="entMotivo" placeholder="Ej: faltó mercadería / el cliente no lo quiso" style="min-height:70px">${esc(e && e.estado === entregaSel ? e.motivo : '')}</textarea><button type="button" class="btn" data-act="guardarEntrega" style="margin-top:8px">Guardar</button>` : ''}
-    ${e ? '<button type="button" class="btn sec" data-ent="limpiar" style="margin-top:8px">Quitar etiqueta de entrega</button>' : ''}</div>
-    <div class="card"><b>Nota de crédito</b><div class="row" style="border:0;padding:8px 0 0;gap:8px"><input id="ncNum" placeholder="Número" value="${esc(nc ? nc.numero : '')}" style="flex:1 1 0;min-width:0"><input id="ncMonto" inputmode="decimal" placeholder="Monto (opcional)" value="${nc && nc.monto ? nc.monto : ''}" style="flex:1 1 0;min-width:0"></div>
-      <div class="row" style="border:0;padding:8px 0 0;gap:8px"><button type="button" class="btn" data-act="guardarCredito">${nc ? 'Actualizar' : 'Guardar'} nota de crédito</button>${nc ? '<button type="button" class="btn sec" data-ent="quitarCredito" style="width:auto;padding:0 14px">Quitar</button>' : ''}</div></div>`;
-}
-async function ponerEntrega(accion, motivo, extra = {}) {
-  try {
-    const f = await api('PUT', 'p/entrega/' + draft.id, { accion, motivo, ...extra });
-    const i = pedidos.findIndex(x => x.id === f.id); if (i >= 0) pedidos[i] = f;
-    draft.entrega = f.entrega; draft.notaCredito = f.notaCredito; entregaSel = null; pintarEntrega(); toast(accion === 'limpiar' || accion === 'quitarCredito' ? 'Quitado' : accion === 'credito' ? 'Nota de crédito guardada' : 'Entrega registrada');
-  } catch (e) { toast(e.message); }
+  const e = draft.entrega, nc = draft.notaCredito;
+  const info = e && ENTREGAS[e.estado] ? `<div class="card" style="border-color:var(--${ENTREGAS[e.estado][1]})"><span class="tag ${ENTREGAS[e.estado][1]}">${ENTREGAS[e.estado][0]}</span> <span class="mut">${esc(fechaHora(e.en))} · ${esc(e.por)}</span>${e.motivo ? `<br><b>Motivo:</b> ${esc(e.motivo)}` : ''}</div>` : '<div class="card"><span class="tag">🚚 Sin entregar</span> <span class="mut">todavía no figura como entregado</span></div>';
+  const infoNc = nc ? `<div class="card" style="border-color:var(--warn)"><span class="tag warn">📄 Nota de crédito</span> <b>${esc(nc.numero)}</b>${nc.monto ? ` · ${money(nc.monto)}` : ''}<br><span class="mut">${esc(fechaHora(nc.en))} · ${esc(nc.por)}</span></div>` : '';
+  box.innerHTML = info + infoNc;
 }
 function pintarNota() {
   const box = $('#notaBox'); if (!box) return;
@@ -736,23 +723,53 @@ function vCliente() {
 
 /* ---------- pedidos cargados ---------- */
 let selMode = false, selPeds = new Set(), repintarPeds = null, visiblesPeds = [];
+const cargadosVisibles = () => visiblesPeds.filter(p => p.estado === 'cargado');
 function pintarSel() {
   const t = $('#selTools'), b = $('#selBar'); if (!t || !b) return;
-  if (!selMode) { t.innerHTML = '<button class="btn sec" data-act="selModo">☑ Seleccionar varios</button>'; b.innerHTML = ''; return; }
-  t.innerHTML = `<button class="btn sec" data-act="selTodos">${visiblesPeds.length && visiblesPeds.every(p => selPeds.has(p.id)) ? 'Quitar selección' : `Seleccionar todos (${visiblesPeds.length})`}</button><button class="btn sec" data-act="selModo">Cancelar</button>`;
+  if (!selMode) { t.innerHTML = '<button class="btn sec" data-act="selModo">☑ Seleccionar varios (cargados)</button>'; b.innerHTML = ''; return; }
+  const cv = cargadosVisibles();
+  t.innerHTML = `<button class="btn sec" data-act="selTodos">${cv.length && cv.every(p => selPeds.has(p.id)) ? 'Quitar selección' : `Seleccionar todos los cargados (${cv.length})`}</button><button class="btn sec" data-act="selModo">Cancelar</button>`;
   const n = selPeds.size;
-  b.innerHTML = `<div class="bar sel"><div class="tot" style="font-size:15px;white-space:nowrap">${n} elegidos</div><button class="btn sec" data-act="selLimpiar" ${n ? '' : 'disabled'} style="padding:12px 12px">Quitar</button><button class="btn" data-act="selEntregado" ${n ? '' : 'disabled'} style="padding:12px 14px">✓ Entregados</button></div>`;
+  b.innerHTML = `<div class="bar sel"><div class="tot" style="font-size:15px;white-space:nowrap">${n} elegidos</div><button class="btn sec" data-act="selEntrega" ${n ? '' : 'disabled'} style="padding:12px 12px">Opciones…</button><button class="btn" data-act="selEntregado" ${n ? '' : 'disabled'} style="padding:12px 14px">✓ Entregados</button></div>`;
+}
+async function enviarEntrega(pasos) {   // pasos: [{accion, motivo?, numero?, monto?}] sobre los pedidos elegidos
+  const ids = [...selPeds]; if (!ids.length) return false;
+  try {
+    for (const p of pasos) await api('PUT', 'p/entrega', { ids, ...p });
+    const r = await api('GET', 'p/pedidos'); pedidos = r.pedidos; cacheDatos();
+    selPeds = new Set(); selMode = false; return true;
+  } catch (e) { toast(e.message); return false; }
 }
 async function aplicarSel(accion) {
-  const ids = [...selPeds]; if (!ids.length) return;
-  if (!confirm(accion === 'entregado' ? `¿Marcar ${ids.length} ${ids.length === 1 ? 'pedido' : 'pedidos'} como entregados?` : `¿Quitar la etiqueta de entrega a ${ids.length} ${ids.length === 1 ? 'pedido' : 'pedidos'}?`)) return;
-  try {
-    await api('PUT', 'p/entrega', { ids, accion });
-    const r = await api('GET', 'p/pedidos'); pedidos = r.pedidos; cacheDatos();
-    selPeds = new Set(); selMode = false; toast(accion === 'entregado' ? 'Marcados como entregados ✓' : 'Etiqueta quitada');
-    if (repintarPeds) repintarPeds();
-  } catch (e) { toast(e.message); }
-}   // selección de varios pedidos (admin)
+  const n = selPeds.size; if (!n) return;
+  if (!confirm(`¿Marcar ${n} ${n === 1 ? 'pedido' : 'pedidos'} como entregados?`)) return;
+  if (await enviarEntrega([{ accion }])) { toast('Marcados como entregados ✓'); if (repintarPeds) repintarPeds(); }
+}
+let entSel = null;
+function abrirEntrega() {   // entrega y nota de crédito de los pedidos elegidos
+  const n = selPeds.size; if (!n) return; entSel = null;
+  const el = document.createElement('div'); el.id = 'modal'; el.className = 'modal';
+  const b = (k, t) => `<button type="button" class="btn sec" data-entsel="${k}" style="flex:1 1 150px">${t}</button>`;
+  el.innerHTML = `<div class="modal-card"><div class="row" style="border:0;padding:0 0 4px"><h2 style="flex:1;margin:0;font-size:19px">${n} ${n === 1 ? 'pedido' : 'pedidos'}: entrega</h2><button class="btn sec" data-modal="cerrar" aria-label="Cerrar" style="width:40px;min-height:40px;padding:0;flex:none">✕</button></div>
+    <div class="row" style="border:0;padding:6px 0 0;gap:8px;flex-wrap:wrap">${b('entregado', '✓ Entregado')}${b('devoluciones', '↩ Con devoluciones')}${b('rechazado', '✕ Rechazado')}${b('limpiar', 'Quitar etiqueta')}</div>
+    <div id="entMotivoBox" hidden><label>Motivo</label><textarea id="entMotivo" placeholder="Ej: faltaron 2 cajas / el cliente no lo quiso" style="min-height:70px"></textarea></div>
+    <div class="card" style="margin:12px 0 0"><b>Nota de crédito</b><div class="row" style="border:0;padding:8px 0 0;gap:8px"><input id="ncNum" placeholder="Número" style="flex:1 1 0;min-width:0"><input id="ncMonto" inputmode="decimal" placeholder="Monto (opcional)" style="flex:1 1 0;min-width:0"></div>
+      <button type="button" class="btn sec" data-entsel="quitarCredito" style="margin-top:8px">Quitar la nota de crédito existente</button></div>
+    <div style="height:12px"></div><button type="button" class="btn" data-act="guardarEntrega">Guardar</button></div>`;
+  document.body.appendChild(el);
+  try { history.pushState({ v: view, d: pila.length - 1, modal: 1 }, ''); } catch {}
+  el.addEventListener('click', e => { if (e.target === el) cerrarModal(); });
+}
+async function guardarEntrega() {
+  const motivo = ($('#entMotivo') || {}).value || '', numero = (($('#ncNum') || {}).value || '').trim(), monto = ($('#ncMonto') || {}).value || '';
+  const pasos = [];
+  if (entSel === 'quitarCredito') pasos.push({ accion: 'quitarCredito' });
+  else if (entSel) pasos.push({ accion: entSel, motivo });
+  if (numero && entSel !== 'quitarCredito') pasos.push({ accion: 'credito', numero, monto });
+  if (!pasos.length) return toast('Elegí una opción de entrega o cargá la nota de crédito');
+  if ((entSel === 'devoluciones' || entSel === 'rechazado') && !motivo.trim()) return toast('Indicá el motivo');
+  if (await enviarEntrega(pasos)) { toast('Guardado ✓'); cerrarModal(); }
+}
 let vend = '', fdia = '', fturno = '', festado = '', fdiaInit = false;   // al entrar a Pedidos se muestran los de hoy
 function vPedidos() {
   if (!fdiaInit) { fdia = hoy(); fdiaInit = true; }
@@ -766,7 +783,7 @@ function vPedidos() {
     const pend = colaMia().filter(x => !n || norm(x.body.cliente).includes(n)).map(x => `<div class="card" style="border-color:${x.error ? 'var(--bad)' : 'var(--warn)'}"><div class="row" style="border:0;padding:0"><div class="nm"><b>${esc(x.body.cliente)}</b>
       <span class="mut">${x.body.dia ? esc(diaTxt(x.body.dia)) + ' · ' + (TURNOS[x.body.turno] || '') + ' · ' : ''}${x.error ? 'Rechazado: ' + esc(x.error) : '⏳ Esperando señal para enviarse'} · ${x.body.items.length} prod. · ${x.body.items.reduce((s, i) => s + i.cant, 0)} u.</span></div><span class="price">${money(x.total)}</span></div>
       <div class="row" style="border:0;padding:8px 0 0">${x.error ? `<button class="btn sec" data-reint="${esc(x.uid)}">Reintentar</button>` : ''}<button class="btn sec" data-delcola="${esc(x.uid)}">Eliminar</button></div></div>`).join('');
-    $('#lista').innerHTML = pend + (l.length ? `<p class="mut">${l.length} ${l.length === 1 ? 'pedido' : 'pedidos'} · ${money(tot)}</p>` + (() => { const tarj = p => `<div class="card" data-ped="${p.id}" style="${selMode && selPeds.has(p.id) ? 'border-color:var(--pri);background:color-mix(in srgb,var(--pri) 10%,var(--card))' : ''}"><div class="row" style="border:0;padding:0">${selMode ? `<input type="checkbox" ${selPeds.has(p.id) ? 'checked' : ''} tabindex="-1" style="width:22px;min-height:22px;flex:none;pointer-events:none">` : ''}<div class="nm"><b>#${p.id} · ${p.clienteCodigo ? esc(p.clienteCodigo) + ' · ' : ''}${esc(p.cliente)}</b> ${estadoTag(p)}
+    $('#lista').innerHTML = pend + (l.length ? `<p class="mut">${l.length} ${l.length === 1 ? 'pedido' : 'pedidos'} · ${money(tot)}</p>` + (() => { const tarj = p => `<div class="card" data-ped="${p.id}" style="${selMode && p.estado === 'cargado' && selPeds.has(p.id) ? 'border-color:var(--pri);background:color-mix(in srgb,var(--pri) 10%,var(--card))' : ''}"><div class="row" style="border:0;padding:0">${selMode && p.estado === 'cargado' ? `<input type="checkbox" ${selPeds.has(p.id) ? 'checked' : ''} tabindex="-1" style="width:22px;min-height:22px;flex:none;pointer-events:none">` : ''}<div class="nm"><b>#${p.id} · ${p.clienteCodigo ? esc(p.clienteCodigo) + ' · ' : ''}${esc(p.cliente)}</b> ${estadoTag(p)}
       <span class="mut">${p.dia ? `<b>${esc(diaTxt(p.dia))} · ${TURNOS[p.turno] || ''}</b> · ` : ''}${esAdmin() ? esc(p.vendedor || '—') + ' · ' : ''}${new Date(p.creado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })} · ${p.items.length} prod. · ${p.items.reduce((s, i) => s + i.cant, 0)} u.${p.editado !== p.creado ? ' · <b>editado ' + new Date(p.editado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) + '</b>' : ''}</span></div><span class="price">${money(p.total)}</span></div></div>`; const cab = (t, lst, sub) => `<div style="grid-column:1/-1;margin-top:${sub ? 2 : 10}px;padding:${sub ? '4px 2px' : '8px 2px'};border-bottom:${sub ? '1px solid' : '2px solid'} var(--bd)"><b${sub ? ' class="mut"' : ''}>${t}</b> <span class="mut">· ${lst.length} ${lst.length === 1 ? 'pedido' : 'pedidos'} · ${money(lst.reduce((a, p) => a + p.total, 0))}</span></div>`; const bloque = (t, lst) => { if (!lst.length) return ''; if (!esAdmin()) return cab(t, lst) + lst.map(tarj).join('');  const g = {}; lst.forEach(p => (g[p.vendedor || '—'] = g[p.vendedor || '—'] || []).push(p));  return cab(t, lst) + Object.keys(g).sort().map(v => cab('👤 ' + esc(v), g[v], true) + g[v].map(tarj).join('')).join(''); }; return bloque('⏳ Por cargar', l.filter(p => p.estado !== 'cargado')) + bloque('✓ Cargados', l.filter(p => p.estado === 'cargado')); })() : (pend ? '' : vacio('No hay pedidos')));
     pintarSel();
   };
@@ -1153,15 +1170,17 @@ document.addEventListener('click', async e => {
   else if (d.act === 'importarConfirmar') importarConfirmar(t);
   else if (d.act === 'exportarExcel') exportarExcel();
   else if (d.act === 'borrarPedido') borrarPedido();
-  else if (d.ent) { if (d.ent === 'limpiar' || d.ent === 'quitarCredito') ponerEntrega(d.ent); else if (d.ent === 'entregado') ponerEntrega('entregado'); else { entregaSel = d.ent; pintarEntrega(); const m = $('#entMotivo'); if (m) m.focus(); } }
-  else if (d.act === 'guardarCredito') ponerEntrega('credito', '', { numero: ($('#ncNum') || {}).value, monto: ($('#ncMonto') || {}).value });
-  else if (d.act === 'guardarEntrega') ponerEntrega(entregaSel, ($('#entMotivo') || {}).value);
   else if (d.pnav) irAPedido(+d.pnav);
   else if (d.act === 'selModo') { selMode = !selMode; selPeds = new Set(); if (repintarPeds) repintarPeds(); }
-  else if (d.act === 'selTodos') { const todos = visiblesPeds.length && visiblesPeds.every(p => selPeds.has(p.id)); selPeds = todos ? new Set() : new Set(visiblesPeds.map(p => p.id)); if (repintarPeds) repintarPeds(); }
+  else if (d.act === 'selTodos') { const cv = cargadosVisibles(), todos = cv.length && cv.every(p => selPeds.has(p.id)); selPeds = todos ? new Set() : new Set(cv.map(p => p.id)); if (repintarPeds) repintarPeds(); }
   else if (d.act === 'selEntregado') aplicarSel('entregado');
-  else if (d.act === 'selLimpiar') aplicarSel('limpiar');
-  else if (d.ped && selMode) { const id = +d.ped; selPeds.has(id) ? selPeds.delete(id) : selPeds.add(id); if (repintarPeds) repintarPeds(); }
+  else if (d.act === 'selEntrega') abrirEntrega();
+  else if (d.act === 'guardarEntrega') guardarEntrega();
+  else if (d.entsel) {
+    entSel = d.entsel; document.querySelectorAll('[data-entsel]').forEach(x => { const on = x.dataset.entsel === entSel; x.style.borderColor = on ? 'var(--pri)' : ''; x.style.color = on ? 'var(--pri)' : ''; });
+    const mb = $('#entMotivoBox'); if (mb) mb.hidden = !(entSel === 'devoluciones' || entSel === 'rechazado');
+  }
+  else if (d.ped && selMode && (pedidos.find(x => x.id === +d.ped) || {}).estado === 'cargado') { const id = +d.ped; selPeds.has(id) ? selPeds.delete(id) : selPeds.add(id); if (repintarPeds) repintarPeds(); }
   else if (d.ped) {
     navPeds = [...document.querySelectorAll('#lista [data-ped]')].map(x => +x.dataset.ped);
     try { const f = await api('GET', 'p/pedidos/' + d.ped); const i = pedidos.findIndex(x => x.id === f.id); if (i >= 0) pedidos[i] = f; } catch {}   // estado al día; sin señal se usa lo guardado
