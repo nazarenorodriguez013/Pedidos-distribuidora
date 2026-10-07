@@ -318,9 +318,8 @@ function importar(b) {
     if (String(f.nombre ?? '').trim()) p.nombre = String(f.nombre).trim();
     if (precio !== null && !sinPrecio) p.precio = precio;
     if (mult && !p.multiploSet) { p.multiplo = Math.floor(mult); p.multiploSet = true; }   // la unidad de venta solo se carga si todavía no estaba definida
-    if (sinPrecio) p.activo = false;
     if (f.activo !== undefined && f.activo !== '') p.activo = truthy(f.activo);
-    else if (b.catalogoCompleto && !sinPrecio) p.activo = true;
+    else if (precio !== null) p.activo = !sinPrecio;   // lista nueva: precio 0 queda desactivado y con precio queda activo
     r.actualizados++;
   });
   if (b.catalogoCompleto) for (const p of state.productos) if (p.activo && !vistos.has(p.codigo.toLowerCase())) { p.activo = false; r.desactivados++; }
