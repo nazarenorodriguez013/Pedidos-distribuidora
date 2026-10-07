@@ -102,6 +102,17 @@ body.login-pg{background:#121212;--tx:#f3f4f6;--mut:#a3a3a3;--card:#1c1c1c;--bd:
 header img.marca{height:34px;width:auto;flex:none}
 body.login-pg .btn:not(.sec){color:#04231c}
 .login h1{text-align:center;color:var(--pri)}
+.login-card h2,.login-card .sub{display:none}
+@media (min-width:900px){
+  body.login-pg{background:radial-gradient(900px 640px at 22% 45%,rgba(42,179,151,.05),transparent 62%),radial-gradient(700px 520px at 88% 85%,rgba(229,199,79,.12),transparent 60%),#121212;min-height:100vh;padding-bottom:0}
+  .login{display:grid;grid-template-columns:1fr 410px;gap:72px;align-items:center;max-width:1080px;min-height:100vh;margin:0 auto;padding:40px 32px}
+  .login img.logo{width:min(100%,540px);height:auto;margin:0 auto;-webkit-mask-image:radial-gradient(closest-side,#000 78%,transparent 100%);mask-image:radial-gradient(closest-side,#000 78%,transparent 100%)}
+  .login-card{background:#1c1c1c;border:1px solid #2e2e2e;border-top:3px solid var(--acc);border-radius:20px;padding:38px 34px;box-shadow:0 24px 70px rgba(0,0,0,.5)}
+  .login-card h2{display:block;margin:0 0 4px;font-size:28px;color:#fff}
+  .login-card .sub{display:block;margin:0 0 14px;color:var(--mut)}
+  .login-card input{background:#121212;min-height:50px;font-size:17px}
+  .login-card .btn{margin-top:6px;min-height:52px;font-size:17px}
+}
 
 /* ---- computadora: menú lateral, pedido en dos columnas, listas en dos columnas ---- */
 @media (min-width:900px){
@@ -295,10 +306,11 @@ function render() {
 }
 function login() {
   document.body.classList.remove('hay-tabs'); document.body.classList.add('login-pg');
-  $('#app').innerHTML = `<form class="login"><img class="logo" src="/logo.png" alt="Distribuidora Don Luis">
+  $('#app').innerHTML = `<form class="login"><picture><source media="(min-width:900px)" srcset="/logo-grande.png"><img class="logo" src="/logo.png" alt="Distribuidora Don Luis"></picture>
+    <div class="login-card"><h2>Iniciar sesión</h2><p class="sub">Ingresá con tu usuario y contraseña</p>
     <label>Usuario</label><input id="u" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required>
     <label>Contraseña</label><input id="pw" type="password" autocomplete="current-password" required>
-    <p id="err" class="mut" style="color:var(--bad)"></p><button class="btn">Ingresar</button></form>`;
+    <p id="err" class="mut" style="color:var(--bad)"></p><button class="btn">Ingresar</button></div></form>`;
   $('form').onsubmit = async e => {
     e.preventDefault();
     try {
