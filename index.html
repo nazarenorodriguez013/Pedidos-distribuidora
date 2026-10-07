@@ -872,16 +872,15 @@ function vUsuario() {
 }
 /* ---------- Excel (admin) ---------- */
 let importFilas = null;
-const COLS = { codigo: ['codigo', 'cod', 'sku', 'code'], nombre: ['nombre', 'descripcion', 'producto', 'articulo', 'detalle'], precio: ['precio', 'price', 'importe', 'pvp'], activo: ['activo', 'habilitado'], multiplo: ['unidad de venta', 'unidad', 'multiplo', 'multiple', 'se vende de a'] };
+const COLS = { codigo: ['codigo', 'cod', 'sku', 'code'], nombre: ['nombre', 'descripcion', 'producto', 'articulo', 'detalle'], precio: ['precio', 'price', 'importe', 'pvp', 'lista'], activo: ['activo', 'habilitado'], multiplo: ['unidad de venta', 'unidad', 'multiplo', 'multiple', 'se vende de a'] };
 function leerHoja(rows) {
   rows = rows.filter(r => r.some(c => String(c ?? '').trim() !== ''));
-  const mapa = {};
-  const cab = rows[0].map(norm).map(x => x.trim());
-  for (const [k, ks] of Object.entries(COLS)) { const i = cab.findIndex(c => ks.some(w => c === w || c.startsWith(w))); if (i >= 0) mapa[k] = i; }
-  let datos = rows;
-  if (mapa.codigo !== undefined) datos = rows.slice(1);
-  else Object.assign(mapa, { codigo: 0, nombre: 1, precio: 2 });   // sin encabezados: A=código, B=nombre, C=precio
-  return datos.map(r => Object.fromEntries(Object.entries(mapa).map(([k, i]) => [k, r[i] ?? ''])));
+  // el encabezado puede no estar en la primera fila (títulos arriba): se busca en las primeras filas la que tenga código y nombre/precio
+  const mapear = r => { const cab = r.map(norm).map(x => x.trim()), m = {}; for (const [k, ks] of Object.entries(COLS)) { const i = cab.findIndex(c => c !== 'iva' && ks.some(w => c === w || c.startsWith(w))); if (i >= 0) m[k] = i; } return m; };
+  let h = -1, mapa = {};
+  for (let i = 0; i < Math.min(rows.length, 25); i++) { const m = mapear(rows[i]); if (m.codigo !== undefined && (m.nombre !== undefined || m.precio !== undefined)) { h = i; mapa = m; break; } }
+  if (h < 0) { Object.assign(mapa, { codigo: 0, nombre: 1, precio: 2 }); }   // sin encabezados: A=código, B=nombre, C=precio
+  return rows.slice(h + 1).map(r => Object.fromEntries(Object.entries(mapa).map(([k, i]) => [k, r[i] ?? ''])));
 }
 /* PDF de lista de precios: cada línea "código  artículo  IVA  precio". Precio 0 = sin precio: queda desactivado. */
 const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
