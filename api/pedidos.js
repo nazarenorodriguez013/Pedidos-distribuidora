@@ -4,6 +4,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const path = require('path');
 
+let webpush = null; try { webpush = require('web-push'); } catch {}   // notificaciones push (si la librería no está, la app funciona igual sin ellas)
 const FILE = process.env.PEDIDOS_FILE || path.join(__dirname, '..', 'data', 'pedidos.json');
 let state = null;
 let queue = Promise.resolve();
@@ -22,6 +23,13 @@ async function load(pool) {
   state.seq.c = state.seq.c || 1;
   state.combos = state.combos || [];
   state.novedades = state.novedades || [];
+  state.pushSubs = state.pushSubs || [];
+  if (webpush) {   // claves VAPID: de las variables de entorno o generadas una vez y guardadas junto con los datos
+    const env = process.env;
+    if (env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY) state.vapid = { publica: env.VAPID_PUBLIC_KEY, privada: env.VAPID_PRIVATE_KEY };
+    else if (!state.vapid) { const k = webpush.generateVAPIDKeys(); state.vapid = { publica: k.publicKey, privada: k.privateKey }; state.vapidNueva = true; }
+    webpush.setVapidDetails(env.VAPID_SUBJECT || 'mailto:admin@distribuidora.local', state.vapid.publica, state.vapid.privada);
+  }
   state.seq.n = state.seq.n || 1;
   for (const c of state.combos) for (const g of c.grupos) if (!g.codigos) g.codigos = g.pids.map(pid => (state.productos.find(p => p.id === pid) || {}).codigo).filter(Boolean);
   state.seq.k = state.seq.k || 1;
@@ -32,6 +40,7 @@ async function load(pool) {
   for (const o of state.pedidos) if (o.subtotal === undefined) {   // pedidos anteriores al redondeo: se les aplica solo
     o.subtotal = o.total; o.total = redondear(o.subtotal); o.redondeo = Math.round((o.total - o.subtotal) * 100) / 100;
   }
+  if (state.vapidNueva) { delete state.vapidNueva; await save(pool); }
   if (!state.usuarios.length) {   // primer arranque: el administrador sale de APP_USER / APP_PASS
     state.usuarios.push({ id: state.seq.u++, usuario: process.env.APP_USER || 'kevin', nombre: 'Administrador', rol: 'admin', activo: true, ...hashPass(process.env.APP_PASS || 'kevin123') });
     await save(pool);
@@ -415,6 +424,16 @@ function importarClientes(b, quien) {
   return r;
 }
 
+// Envía una notificación push a todos los dispositivos de los usuarios indicados; los dispositivos dados de baja se limpian solos.
+function notificar(userIds, payload, pool) {
+  if (!webpush || !state.vapid) return;
+  const subs = state.pushSubs.filter(x => userIds.includes(x.u));
+  if (!subs.length) return;
+  Promise.allSettled(subs.map(x => webpush.sendNotification(x.sub, JSON.stringify(payload), { TTL: 86400 }).catch(e => { if (e && (e.statusCode === 404 || e.statusCode === 410)) x.muerta = true; throw e; }))).then(() => {
+    if (state.pushSubs.some(x => x.muerta)) { state.pushSubs = state.pushSubs.filter(x => !x.muerta); save(pool); }
+  });
+}
+
 module.exports = async function (req, res, url, body, send, pool, secret) {
   const s = await load(pool);
   const m = /^\/api\/p\/([a-z]+)(?:\/(\d+))?$/.exec(url);
@@ -577,6 +596,18 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       return send(res, 200, { ok: true, n: lista.length });
     }
 
+    if (rec === 'pushkey' && req.method === 'GET') return send(res, 200, { key: webpush && s.vapid ? s.vapid.publica : null });
+    if (rec === 'pushsub') {   // el dispositivo se suscribe / se da de baja para recibir notificaciones
+      const b = await body(req, 1e4), sub = b.subscription || {}, ep = String(b.endpoint || sub.endpoint || '');
+      if (!ep) throw { code: 400, msg: 'Falta la suscripción' };
+      s.pushSubs = s.pushSubs.filter(x => x.sub.endpoint !== ep);
+      if (req.method === 'POST') {
+        if (!sub.keys || !sub.endpoint) throw { code: 400, msg: 'Suscripción inválida' };
+        s.pushSubs.push({ u: yo.id, sub: { endpoint: sub.endpoint, keys: { p256dh: String(sub.keys.p256dh), auth: String(sub.keys.auth) } }, en: new Date().toISOString() });
+      } else if (req.method !== 'DELETE') throw { code: 405, msg: 'Método no permitido' };
+      await save(pool);
+      return send(res, 200, { ok: true });
+    }
     if (rec === 'novedades' || rec === 'novedadleida') {   // novedades: las escribe el administrador y las ven los vendedores (todos o uno)
       const visibleN = n => admin || n.para === 'todos' || n.para === yo.id;
       const paraMi = n => admin ? n : { id: n.id, titulo: n.titulo, texto: n.texto, para: n.para, creado: n.creado, editado: n.editado, por: n.por, leida: !!(n.leidas || {})[yo.id] };
@@ -599,11 +630,12 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       if (!id && req.method === 'POST') {
         const n = { id: s.seq.n++, ...limpiar(await body(req, 1e5)), creado: new Date().toISOString(), por: yo.nombre, leidas: {} };
         s.novedades.push(n); await save(pool);
+        notificar(n.para === 'todos' ? s.usuarios.filter(u => u.rol === 'vendedor').map(u => u.id) : [n.para], { titulo: '📣 Novedad · Distribuidora Don Luis', cuerpo: n.texto.slice(0, 140), tag: 'novedad-' + n.id }, pool);
         return send(res, 200, n);
       }
       const n = s.novedades.find(x => x.id === id);
       if (!n) throw { code: 404, msg: 'No existe' };
-      if (req.method === 'PUT') { Object.assign(n, limpiar(await body(req, 1e5), n), { editado: new Date().toISOString(), leidas: {} }); await save(pool); return send(res, 200, n); }   // al editarla vuelve a figurar como nueva
+      if (req.method === 'PUT') { Object.assign(n, limpiar(await body(req, 1e5), n), { editado: new Date().toISOString(), leidas: {} }); await save(pool); notificar(n.para === 'todos' ? s.usuarios.filter(u => u.rol === 'vendedor').map(u => u.id) : [n.para], { titulo: '📣 Novedad actualizada · Distribuidora Don Luis', cuerpo: n.texto.slice(0, 140), tag: 'novedad-' + n.id }, pool); return send(res, 200, n); }   // al editarla vuelve a figurar como nueva
       if (req.method === 'DELETE') { s.novedades.splice(s.novedades.indexOf(n), 1); await save(pool); return send(res, 200, { ok: true }); }
       throw { code: 405, msg: 'Método no permitido' };
     }

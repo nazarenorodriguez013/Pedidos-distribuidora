@@ -102,6 +102,8 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .login{max-width:360px;margin:6vh auto 0;padding:0 16px}
 body.login-pg{background:radial-gradient(460px 380px at 0% 100%,rgba(42,179,151,.30),transparent 70%),radial-gradient(420px 340px at 100% 60%,rgba(229,199,79,.17),transparent 70%),#121212;background-attachment:fixed;min-height:100vh;--tx:#f3f4f6;--mut:#a3a3a3;--card:#1c1c1c;--bd:#333;--pri:#2ab397}
 .login img.logo{display:block;margin:0 auto 6px;width:230px;height:230px;border-radius:12px}
+header .campana{position:relative;flex:none;width:40px;height:38px;padding:0;font-size:19px;background:rgba(255,255,255,.14)}
+header .campana b{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;background:var(--bad);color:#fff;font-size:11px;line-height:18px;text-align:center;padding:0 4px}
 header img.marca{height:34px;width:auto;flex:none}
 body.login-pg .btn:not(.sec){color:#04231c}
 .login h1{text-align:center;color:var(--pri)}
@@ -248,7 +250,7 @@ async function cargar() {
   usuarios = c.usuarios;
   cacheDatos();
 }
-function salir() { guardaSesion.removeItem('pd_token'); guardaSesion.removeItem('pd_user'); localStorage.removeItem('pd_nav'); localStorage.removeItem('pd_cache');   // no queda nada del usuario en el navegador
+function salir() { if (token) olvidarPush(token); guardaSesion.removeItem('pd_token'); guardaSesion.removeItem('pd_user'); localStorage.removeItem('pd_nav'); localStorage.removeItem('pd_cache');   // no queda nada del usuario en el navegador
   token = null; view = 'menu'; render(); }
 /* navegación con el botón "atrás" del celular: vuelve a la sección anterior; en el menú pregunta antes de salir */
 let pila = [];   // secciones visitadas, en el mismo orden que el historial del navegador
@@ -306,7 +308,7 @@ function render() {
   if (view !== 'pedidos' && view !== 'pedido') { fdiaInit = false; selMode = false; selPeds = new Set(); }   // al volver a Pedidos desde otra sección arranca en el día de hoy
   const tab = TABS.includes(view), desk = escritorio();
   document.body.classList.toggle('hay-tabs', desk || tab);
-  $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1><span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab || desk ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '📦', 'Listado'], ...(desk ? [['promos', '🏷️', 'Promociones'], ['novedades', '📣', 'Novedades' + (nNuevas() ? ' (' + nNuevas() + ')' : '')]] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo"><button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
+  $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1>${campana()}<span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab || desk ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '📦', 'Listado'], ...(desk ? [['promos', '🏷️', 'Promociones'], ['novedades', '📣', 'Novedades' + (nNuevas() ? ' (' + nNuevas() + ')' : '')]] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo"><button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
   estado();
   ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, novedades: vNovedades })[view]();
 }
@@ -340,26 +342,65 @@ function abrirNuevoPedido() { const b = leerBorrador(); if (b) draft = b; else n
 function vMenu() {
   const a = esAdmin(), hoyP = pedidos.filter(p => p.dia === hoy());
   $('#main').innerHTML = `${a && !dbOk ? '<div class="hint" style="background:#fee2e2;color:#7f1d1d;padding:10px;border-radius:8px;margin-bottom:10px"><b>Base de datos no conectada.</b> Los usuarios y pedidos se borran en cada deploy. Revisá la variable DATABASE_URL en Railway.</div>' : ''}${a && pedidos.some(hayAgregados) ? `<button class="btn" data-tab="pedidos" data-festado="agregados" style="background:var(--bad);margin-bottom:10px">⚠️ ${pedidos.filter(hayAgregados).length} pedido(s) modificados por el vendedor después de cargarlos (Agregar)</button>` : ''}<p class="mut">${esc(user.nombre)}${user.nombre === 'Administrador' || !a ? '' : ' · Administrador'}${!a ? ' · Vendedor' : ''}</p>
-    ${a ? '' : novedades.filter(n => !n.leida).map(n => `<div class="card" style="border-color:var(--acc);border-width:2px;margin-bottom:10px"><b>📣 ${esc(n.titulo || 'Novedad')}</b> <span class="tag bad">Nueva</span><br><span class="mut">${esc(fechaHora(n.editado || n.creado))}</span><p style="margin:6px 0;white-space:pre-wrap">${esc(n.texto)}</p><button class="btn sec" data-nleer="${n.id}">Entendido</button></div>`).join('')}
     ${(() => { const b = leerBorrador(); if (!b) return ''; const k = Object.keys(b.items).length; return `<div class="card" style="border-color:var(--warn);margin-bottom:10px"><b>📝 Pedido sin guardar</b><br><span class="mut">${b.cliente ? esc(b.cliente) : 'Sin cliente'} · ${k} ${k === 1 ? 'producto' : 'productos'}</span><div class="row" style="border:0;padding:8px 0 0;gap:8px"><button class="btn" data-go="pedido" data-nuevo="1">Continuar</button><button class="btn sec" data-act="descartarBorrador">Descartar</button></div></div>`; })()}
     <div class="menu"><button class="main" data-go="pedido" data-nuevo="1"><span>🛒</span>${leerBorrador() ? 'Continuar pedido' : 'Cargar pedido'}</button>
     <button data-go="promos"><span>🏷️</span>Promociones</button>
     <button data-go="novedades"><span>📣</span>Novedades${nNuevas() ? `<br><small class="tag bad">${nNuevas()} ${nNuevas() === 1 ? 'nueva' : 'nuevas'}</small>` : ''}</button>
-    <button data-tab="pedidos"><span>📋</span>Para hoy<br><small class="mut">${hoyP.length} pedidos · ${money(hoyP.reduce((t, p) => t + p.total, 0))}</small></button></div>`;
+    <button data-tab="pedidos"><span>📋</span>Para hoy<br><small class="mut">${hoyP.length} pedidos · ${money(hoyP.reduce((t, p) => t + p.total, 0))}</small></button></div>
+    ${a ? '' : novedades.filter(n => !n.leida).map(n => `<div class="card" style="border-color:var(--acc);border-width:2px;margin-top:12px"><b>📣 ${esc(n.titulo || 'Novedad')}</b> <span class="tag bad">Nueva</span><br><span class="mut">${esc(fechaHora(n.editado || n.creado))}</span><p style="margin:6px 0;white-space:pre-wrap">${esc(n.texto)}</p><button class="btn sec" data-nleer="${n.id}">Entendido</button></div>`).join('')}`;
+}
+
+/* ---------- notificaciones push ---------- */
+const pushSoportado = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const b64aBytes = b => { const p = '='.repeat((4 - b.length % 4) % 4), r = atob((b + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from([...r].map(c => c.charCodeAt(0))); };
+async function pushEstado() {   // { ok: puede usarse, permiso, activa }
+  if (!pushSoportado()) return { ok: false };
+  try { const reg = await Promise.race([navigator.serviceWorker.ready, new Promise((_, no) => setTimeout(() => no(new Error('sin service worker')), 3000))]), sub = await reg.pushManager.getSubscription(); return { ok: true, permiso: Notification.permission, activa: !!sub && Notification.permission === 'granted' }; } catch { return { ok: false }; }
+}
+async function activarPush() {
+  try {
+    if (await Notification.requestPermission() !== 'granted') return toast('Las notificaciones están bloqueadas: habilitalas en el navegador (candado de la barra de direcciones)');
+    const { key } = await api('GET', 'p/pushkey'); if (!key) return toast('El servidor todavía no tiene las notificaciones habilitadas');
+    const reg = await navigator.serviceWorker.ready;
+    const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64aBytes(key) });
+    await api('POST', 'p/pushsub', { subscription: sub.toJSON() });
+    toast('Notificaciones activadas en este dispositivo ✓');
+  } catch (e) { toast('No se pudieron activar: ' + (e.message || e)); }
+  pintarPush();
+}
+async function desactivarPush() {
+  try { const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription(); if (sub) { await api('DELETE', 'p/pushsub', { endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe(); } toast('Notificaciones desactivadas'); } catch (e) { toast(e.message); }
+  pintarPush();
+}
+function olvidarPush(tok) {   // al cerrar sesión este dispositivo deja de recibir los avisos de ese usuario
+  if (!pushSoportado()) return;
+  navigator.serviceWorker.ready.then(reg => reg.pushManager.getSubscription()).then(sub => { if (!sub) return; fetch('/api/p/pushsub', { method: 'DELETE', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + tok }, body: JSON.stringify({ endpoint: sub.endpoint }) }).catch(() => {}); return sub.unsubscribe(); }).catch(() => {});
+}
+async function pintarPush() {
+  const box = $('#pushBox'); if (!box) return;
+  const e = await pushEstado();
+  if (!e.ok) { box.innerHTML = '<p class="mut" style="margin:0">Este navegador no admite notificaciones. En iPhone hay que instalar la app (Safari → Compartir → Agregar a inicio) y abrirla desde el ícono.</p>'; return; }
+  box.innerHTML = e.activa
+    ? '<p style="margin:0 0 8px">🔔 Las notificaciones están <b>activadas</b> en este dispositivo.</p><button class="btn sec" data-act="pushOff">Desactivar</button>'
+    : e.permiso === 'denied' ? '<p class="mut" style="margin:0">Las notificaciones están bloqueadas para este sitio. Habilitalas desde el candado de la barra de direcciones y volvé a intentar.</p>'
+    : '<p class="mut" style="margin:0 0 8px">Recibí un aviso en el dispositivo cuando haya novedades, aunque la app esté cerrada.</p><button class="btn" data-act="pushOn">🔔 Activar notificaciones</button>';
 }
 
 /* ---------- novedades: las escribe el administrador y las ven los vendedores ---------- */
 const nNuevas = () => esAdmin() ? 0 : novedades.filter(n => !n.leida).length;
+const nAvisos = () => esAdmin() ? pedidos.filter(hayAgregados).length : nNuevas();   // campanita: vendedor = novedades sin leer; admin = pedidos modificados después de cargados
+const campana = () => { const n = nAvisos(); return `<button class="campana" data-act="campana" aria-label="Notificaciones${n ? ': ' + n : ''}" title="${esAdmin() ? 'Pedidos modificados después de cargados' : 'Novedades'}">🔔${n ? `<b>${n > 9 ? '9+' : n}</b>` : ''}</button>`; };
 const nombreDestino = n => n.para === 'todos' ? 'Todos los vendedores' : ((usuarios.find(u => u.id === n.para) || {}).nombre || 'Un vendedor');
 function vNovedades() {
   const a = esAdmin(), vendedores = usuarios.filter(u => u.rol === 'vendedor' && u.activo);
   const nuevas = a ? [] : novedades.filter(n => !n.leida).map(n => n.id);
-  $('#main').innerHTML = `${a ? '<button class="btn" data-act="nuevaNovedad" style="margin-bottom:10px">+ Nueva novedad</button>' : ''}` + (novedades.length ? novedades.map(n => {
+  $('#main').innerHTML = `${a ? '<button class="btn" data-act="nuevaNovedad" style="margin-bottom:10px">+ Nueva novedad</button>' : '<div class="card" id="pushAviso" hidden></div>'}` + (novedades.length ? novedades.map(n => {
     const dest = n.para === 'todos' ? vendedores : vendedores.filter(u => u.id === n.para), leyeron = dest.filter(u => (n.leidas || {})[u.id]), faltan = dest.filter(u => !(n.leidas || {})[u.id]);
     return `<div class="card" ${nuevas.includes(n.id) ? 'style="border-color:var(--acc);border-width:2px"' : ''}><div class="row" style="border:0;padding:0"><div class="nm"><b>📣 ${esc(n.titulo || 'Novedad')}</b>${nuevas.includes(n.id) ? ' <span class="tag bad">Nueva</span>' : ''}<span class="mut">${esc(fechaHora(n.editado || n.creado))}${n.editado ? ' (editada)' : ''}${a ? ' · Para: ' + esc(nombreDestino(n)) : ' · ' + esc(n.por || '')}</span></div></div>
       <p style="margin:8px 0;white-space:pre-wrap">${esc(n.texto)}</p>
       ${a ? `<p class="mut" style="margin:0 0 8px">${dest.length ? `Leída por ${leyeron.length} de ${dest.length}${faltan.length ? ' · Falta: ' + esc(faltan.map(u => u.nombre).join(', ')) : ' ✓'}` : ''}</p><div class="row" style="border:0;padding:0;gap:8px"><button class="btn sec" data-ned="${n.id}">Editar</button><button class="btn bad" data-ndel="${n.id}" style="width:auto;padding:0 16px">Eliminar</button></div>` : ''}</div>`;
   }).join('') : vacio(a ? 'Todavía no enviaste novedades' : 'No hay novedades'));
+  if (!a) pushEstado().then(e => { const b = $('#pushAviso'); if (b && e.ok && !e.activa && e.permiso !== 'denied') { b.hidden = false; b.innerHTML = '<b>🔔 Activá las notificaciones</b><p class="mut" style="margin:4px 0 8px">Así te enteramos de las novedades al instante, aunque la app esté cerrada.</p><button class="btn" data-act="pushOn">Activar notificaciones</button>'; } });
   if (nuevas.length) { for (const id of nuevas) api('PUT', 'p/novedadleida/' + id).catch(() => {}); novedades.forEach(n => { n.leida = true; }); cacheDatos(); }   // al entrar quedan como leídas (se siguen viendo marcadas en esta pantalla)
 }
 function abrirNovedad(n) {
@@ -367,8 +408,7 @@ function abrirNovedad(n) {
   const el = document.createElement('div'); el.id = 'modal'; el.className = 'modal';
   const vendedores = usuarios.filter(u => u.rol === 'vendedor' && u.activo);
   el.innerHTML = `<div class="modal-card"><div class="row" style="border:0;padding:0 0 4px"><h2 style="flex:1;margin:0;font-size:19px">${n ? 'Editar novedad' : 'Nueva novedad'}</h2><button class="btn sec" data-modal="cerrar" aria-label="Cerrar" style="width:40px;min-height:40px;padding:0;flex:none">✕</button></div>
-    <form id="fn" autocomplete="off"><label>Título (opcional)</label><input name="titulo" maxlength="80" value="${esc(n ? n.titulo : '')}" placeholder="Ej: Cambio de precios">
-    <label>Mensaje</label><textarea name="texto" required maxlength="2000" style="min-height:130px" placeholder="Escribí la novedad para los vendedores">${esc(n ? n.texto : '')}</textarea>
+    <form id="fn" autocomplete="off"><label>Mensaje</label><textarea name="texto" required maxlength="2000" style="min-height:130px" placeholder="Escribí la novedad para los vendedores">${esc(n ? n.texto : '')}</textarea>
     <label>Enviar a</label><select name="para" style="width:100%;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="todos">Todos los vendedores</option>${vendedores.map(u => `<option value="${u.id}" ${n && n.para === u.id ? 'selected' : ''}>${esc(u.nombre)}</option>`).join('')}</select>
     ${n ? '<p class="mut" style="margin:8px 0 0">Al guardar los cambios, la novedad vuelve a figurar como nueva para los vendedores.</p>' : ''}
     <div style="height:14px"></div><button class="btn">${n ? 'Guardar cambios' : 'Enviar novedad'}</button></form></div>`;
@@ -391,6 +431,7 @@ function vConfig() {
   const a = esAdmin(), fila = (v, i, t) => `<div class="row" data-go="${v}" style="cursor:pointer"><span style="font-size:22px">${i}</span><div class="nm"><b>${t}</b></div><span class="mut">›</span></div>`;
   $('#main').innerHTML = `<div class="card"><b>${esc(user.nombre)}</b><br><span class="mut">usuario: ${esc(user.usuario)} · ${a ? 'Administrador' : 'Vendedor'}</span></div>
     ${a ? `<div class="card">${fila('productos', '🗂️', `Productos (${productos.length})`)}${fila('importar', '📥', 'Importar / exportar Excel')}${fila('usuarios', '👥', 'Usuarios')}${fila('promos', '🏷️', 'Promociones')}</div>` : ''}
+    <div class="card"><h2>Notificaciones</h2><div id="pushBox"></div></div>
     ${yaInstalada() ? '' : `<div class="card"><h2>Instalar la app</h2><p class="mut" style="margin:0 0 8px">Se abre como una aplicación, en la computadora o en el celular, sin escribir la dirección.</p>
       ${instalar ? '<button class="btn" data-act="instalarApp">📲 Instalar ahora</button>' : ''}
       <details style="margin-top:8px"><summary style="cursor:pointer;font-weight:700">¿Cómo la instalo?</summary>
@@ -402,6 +443,7 @@ function vConfig() {
       <label>Nueva contraseña</label><input name="nueva" type="password" minlength="4" autocomplete="new-password" required>
       <label>Repetir nueva contraseña</label><input name="rep" type="password" autocomplete="new-password" required><div style="height:14px"></div><button class="btn">Cambiar contraseña</button></form></div>
     <button class="btn bad" data-act="salir">Cerrar sesión</button>`;
+  pintarPush();
   $('#f').onsubmit = async e => {
     e.preventDefault();
     const d = Object.fromEntries(new FormData(e.target));
@@ -1170,6 +1212,9 @@ document.addEventListener('click', async e => {
   else if (d.act === 'guardarPedido') guardarPedido();
   else if (d.modal) cerrarModal();
   else if (d.act === 'nuevoCombo') abrirCombo(null);
+  else if (d.act === 'campana') { if (esAdmin()) { festado = 'agregados'; if (view === 'pedidos') render(); else go('pedidos'); } else go('novedades'); }
+  else if (d.act === 'pushOn') activarPush();
+  else if (d.act === 'pushOff') desactivarPush();
   else if (d.act === 'nuevaNovedad') abrirNovedad(null);
   else if (d.ned) abrirNovedad(novedades.find(n => n.id == d.ned));
   else if (d.ndel) { if (confirm('¿Eliminar la novedad? Los vendedores dejan de verla.')) { try { await api('DELETE', 'p/novedades/' + d.ndel); novedades = novedades.filter(n => n.id != d.ndel); cacheDatos(); toast('Novedad eliminada'); render(); } catch (er) { toast(er.message); } } }
