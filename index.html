@@ -53,6 +53,17 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .sw i:after{content:"";position:absolute;left:3px;top:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.15s}
 .sw input:checked+i{background:var(--ok)}
 .sw input:checked+i:after{left:23px}
+.hoja{background:#fff;color:#111827;border:1px solid #d1d5db;border-radius:12px;padding:16px;box-shadow:0 4px 18px rgba(0,0,0,.12)}
+.hoja-meta{font-size:12px;color:#6b7280;margin-bottom:8px}
+.hoja-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding-bottom:12px;border-bottom:2px solid #111827}
+.hoja-cod{font-size:26px;font-weight:800;line-height:1.1}
+.hoja-cli{text-align:right;min-width:0}.hoja-cli b{display:block;font-size:17px;overflow-wrap:anywhere}.hoja-cli span{display:block;font-size:14px;color:#374151;overflow-wrap:anywhere}
+.hoja table{width:100%;border-collapse:collapse;margin-top:10px;font-size:14px}
+.hoja th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;border-bottom:1px solid #d1d5db;padding:4px 4px}
+.hoja td{padding:7px 4px;border-bottom:1px solid #e5e7eb;vertical-align:top}
+.hoja .n{text-align:right;white-space:nowrap}.hoja td.c{font-weight:700;white-space:nowrap}
+.hoja-nota{margin-top:10px;padding:8px;background:#fef3c7;border-radius:8px;font-size:14px}
+.hoja-total{margin-top:14px;text-align:right;font-size:15px}.hoja-total b{font-size:24px;margin-left:6px}
 .chips{display:flex;gap:8px;margin:8px 0;overflow-x:auto}
 .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
 .chips.dos{display:grid;grid-template-columns:1fr 1fr;overflow:visible}
@@ -298,19 +309,19 @@ window.addEventListener('popstate', e => {
 });
 
 /* ---------- vistas ---------- */
-const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', novedades: 'Novedades' };
+const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', novedades: 'Novedades', hoja: 'Pedidos sin cargar' };
 const escritorio = () => window.matchMedia('(min-width:900px)').matches;
 const TABS = ['menu', 'pedidos', 'clientes', 'precios', 'faltantes', 'config'];   // pantallas con barra de botones abajo
 function render() {
   document.body.classList.remove('login-pg');
   if (!token) return login();
-  if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc'].includes(view)) view = 'menu';
+  if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc','hoja'].includes(view)) view = 'menu';
   if (view !== 'pedidos' && view !== 'pedido') { fdiaInit = false; selMode = false; selPeds = new Set(); }   // al volver a Pedidos desde otra sección arranca en el día de hoy
   const tab = TABS.includes(view), desk = escritorio();
   document.body.classList.toggle('hay-tabs', desk || tab);
   $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1>${campana()}<span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab || desk ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '📦', 'Listado'], ...(desk ? [['promos', '🏷️', 'Promociones'], ['novedades', '📣', 'Novedades' + (nNuevas() ? ' (' + nNuevas() + ')' : '')]] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo"><button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
   estado();
-  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, novedades: vNovedades })[view]();
+  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, novedades: vNovedades, hoja: vHoja })[view]();
 }
 function login() {
   document.body.classList.remove('hay-tabs'); document.body.classList.add('login-pg');
@@ -348,6 +359,44 @@ function vMenu() {
     <button data-go="novedades"><span>📣</span>Novedades${nNuevas() ? `<br><small class="tag bad">${nNuevas()} ${nNuevas() === 1 ? 'nueva' : 'nuevas'}</small>` : ''}</button>
     <button data-tab="pedidos"><span>📋</span>Para hoy<br><small class="mut">${hoyP.length} pedidos · ${money(hoyP.reduce((t, p) => t + p.total, 0))}</small></button></div>
     ${a ? '' : [...novedades.filter(n => n.fija), ...novedades.filter(n => !n.fija && !n.leida)].map(n => `<div class="card" style="${n.leida ? '' : 'border-color:var(--acc);border-width:2px;'}margin-top:12px"><b>${n.fija ? '📌' : '📣'} ${esc(n.titulo || 'Novedad')}</b> ${n.leida ? '' : '<span class="tag bad">Nueva</span>'}<br><span class="mut">${esc(fechaHora(n.editado || n.creado))}</span><p style="margin:6px 0;white-space:pre-wrap">${esc(n.texto)}</p>${n.leida ? '' : `<button class="btn sec" data-nleer="${n.id}">Entendido</button>`}</div>`).join('')}`;
+}
+
+/* ---------- hoja de pedido (admin): los pedidos sin cargar, uno por uno, para pasarlos deslizando ---------- */
+let hojaIds = [], hojaI = 0;
+function abrirHoja() {
+  const l = (typeof visiblesPeds !== 'undefined' ? visiblesPeds : pedidos).filter(p => p.estado !== 'cargado');
+  if (!l.length) return toast('No hay pedidos sin cargar con estos filtros');
+  hojaIds = l.map(p => p.id); hojaI = 0; go('hoja');
+}
+function filasHoja(p) {   // una fila por artículo; si parte de las unidades van con promo de pack, se separan en dos filas
+  return p.items.flatMap(i => i.cantPromo !== undefined && i.cantPromo > 0 && i.cantPromo < i.cant
+    ? [{ ...i, cant: i.cantPromo }, { ...i, cant: i.cant - i.cantPromo, precio: i.precioLista ?? i.precio }]
+    : i.cantPromo === 0 ? [{ ...i, precio: i.precioLista ?? i.precio }] : [i]);
+}
+function vHoja() {
+  const p = pedidos.find(x => x.id === hojaIds[hojaI]);
+  if (!p) { $('#main').innerHTML = vacio('Ya no quedan pedidos sin cargar') + '<button class="btn" data-act="atras">Volver a Pedidos</button>'; return; }
+  const cli = clientes.find(c => c.id === p.clienteId) || {}, n = hojaIds.length;
+  const b = (d, t, off) => `<button class="btn sec" data-hnav="${d}" ${off ? 'disabled' : ''} style="width:auto;min-width:0;padding:0 14px;min-height:40px">${t}</button>`;
+  $('#main').innerHTML = `<div class="row" style="border:0;padding:0 0 8px;gap:8px;align-items:center">${b(-1, '‹ Anterior', hojaI === 0)}<div class="nm" style="text-align:center"><b>${hojaI + 1} de ${n}</b> <span class="mut">· #${p.id}</span></div>${b(1, 'Siguiente ›', hojaI === n - 1)}</div>
+    <div class="hoja"><div class="hoja-meta">${p.dia ? esc(diaTxt(p.dia)) + ' · ' + (TURNOS[p.turno] || '') + ' · ' : ''}${esc(p.vendedor || '')}</div>
+      <div class="hoja-cab"><div class="hoja-cod">${p.clienteCodigo ? esc(p.clienteCodigo) : '—'}</div><div class="hoja-cli"><b>${esc(p.cliente)}</b><span>${esc(cli.direccion || '')}</span></div></div>
+      <table><thead><tr><th>Código</th><th class="n">Cant.</th><th>Descripción</th><th class="n">Precio</th></tr></thead><tbody>${filasHoja(p).map(i => `<tr><td class="c">${esc(i.codigo)}</td><td class="n">${i.cant}</td><td>${esc(i.nombre)}</td><td class="n">${money(i.precio)}</td></tr>`).join('')}</tbody></table>
+      ${p.nota ? `<div class="hoja-nota"><b>Nota:</b> ${esc(p.nota)}</div>` : ''}
+      <div class="hoja-total">Total <b>${money(p.total)}</b></div></div>
+    <button class="btn" data-act="hojaCargar" style="margin-top:12px">✓ Marcar como cargado</button>
+    <p class="mut" style="text-align:center;margin:8px 0 0">Deslizá hacia los costados para pasar de pedido</p>`;
+}
+function hojaMover(d) { const i = hojaI + d; if (i < 0 || i >= hojaIds.length) return; hojaI = i; render(); window.scrollTo(0, 0); }
+async function hojaCargar() {
+  const id = hojaIds[hojaI]; if (!id) return;
+  try {
+    await api('PUT', 'p/cargar/' + id, { accion: 'cargado' });
+    const f = await api('GET', 'p/pedidos/' + id); const k = pedidos.findIndex(x => x.id === id); if (k >= 0) pedidos[k] = f; cacheDatos();
+    hojaIds.splice(hojaI, 1); if (hojaI >= hojaIds.length) hojaI = Math.max(0, hojaIds.length - 1);
+    toast('Pedido cargado ✓'); render();
+    if (!hojaIds.length) { toast('No quedan pedidos sin cargar'); volverA('pedidos'); }
+  } catch (e) { toast(e.message); }
 }
 
 /* ---------- notificaciones push ---------- */
@@ -561,10 +610,10 @@ async function irAPedido(n) {
   nuevoDraft(p); render(); window.scrollTo(0, 0); guardarNav();
 }
 let toque = null;   // deslizar a la izquierda / derecha para pasar al pedido siguiente / anterior
-document.addEventListener('touchstart', e => { const t = e.touches[0]; toque = e.touches.length === 1 && view === 'pedido' && draft && draft.id && !e.target.closest('input, textarea, select, .modal') ? { x: t.clientX, y: t.clientY } : null; }, { passive: true });
+document.addEventListener('touchstart', e => { const t = e.touches[0]; toque = e.touches.length === 1 && ((view === 'pedido' && draft && draft.id) || view === 'hoja') && !e.target.closest('input, textarea, select, .modal') ? { x: t.clientX, y: t.clientY } : null; }, { passive: true });
 document.addEventListener('touchend', e => {
   if (!toque) return; const t = e.changedTouches[0], dx = t.clientX - toque.x, dy = t.clientY - toque.y; toque = null;
-  if (Math.abs(dx) > 80 && Math.abs(dy) < 50 && Math.abs(dx) > Math.abs(dy) * 2) irAPedido(dx < 0 ? 1 : -1);
+  if (Math.abs(dx) > 80 && Math.abs(dy) < 50 && Math.abs(dx) > Math.abs(dy) * 2) (view === 'hoja' ? hojaMover : irAPedido)(dx < 0 ? 1 : -1);
 }, { passive: true });
 function vPedido() {
   const cargadoBanner = !draft.id || draft.estado !== 'cargado' ? '' : draft.agregar
@@ -870,7 +919,7 @@ function vPedidos() {
     <input id="q" type="search" placeholder="Buscar por cliente o número" value="${esc(q)}">
     <div class="fgrid">${esAdmin() ? selVend + selEstado : selEstado + selTurno}</div>
     ${esAdmin() ? `<div class="fgrid">${selTurno}${btnHoy}</div><div class="fgrid" style="grid-template-columns:1fr">${fecha}</div>` : `<div class="fgrid" style="grid-template-columns:1.9fr 1fr">${fecha}${btnHoy}</div>`}
-    ${esAdmin() ? '<div id="selTools" class="fgrid" style="margin-top:8px"></div>' : ''}<div id="lista" class="grid2" style="margin-top:10px"></div><div id="selBar"></div>`;
+    ${esAdmin() ? '<button class="btn sec" data-act="verSinCargar" style="margin-top:8px">📄 Abrir pedidos sin cargar</button><div id="selTools" class="fgrid" style="margin-top:8px"></div>' : ''}<div id="lista" class="grid2" style="margin-top:10px"></div><div id="selBar"></div>`;
   const pintar = () => {
     const n = norm(q), l = pedidos.filter(p => (!n || norm(p.cliente).includes(n) || String(p.id) === n) && (!vend || p.vendedor === vend) && (!fdia || p.dia === fdia) && (!fturno || p.turno === fturno) && (!festado || (festado === 'sinentregar' ? p.estado === 'cargado' && !p.entrega : ['entregado', 'devoluciones', 'rechazado'].includes(festado) ? p.entrega && p.entrega.estado === festado : festado === 'agregados' ? hayAgregados(p) : festado === 'cargado' ? p.estado === 'cargado' : p.estado !== 'cargado')));
     visiblesPeds = l; const tot = l.reduce((a, p) => a + p.total, 0);
@@ -1272,6 +1321,9 @@ document.addEventListener('click', async e => {
   else if (d.act === 'importarConfirmar') importarConfirmar(t);
   else if (d.act === 'exportarExcel') exportarExcel();
   else if (d.act === 'borrarPedido') borrarPedido();
+  else if (d.act === 'verSinCargar') abrirHoja();
+  else if (d.act === 'hojaCargar') hojaCargar();
+  else if (d.hnav) hojaMover(+d.hnav);
   else if (d.pnav) irAPedido(+d.pnav);
   else if (d.act === 'selModo') { selMode = !selMode; selPeds = new Set(); if (repintarPeds) repintarPeds(); }
   else if (d.act === 'selTodos') { const cv = cargadosVisibles(), todos = cv.length && cv.every(p => selPeds.has(p.id)); selPeds = todos ? new Set() : new Set(cv.map(p => p.id)); if (repintarPeds) repintarPeds(); }
