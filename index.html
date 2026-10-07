@@ -522,14 +522,27 @@ function sincronizarOrden() {   // los productos van en el orden en que se carga
   draft.orden = (draft.orden || []).filter(pid => draft.items[pid] > 0);
   for (const pid of Object.keys(draft.items).map(Number)) if (draft.items[pid] > 0 && !draft.orden.includes(pid)) draft.orden.push(pid);
 }
+// Promo combinada con unidades de más que no completan otro pack: se muestran como un producto aparte, a precio normal
+const packPartido = p => { const cb = comboDeLinea(p), ex = draft.items[p.id] || 0, up = cb ? unidadesPromo(p) : ex; return !!cb && up > 0 && up < ex; };
+function filasPack(p) {
+  const pl = precioLinea(p), ex = draft.items[p.id], up = unidadesPromo(p), cc = cargadaDe(p.id), pn = precioNormal(p);
+  const tags = draft.estado === 'cargado' && ex > cc ? ` <span class="tag bad">Agregar${cc ? ' +' + (ex - cc) : ''}</span>` : draft.estado === 'cargado' && ex < cc ? ` <span class="tag warn">−${cc - ex}</span>` : '';
+  return `<div class="drow" data-pid="${p.id}"><div class="dtop"><div class="dn"><b>${esc(p.nombre)}</b></div>
+      <div class="dp"><s>${money(pn)}</s> ${money(pl)} c/u<b data-sub>${money(up * pl)}</b></div>
+      <button class="btn sec xq" data-quitar="${p.id}" aria-label="Quitar del pedido">✕</button></div>
+      <div class="dsub"><div class="dcode">${esc(p.codigo)} <span class="tag promo">PROMO</span>${tags}</div><div class="dctl"><b>${up} u.</b></div></div></div>
+    <div class="drow" data-pid="${p.id}" data-extra="1"><div class="dtop"><div class="dn"><b>${esc(p.nombre)}</b></div>
+      <div class="dp">${money(pn)} c/u<b>${money((ex - up) * pn)}</b></div></div>
+      <div class="dsub"><div class="dcode">${esc(p.codigo)}</div><div class="dctl"><div class="qty"><button data-q="-1">−</button><input class="qin" type="number" inputmode="numeric" min="0" step="${multiploDe(p)}" data-qex="${p.id}" value="${ex - up}"><button data-q="1">+</button></div></div></div></div>`;
+}
 function pintarDetalle() {
   limpiarPromos(); limpiarCombos(); sincronizarOrden();
   const sel = draft.orden.map(pid => productos.find(p => p.id === pid)).filter(Boolean);
   for (const p of sel) if (promoPorCant(p) && draft.items[p.id] >= promoCantDe(p) && !draft.promos[p.id] && !draft.avisado[p.id]) { draft.avisado[p.id] = true; toast(`🏷️ Promo disponible en ${p.nombre}`); }
   for (const c of combos) if (comboCumple(c) && !draft.combos[c.id] && !draft.avisadoC[c.id]) { draft.avisadoC[c.id] = true; toast(`🏷️ Promo disponible: ${c.nombre}`); }
-  $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + bloqueCombos() + sel.map(p => { const pl = precioLinea(p); const ex = draft.items[p.id], cc = cargadaDe(p.id), ref = (draft.estado === 'cargado' && draft.orig[p.id] && draft.orig[p.id].precioLista) || p.precio;   // precio de lista con el que se armó la línea
+  $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + bloqueCombos() + sel.map(p => { if (packPartido(p)) return filasPack(p); const pl = precioLinea(p); const ex = draft.items[p.id], cc = cargadaDe(p.id), ref = (draft.estado === 'cargado' && draft.orig[p.id] && draft.orig[p.id].precioLista) || p.precio;   // precio de lista con el que se armó la línea
     return `<div class="drow" data-pid="${p.id}"><div class="dtop"><div class="dn"><b>${esc(p.nombre)}</b></div>
-      <div class="dp">${(() => { const cb = comboDeLinea(p), up = cb ? unidadesPromo(p) : ex; return cb && up < ex ? `${up ? up + ' a ' + money(pl) + ' + ' : ''}${ex - up} a ${money(precioNormal(p))}` : `${pl < ref ? `<s>${money(ref)}</s> ` : ''}${money(pl)} c/u`; })()}<b data-sub>${money(totalLinea(p))}</b></div>
+      <div class="dp">${(() => { const cb = comboDeLinea(p), sinPack = cb && !unidadesPromo(p); return sinPack ? `${money(precioNormal(p))} c/u` : `${pl < ref ? `<s>${money(ref)}</s> ` : ''}${money(pl)} c/u`; })()}<b data-sub>${money(totalLinea(p))}</b></div>
       <button class="btn sec xq" data-quitar="${p.id}" aria-label="Quitar del pedido">✕</button></div>
       <div class="dsub"><div class="dcode">${esc(p.codigo)}${draft.estado === 'cargado' && ex > cc ? ` <span class="tag bad">Agregar${cc ? ' +' + (ex - cc) : ''}</span>` : draft.estado === 'cargado' && ex < cc ? ` <span class="tag warn">−${cc - ex}</span>` : ''}</div><div class="dctl"><div class="qty"><button data-q="-1">−</button><input class="qin" type="number" inputmode="numeric" min="0" step="${multiploDe(p)}" data-qin="${p.id}" value="${ex}"><button data-q="1">+</button></div></div></div>${bloquePromo(p)}</div>`; }).join('') + (draft.estado === 'cargado' ? (draft.cargadoItems || []).filter(o => !(draft.items[o.pid] > 0)).map(o => `<div class="row" style="border:0"><span class="tag warn">Quitado</span><span class="mut">${esc(o.nombre)} ×${o.cant}</span></div>`).join('') : '') + '<div id="dtotales"></div>' : '<span class="mut">Tocá un producto de la lista para agregarlo con cantidad 1. Después ajustás la cantidad acá.</span>';
 }
@@ -1145,6 +1158,11 @@ document.addEventListener('input', e => {
   pintarLista(); pintarTotal();
 });
 document.addEventListener('change', e => {
+  if (e.target.dataset && e.target.dataset.qex) {   // unidades de más (fuera del pack): el total es lo del pack más lo escrito
+    const pid = +e.target.dataset.qex, p = productos.find(x => x.id === pid); if (!p) return;
+    const t = Math.max(0, parseInt(e.target.value) || 0), y = window.scrollY;
+    cambiarCant(pid, 0, unidadesPromo(p) + t); window.scrollTo(0, y); return;
+  }
   if (e.target.dataset && e.target.dataset.qin) {
     const pid = +e.target.dataset.qin, p = productos.find(x => x.id === pid), m = p ? multiploDe(p) : 1;
     if (draft.items[pid] % m) draft.items[pid] = Math.ceil(draft.items[pid] / m) * m;
@@ -1152,7 +1170,7 @@ document.addEventListener('change', e => {
     const y = window.scrollY; pintarPedido(); window.scrollTo(0, y);
   }
 });
-document.addEventListener('focusin', e => { if (e.target.dataset && e.target.dataset.qin) e.target.select(); });
+document.addEventListener('focusin', e => { if (e.target.dataset && (e.target.dataset.qin || e.target.dataset.qex)) e.target.select(); });
 document.addEventListener('change', async e => {
   const id = e.target.dataset.activo;
   if (id) { await setProd(+id, { activo: e.target.checked }); render(); }
