@@ -337,6 +337,7 @@ function filtrar(arr) { const n = norm(q); return n ? arr.filter(p => norm(p.nom
 function enlazarBuscador(pintar) { $('#q').oninput = e => { q = e.target.value; pintar(); }; pintar(); }
 const vacio = t => `<p class="mut" style="text-align:center;padding:24px 0">${t}</p>`;
 const sinPrecio = p => !(p.precio > 0);
+const faltante = p => sinPrecio(p) || !p.activo;   // en 0 o desactivado: no se puede pedir
 const promoAuto = p => hayPromo(p) && promoCantDe(p) <= 1;
 const precioHtml = p => sinPrecio(p) && !promoAuto(p) ? '<span class="tag">Sin precio</span>' : promoAuto(p) ? `<span class="price"><s>${money(p.precio)}</s>${money(precioPromoDe(p))}</span>` : `<span class="price">${money(p.precio)}</span>`;
 
@@ -780,17 +781,17 @@ function vElegirPromo() {
 function vPrecios() {
   $('#main').innerHTML = `${esAdmin() ? '<div class="row" style="border:0;padding:0 0 10px;gap:10px"><button class="btn" data-go="importar">📥 Importar lista de precios (PDF o Excel)</button><button class="btn sec" data-act="nuevoProd">+ Cargar un producto</button></div>' : ''}<button class="btn ${esAdmin() ? 'sec' : ''}" data-act="pdf" style="margin-bottom:10px">📄 Exportar lista de precios (PDF)</button>` + buscador();
   enlazarBuscador(() => {
-    const l = filtrar(productos).filter(p => !sinPrecio(p) && (esAdmin() || p.activo));   // los productos en 0 están en Faltantes
+    const l = filtrar(productos).filter(p => !faltante(p));   // los productos en 0 o desactivados están en Faltantes
     $('#lista').innerHTML = l.length ? `<div class="card cols2">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" ${esAdmin() ? `data-precio="${p.id}"` : ''}><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}${p.activo ? '' : p.precio > 0 ? ' · inactivo' : ' · sin precio'}</span></div>${p.promo ? '<span class="tag promo">PROMO</span>' : ''}${precioHtml(p)}</div>`).join('')}</div>` : vacio('Sin resultados');
   });
 }
 /* faltantes: productos con precio 0 (sin stock / sin precio); quedan desactivados y no se pueden pedir */
 function vFaltantes() {
-  const n = productos.filter(sinPrecio).length;
+  const n = productos.filter(faltante).length;
   $('#main').innerHTML = `<p class="mut" style="margin:0 0 8px"><b>${n}</b> ${n === 1 ? 'producto' : 'productos'} en 0: no se pueden pedir hasta que vuelvan a tener precio${esAdmin() ? ' (tocá uno para ponerle precio)' : ''}.</p>` + buscador();
   enlazarBuscador(() => {
-    const l = filtrar(productos.filter(sinPrecio));
-    $('#lista').innerHTML = l.length ? `<div class="card cols2">${l.map(p => `<div class="row off" ${esAdmin() ? `data-precio="${p.id}"` : ''}><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}</span></div><span class="tag">Faltante</span></div>`).join('')}</div>` : vacio(n ? 'Sin resultados' : 'No hay faltantes');
+    const l = filtrar(productos.filter(faltante));
+    $('#lista').innerHTML = l.length ? `<div class="card cols2">${l.map(p => `<div class="row off" ${esAdmin() ? `data-precio="${p.id}"` : ''}><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}</span></div>${sinPrecio(p) ? '<span class="tag">Precio 0</span>' : `<span class="price">${money(p.precio)}</span><span class="tag">Desactivado</span>`}</div>`).join('')}</div>` : vacio(n ? 'Sin resultados' : 'No hay faltantes');
   });
 }
 function exportarPdf() {
