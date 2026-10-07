@@ -456,7 +456,7 @@ function pintarLista() {
   const todos = filtrar(base), lista = todos.slice(0, 30);   // orden fijo: lo elegido no sube, queda en el detalle
   $('#lista').innerHTML = lista.length ? `<div class="card">${lista.map(p => {
     const c = draft.items[p.id] || 0, bloq = !p.activo && !c;   // sin precio / desactivado: se ve pero no se puede pedir
-    return `<div class="row ${bloq ? 'off' : ''}" ${bloq ? '' : `data-sel="${p.id}"`} style="${c ? 'background:color-mix(in srgb,var(--pri) 10%,transparent)' : ''}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · </span>${multiploDe(p) > 1 ? `<span class="tag">unidad ${multiploDe(p)}</span> ` : ''}${hayPromo(p) ? `<span class="tag promo">PROMO ${esc(promoTxt(p))}</span> ` : ''}${precioHtml({ ...p, promo: !draft.orig[p.id] && p.promo })}</div>
+    return `<div class="row ${bloq ? 'off' : ''}" ${bloq ? '' : `data-sel="${p.id}"`} style="${c ? 'background:color-mix(in srgb,var(--pri) 10%,transparent)' : ''}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · </span>${hayPromo(p) ? `<span class="tag promo">PROMO ${esc(promoTxt(p))}</span> ` : ''}${precioHtml({ ...p, promo: !draft.orig[p.id] && p.promo })}</div>
       ${bloq ? '<span class="tag">No disponible</span>' : c ? `<span class="tag ok">✓ ${c}</span>` : '<span class="mut">+</span>'}</div>`;
   }).join('')}</div>${todos.length > lista.length ? `<p class="mut" style="text-align:center">Mostrando ${lista.length} de ${todos.length}: seguí escribiendo para afinar</p>` : ''}` : vacio('Sin resultados');
 }
@@ -815,7 +815,7 @@ function vPrecios() {
   $('#main').innerHTML = `${esAdmin() ? '<div class="row" style="border:0;padding:0 0 10px;gap:10px"><button class="btn" data-go="importar">📥 Importar lista de precios (PDF o Excel)</button><button class="btn sec" data-act="nuevoProd">+ Cargar un producto</button></div>' : ''}<button class="btn ${esAdmin() ? 'sec' : ''}" data-act="pdf" style="margin-bottom:10px">📄 Exportar lista de precios (PDF)</button>` + buscador();
   enlazarBuscador(() => {
     const l = filtrar(productos).filter(p => !faltante(p));   // los productos en 0 o desactivados están en Faltantes
-    $('#lista').innerHTML = l.length ? `<div class="card cols2">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" ${esAdmin() ? `data-precio="${p.id}"` : ''}><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}${p.activo ? '' : p.precio > 0 ? ' · inactivo' : ' · sin precio'}</span></div>${p.promo ? '<span class="tag promo">PROMO</span>' : ''}${precioHtml(p)}</div>`).join('')}</div>` : vacio('Sin resultados');
+    $('#lista').innerHTML = l.length ? `<div class="card cols2">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" ${esAdmin() ? `data-precio="${p.id}"` : ''}><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · unidad de venta ${multiploDe(p)}${p.activo ? '' : ' · inactivo'}</span></div>${p.promo ? '<span class="tag promo">PROMO</span>' : ''}${precioHtml(p)}</div>`).join('')}</div>` : vacio('Sin resultados');
   });
 }
 /* faltantes: productos con precio 0 (sin stock / sin precio); quedan desactivados y no se pueden pedir */
