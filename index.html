@@ -263,17 +263,17 @@ window.addEventListener('popstate', e => {
 });
 
 /* ---------- vistas ---------- */
-const TITULOS = { menu: 'Distribuidora', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', config: 'Configuración', promos: 'Promociones de la semana', precios: 'Listado' };
+const TITULOS = { menu: 'Distribuidora', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', config: 'Configuración', promos: 'Promociones de la semana', precios: 'Listado', faltantes: 'Faltantes' };
 const escritorio = () => window.matchMedia('(min-width:900px)').matches;
-const TABS = ['menu', 'pedidos', 'clientes', 'precios', 'config'];   // pantallas con barra de botones abajo
+const TABS = ['menu', 'pedidos', 'clientes', 'precios', 'faltantes', 'config'];   // pantallas con barra de botones abajo
 function render() {
   if (!token) return login();
   if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc'].includes(view)) view = 'menu';
   const tab = TABS.includes(view), desk = escritorio();
   document.body.classList.toggle('hay-tabs', desk || tab);
-  $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : ''}<h1>${TITULOS[view]}</h1><span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab || desk ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '📦', 'Listado'], ['config', '⚙️', 'Config']].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}</nav>` : ''}`;
+  $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : ''}<h1>${TITULOS[view]}</h1><span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab || desk ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '📦', 'Listado'], ['faltantes', '⛔', 'Faltantes'], ['config', '⚙️', 'Config']].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}</nav>` : ''}`;
   estado();
-  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios })[view]();
+  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes })[view]();
 }
 function login() {
   $('#app').innerHTML = `<form class="login"><h1>Distribuidora</h1>
@@ -780,8 +780,17 @@ function vElegirPromo() {
 function vPrecios() {
   $('#main').innerHTML = `${esAdmin() ? '<div class="row" style="border:0;padding:0 0 10px;gap:10px"><button class="btn" data-go="importar">📥 Importar lista de precios (PDF o Excel)</button><button class="btn sec" data-act="nuevoProd">+ Cargar un producto</button></div>' : ''}<button class="btn ${esAdmin() ? 'sec' : ''}" data-act="pdf" style="margin-bottom:10px">📄 Exportar lista de precios (PDF)</button>` + buscador();
   enlazarBuscador(() => {
-    const l = filtrar(productos).filter(p => esAdmin() || p.activo || sinPrecio(p));
+    const l = filtrar(productos).filter(p => !sinPrecio(p) && (esAdmin() || p.activo));   // los productos en 0 están en Faltantes
     $('#lista').innerHTML = l.length ? `<div class="card cols2">${l.map(p => `<div class="row ${p.activo ? '' : 'off'}" ${esAdmin() ? `data-precio="${p.id}"` : ''}><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}${p.activo ? '' : p.precio > 0 ? ' · inactivo' : ' · sin precio'}</span></div>${p.promo ? '<span class="tag promo">PROMO</span>' : ''}${precioHtml(p)}</div>`).join('')}</div>` : vacio('Sin resultados');
+  });
+}
+/* faltantes: productos con precio 0 (sin stock / sin precio); quedan desactivados y no se pueden pedir */
+function vFaltantes() {
+  const n = productos.filter(sinPrecio).length;
+  $('#main').innerHTML = `<p class="mut" style="margin:0 0 8px"><b>${n}</b> ${n === 1 ? 'producto' : 'productos'} en 0: no se pueden pedir hasta que vuelvan a tener precio${esAdmin() ? ' (tocá uno para ponerle precio)' : ''}.</p>` + buscador();
+  enlazarBuscador(() => {
+    const l = filtrar(productos.filter(sinPrecio));
+    $('#lista').innerHTML = l.length ? `<div class="card cols2">${l.map(p => `<div class="row off" ${esAdmin() ? `data-precio="${p.id}"` : ''}><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}</span></div><span class="tag">Faltante</span></div>`).join('')}</div>` : vacio(n ? 'Sin resultados' : 'No hay faltantes');
   });
 }
 function exportarPdf() {
