@@ -198,7 +198,8 @@ function armarPedido(b, viejo, quien, admin) {
   let cli = null;
   if (b.clienteId) {
     cli = state.clientes.find(c => c.id === Number(b.clienteId));
-    if (!cli || (!admin && cli.vendedorId !== quien.id && !(viejo && viejo.clienteId === cli.id))) throw { code: 400, msg: 'Cliente inexistente' };   // un vendedor solo elige entre sus clientes (en un pedido que ya era suyo puede conservar el cliente que tenía)
+    const huerfano = !cli && viejo && viejo.clienteId === Number(b.clienteId);   // el cliente se borró después de cargar el pedido: queda con los datos que tenía
+    if (!huerfano && (!cli || (!admin && cli.vendedorId !== quien.id && !(viejo && viejo.clienteId === cli.id)))) throw { code: 400, msg: 'Cliente inexistente' };   // un vendedor solo elige entre sus clientes (en un pedido que ya era suyo puede conservar el cliente que tenía)
   } else if (!viejo || viejo.clienteId) throw { code: 400, msg: 'Elegí un cliente' };   // pedidos viejos sin cliente cargado se pueden seguir editando
   const dia = String(b.dia || '').trim(), turno = String(b.turno || '').trim();
   if (!(viejo && !viejo.dia && !dia && !turno)) {   // pedidos viejos sin día/turno se pueden editar tal cual
@@ -251,12 +252,12 @@ function armarPedido(b, viejo, quien, admin) {
     if (admin) extra = { agregar: false, agregadoEn: undefined, cargadoItems: items.map(i => ({ pid: i.pid, nombre: i.nombre, cant: i.cant })) };   // lo que edita el admin queda como cargado
     else {
       const igual = items.length === viejo.items.length && items.every(i => { const o = viejas.get(i.pid); return o && o.cant === i.cant && !!o.promo === !!i.promo && o.comboId === i.comboId; })
-        && (dia || '') === (viejo.dia || '') && (turno || '') === (viejo.turno || '') && nota === (viejo.nota || '') && (cli ? cli.id : undefined) === viejo.clienteId;
+        && (dia || '') === (viejo.dia || '') && (turno || '') === (viejo.turno || '') && nota === (viejo.nota || '') && (cli ? cli.id : viejo.clienteId) === viejo.clienteId;
       if (!igual) extra = { agregar: true, agregadoEn: new Date().toISOString() };
     }
   }
   const { subtotal, redondeo, total } = totalesDe(items);
-  return { ...extra, cliente, clienteCodigo: cli ? cli.codigo : viejo ? viejo.clienteCodigo : undefined, nota, items, subtotal, redondeo, total, clienteId: cli ? cli.id : undefined, dia: dia || undefined, turno: turno || undefined, vendedorId: vend ? vend.id : viejo ? viejo.vendedorId : quien.id, vendedor: vend ? vend.nombre : viejo ? viejo.vendedor : quien.nombre };
+  return { ...extra, cliente, clienteCodigo: cli ? cli.codigo : viejo ? viejo.clienteCodigo : undefined, nota, items, subtotal, redondeo, total, clienteId: cli ? cli.id : viejo ? viejo.clienteId : undefined, dia: dia || undefined, turno: turno || undefined, vendedorId: vend && (admin || !viejo) ? vend.id : viejo ? viejo.vendedorId : quien.id, vendedor: vend && (admin || !viejo) ? vend.nombre : viejo ? viejo.vendedor : quien.nombre };   // un vendedor que edita su pedido no lo pasa a otro vendedor aunque el cliente haya sido reasignado
 }
 
 // ---- sesiones: token firmado con el usuario; el rol se lee de la base en cada pedido ----
