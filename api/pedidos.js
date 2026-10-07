@@ -514,6 +514,20 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       return send(res, 200, o);
     }
 
+    if (rec === 'entrega' && req.method === 'PUT' && !id) {   // varios pedidos a la vez: entregado / quitar etiqueta
+      soloAdmin();
+      const b = await body(req, 1e5);
+      if (!['entregado', 'limpiar'].includes(b.accion)) throw { code: 400, msg: 'Acción inválida' };
+      const ids = new Set((Array.isArray(b.ids) ? b.ids : []).map(Number));
+      let n = 0;
+      for (const o of s.pedidos) if (ids.has(o.id)) {
+        if (b.accion === 'limpiar') delete o.entrega; else o.entrega = { estado: 'entregado', motivo: '', por: yo.nombre, en: new Date().toISOString() };
+        n++;
+      }
+      if (!n) throw { code: 404, msg: 'No existen esos pedidos' };
+      await save(pool);
+      return send(res, 200, { ok: true, n });
+    }
     if (rec === 'entrega' && req.method === 'PUT') {   // el administrador etiqueta el pedido: entregado / con devoluciones / rechazado (con motivo)
       soloAdmin();
       const o = s.pedidos.find(x => x.id === id);
