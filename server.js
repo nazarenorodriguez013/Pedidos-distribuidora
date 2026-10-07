@@ -19,7 +19,7 @@ const pool = DB_URL ? new Pool({
 }) : null;
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.json': 'application/manifest+json', '.svg': 'image/svg+xml', '.png': 'image/png', '.js': 'text/javascript; charset=utf-8' };
-const FILES = ['index.html', 'manifest.json', 'icon.svg', 'sw.js', 'icon-192.png', 'icon-512.png', 'icon-maskable.png', 'apple-touch-icon.png'];
+const FILES = ['index.html', 'manifest.json', 'sw.js', 'logo.png', 'logo-marca.png', 'icon-192.png', 'icon-512.png', 'icon-maskable.png', 'apple-touch-icon.png'];
 
 const send = (res, code, obj) => { res.statusCode = code; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(obj)); };
 function body(req, limit = 1e6) {

@@ -1,7 +1,7 @@
 // Service worker: la app (y las librerías de Excel/PDF) se abren sin señal; se actualizan en segundo plano.
-const CACHE = 'pedidos-v2';
+const CACHE = 'pedidos-v3';
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(['/', '/manifest.json', '/icon-192.png'])).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(['/', '/manifest.json', '/icon-192.png', '/logo.png', '/logo-marca.png'])).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
