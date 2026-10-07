@@ -44,6 +44,7 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .qty button:disabled{background:var(--bd)}
 .qty b{min-width:34px;text-align:center;font-size:18px;cursor:pointer}
 .bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--bd);padding:10px 12px;display:flex;gap:10px;align-items:center;z-index:6}
+.bar.sel{bottom:calc(57px + env(safe-area-inset-bottom));box-shadow:0 -4px 12px rgba(0,0,0,.15)}
 .bar .tot{flex:1;font-size:20px;font-weight:800}
 .bar .btn{width:auto;flex:none;padding:12px 22px}
 .sw{position:relative;width:48px;height:28px;flex:none}
@@ -108,6 +109,7 @@ body.login-pg .btn:not(.sec){color:#04231c}
   main{max-width:1200px;padding:20px 28px}
   body.hay-tabs main{width:calc(100% - 210px);max-width:none;margin:0 0 0 210px;box-sizing:border-box;padding:20px max(28px, calc((100vw - 210px - 1200px) / 2))}
   body.hay-tabs .estado{margin-left:210px}
+  .bar.sel{bottom:0;left:210px}
   .tabs{top:52px;bottom:0;left:0;right:auto;width:210px;flex-direction:column;justify-content:flex-start;border-top:0;border-right:1px solid var(--bd);padding:10px 0}
   .tabs button{flex:none;flex-direction:row;justify-content:flex-start;gap:12px;font-size:15px;padding:12px 20px;min-height:0;border-left:4px solid transparent;cursor:pointer}
   .tabs button span{font-size:20px;flex:none}
@@ -277,7 +279,7 @@ function render() {
   document.body.classList.remove('login-pg');
   if (!token) return login();
   if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc'].includes(view)) view = 'menu';
-  if (view !== 'pedidos' && view !== 'pedido') fdiaInit = false;   // al volver a Pedidos desde otra sección arranca en el día de hoy
+  if (view !== 'pedidos' && view !== 'pedido') { fdiaInit = false; selMode = false; selPeds = new Set(); }   // al volver a Pedidos desde otra sección arranca en el día de hoy
   const tab = TABS.includes(view), desk = escritorio();
   document.body.classList.toggle('hay-tabs', desk || tab);
   $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1><span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab || desk ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '📦', 'Listado'], ...(desk ? [['promos', '🏷️', 'Promociones']] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo"><button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
@@ -673,22 +675,42 @@ function vCliente() {
 }
 
 /* ---------- pedidos cargados ---------- */
+let selMode = false, selPeds = new Set(), repintarPeds = null, visiblesPeds = [];
+function pintarSel() {
+  const t = $('#selTools'), b = $('#selBar'); if (!t || !b) return;
+  if (!selMode) { t.innerHTML = '<button class="btn sec" data-act="selModo">☑ Seleccionar varios</button>'; b.innerHTML = ''; return; }
+  t.innerHTML = `<button class="btn sec" data-act="selTodos">${visiblesPeds.length && visiblesPeds.every(p => selPeds.has(p.id)) ? 'Quitar selección' : `Seleccionar todos (${visiblesPeds.length})`}</button><button class="btn sec" data-act="selModo">Cancelar</button>`;
+  const n = selPeds.size;
+  b.innerHTML = `<div class="bar sel"><div class="tot" style="font-size:15px;white-space:nowrap">${n} elegidos</div><button class="btn sec" data-act="selLimpiar" ${n ? '' : 'disabled'} style="padding:12px 12px">Quitar</button><button class="btn" data-act="selEntregado" ${n ? '' : 'disabled'} style="padding:12px 14px">✓ Entregados</button></div>`;
+}
+async function aplicarSel(accion) {
+  const ids = [...selPeds]; if (!ids.length) return;
+  if (!confirm(accion === 'entregado' ? `¿Marcar ${ids.length} ${ids.length === 1 ? 'pedido' : 'pedidos'} como entregados?` : `¿Quitar la etiqueta de entrega a ${ids.length} ${ids.length === 1 ? 'pedido' : 'pedidos'}?`)) return;
+  try {
+    await api('PUT', 'p/entrega', { ids, accion });
+    const r = await api('GET', 'p/pedidos'); pedidos = r.pedidos; cacheDatos();
+    selPeds = new Set(); selMode = false; toast(accion === 'entregado' ? 'Marcados como entregados ✓' : 'Etiqueta quitada');
+    if (repintarPeds) repintarPeds();
+  } catch (e) { toast(e.message); }
+}   // selección de varios pedidos (admin)
 let vend = '', fdia = '', fturno = '', festado = '', fdiaInit = false;   // al entrar a Pedidos se muestran los de hoy
 function vPedidos() {
   if (!fdiaInit) { fdia = hoy(); fdiaInit = true; }
   const sel = esAdmin() ? `<select id="vend" style="margin-top:8px;width:100%;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Todos los vendedores</option>${[...new Set(pedidos.map(p => p.vendedor))].filter(Boolean).sort().map(v => `<option ${v === vend ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>` : '';
   $('#main').innerHTML = `<input id="q" type="search" placeholder="Buscar por cliente o número" value="${esc(q)}">${sel}
     <div class="row" style="border:0;padding:8px 0 0;gap:6px"><button class="btn sec" id="fprev" aria-label="Día anterior" style="flex:none;width:44px;min-width:0;padding:0">‹</button><input id="fdia" type="date" value="${esc(fdia)}" title="Filtrar por día" style="flex:1 1 0;min-width:0"><button class="btn sec" id="fsig" aria-label="Día siguiente" style="flex:none;width:44px;min-width:0;padding:0">›</button><button class="btn sec" id="fhoy" style="flex:none;width:auto;min-width:0;padding:0 12px">${fdia === hoy() ? 'Todos' : 'Hoy'}</button></div>
-    <div class="row" style="border:0;padding:8px 0 0"><select id="fturno" style="flex:1 1 0;min-width:0;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Todos los turnos</option>${Object.entries(TURNOS).map(([k, v]) => `<option value="${k}" ${fturno === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>${esAdmin() ? `<div class="chips" id="festados">${[['', 'Todos'], ['pendiente', 'Pendientes'], ['cargado', 'Cargados'], ['agregados', '⚠ Agregar'], ['entregado', 'Entregados'], ['devoluciones', 'Con devoluciones'], ['rechazado', 'Rechazados']].map(([k, t]) => `<button data-festado="${k}" class="${festado === k ? 'on' : ''}">${t}${k === 'agregados' && pedidos.some(hayAgregados) ? ' (' + pedidos.filter(hayAgregados).length + ')' : ''}</button>`).join('')}</div>` : ''}<div id="lista" class="grid2" style="margin-top:10px"></div>`;
+    <div class="row" style="border:0;padding:8px 0 0"><select id="fturno" style="flex:1 1 0;min-width:0;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Todos los turnos</option>${Object.entries(TURNOS).map(([k, v]) => `<option value="${k}" ${fturno === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>${esAdmin() ? `<div class="chips" id="festados">${[['', 'Todos'], ['pendiente', 'Pendientes'], ['cargado', 'Cargados'], ['agregados', '⚠ Agregar'], ['entregado', 'Entregados'], ['devoluciones', 'Con devoluciones'], ['rechazado', 'Rechazados']].map(([k, t]) => `<button data-festado="${k}" class="${festado === k ? 'on' : ''}">${t}${k === 'agregados' && pedidos.some(hayAgregados) ? ' (' + pedidos.filter(hayAgregados).length + ')' : ''}</button>`).join('')}</div>` : ''}${esAdmin() ? '<div id="selTools" class="row" style="border:0;padding:8px 0 0;gap:8px"></div>' : ''}<div id="lista" class="grid2" style="margin-top:10px"></div><div id="selBar"></div>`;
   const pintar = () => {
     const n = norm(q), l = pedidos.filter(p => (!n || norm(p.cliente).includes(n) || String(p.id) === n) && (!vend || p.vendedor === vend) && (!fdia || p.dia === fdia) && (!fturno || p.turno === fturno) && (!festado || (['entregado', 'devoluciones', 'rechazado'].includes(festado) ? p.entrega && p.entrega.estado === festado : festado === 'agregados' ? hayAgregados(p) : festado === 'cargado' ? p.estado === 'cargado' : p.estado !== 'cargado')));
-    const tot = l.reduce((a, p) => a + p.total, 0);
+    visiblesPeds = l; const tot = l.reduce((a, p) => a + p.total, 0);
     const pend = colaMia().filter(x => !n || norm(x.body.cliente).includes(n)).map(x => `<div class="card" style="border-color:${x.error ? 'var(--bad)' : 'var(--warn)'}"><div class="row" style="border:0;padding:0"><div class="nm"><b>${esc(x.body.cliente)}</b>
       <span class="mut">${x.body.dia ? esc(diaTxt(x.body.dia)) + ' · ' + (TURNOS[x.body.turno] || '') + ' · ' : ''}${x.error ? 'Rechazado: ' + esc(x.error) : '⏳ Esperando señal para enviarse'} · ${x.body.items.length} prod. · ${x.body.items.reduce((s, i) => s + i.cant, 0)} u.</span></div><span class="price">${money(x.total)}</span></div>
       <div class="row" style="border:0;padding:8px 0 0">${x.error ? `<button class="btn sec" data-reint="${esc(x.uid)}">Reintentar</button>` : ''}<button class="btn sec" data-delcola="${esc(x.uid)}">Eliminar</button></div></div>`).join('');
-    $('#lista').innerHTML = pend + (l.length ? `<p class="mut">${l.length} ${l.length === 1 ? 'pedido' : 'pedidos'} · ${money(tot)}</p>` + (() => { const tarj = p => `<div class="card" data-ped="${p.id}"><div class="row" style="border:0;padding:0"><div class="nm"><b>#${p.id} · ${p.clienteCodigo ? esc(p.clienteCodigo) + ' · ' : ''}${esc(p.cliente)}</b> ${estadoTag(p)}
+    $('#lista').innerHTML = pend + (l.length ? `<p class="mut">${l.length} ${l.length === 1 ? 'pedido' : 'pedidos'} · ${money(tot)}</p>` + (() => { const tarj = p => `<div class="card" data-ped="${p.id}" style="${selMode && selPeds.has(p.id) ? 'border-color:var(--pri);background:color-mix(in srgb,var(--pri) 10%,var(--card))' : ''}"><div class="row" style="border:0;padding:0">${selMode ? `<input type="checkbox" ${selPeds.has(p.id) ? 'checked' : ''} tabindex="-1" style="width:22px;min-height:22px;flex:none;pointer-events:none">` : ''}<div class="nm"><b>#${p.id} · ${p.clienteCodigo ? esc(p.clienteCodigo) + ' · ' : ''}${esc(p.cliente)}</b> ${estadoTag(p)}
       <span class="mut">${p.dia ? `<b>${esc(diaTxt(p.dia))} · ${TURNOS[p.turno] || ''}</b> · ` : ''}${esAdmin() ? esc(p.vendedor || '—') + ' · ' : ''}${new Date(p.creado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })} · ${p.items.length} prod. · ${p.items.reduce((s, i) => s + i.cant, 0)} u.${p.editado !== p.creado ? ' · <b>editado ' + new Date(p.editado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) + '</b>' : ''}</span></div><span class="price">${money(p.total)}</span></div></div>`; const cab = (t, lst, sub) => `<div style="grid-column:1/-1;margin-top:${sub ? 2 : 10}px;padding:${sub ? '4px 2px' : '8px 2px'};border-bottom:${sub ? '1px solid' : '2px solid'} var(--bd)"><b${sub ? ' class="mut"' : ''}>${t}</b> <span class="mut">· ${lst.length} ${lst.length === 1 ? 'pedido' : 'pedidos'} · ${money(lst.reduce((a, p) => a + p.total, 0))}</span></div>`; const bloque = (t, lst) => { if (!lst.length) return ''; if (!esAdmin()) return cab(t, lst) + lst.map(tarj).join('');  const g = {}; lst.forEach(p => (g[p.vendedor || '—'] = g[p.vendedor || '—'] || []).push(p));  return cab(t, lst) + Object.keys(g).sort().map(v => cab('👤 ' + esc(v), g[v], true) + g[v].map(tarj).join('')).join(''); }; return bloque('⏳ Por cargar', l.filter(p => p.estado !== 'cargado')) + bloque('✓ Cargados', l.filter(p => p.estado === 'cargado')); })() : (pend ? '' : vacio('No hay pedidos')));
+    pintarSel();
   };
+  repintarPeds = pintar;
   $('#q').oninput = e => { q = e.target.value; pintar(); };
   $('#fdia').onchange = e => { fdia = e.target.value; $('#fhoy').textContent = fdia === hoy() ? 'Todos' : 'Hoy'; pintar(); };
   const mover = n => { const d = new Date((fdia || hoy()) + 'T12:00:00'); d.setDate(d.getDate() + n); fdia = d.toISOString().slice(0, 10); $('#fdia').value = fdia; $('#fhoy').textContent = fdia === hoy() ? 'Todos' : 'Hoy'; pintar(); };
@@ -1071,6 +1093,11 @@ document.addEventListener('click', async e => {
   else if (d.act === 'guardarCredito') ponerEntrega('credito', '', { numero: ($('#ncNum') || {}).value, monto: ($('#ncMonto') || {}).value });
   else if (d.act === 'guardarEntrega') ponerEntrega(entregaSel, ($('#entMotivo') || {}).value);
   else if (d.pnav) irAPedido(+d.pnav);
+  else if (d.act === 'selModo') { selMode = !selMode; selPeds = new Set(); if (repintarPeds) repintarPeds(); }
+  else if (d.act === 'selTodos') { const todos = visiblesPeds.length && visiblesPeds.every(p => selPeds.has(p.id)); selPeds = todos ? new Set() : new Set(visiblesPeds.map(p => p.id)); if (repintarPeds) repintarPeds(); }
+  else if (d.act === 'selEntregado') aplicarSel('entregado');
+  else if (d.act === 'selLimpiar') aplicarSel('limpiar');
+  else if (d.ped && selMode) { const id = +d.ped; selPeds.has(id) ? selPeds.delete(id) : selPeds.add(id); if (repintarPeds) repintarPeds(); }
   else if (d.ped) {
     navPeds = [...document.querySelectorAll('#lista [data-ped]')].map(x => +x.dataset.ped);
     try { const f = await api('GET', 'p/pedidos/' + d.ped); const i = pedidos.findIndex(x => x.id === f.id); if (i >= 0) pedidos[i] = f; } catch {}   // estado al día; sin señal se usa lo guardado
