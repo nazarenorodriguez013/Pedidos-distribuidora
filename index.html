@@ -189,7 +189,7 @@ try { token = guardaSesion.getItem('pd_token'); user = JSON.parse(guardaSesion.g
 if (esPC) { try { localStorage.removeItem('pd_token'); localStorage.removeItem('pd_user'); } catch {} }
 if (esPC) window.addEventListener('beforeunload', e => { if (token) { e.preventDefault(); e.returnValue = ''; } });   // al cerrar la ventana el navegador pregunta si querés salir
 if (!user || !user.rol) token = null;
-let productos = [], pedidos = [], usuarios = [], clientes = [], combos = [], dbOk = true;
+let productos = [], pedidos = [], usuarios = [], clientes = [], combos = [], novedades = [], dbOk = true;
 const esAdmin = () => user && user.rol === 'admin';
 let view = 'menu', draft = null, q = '', filtro = 'todos';
 
@@ -207,10 +207,10 @@ async function api(method, url, data) {
 /* ---------- sin señal: datos en el teléfono y cola de pedidos pendientes ---------- */
 const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } };
-const cacheDatos = () => lsSet('pd_cache', { productos, clientes, combos, pedidos: pedidos.slice(0, 200) });
+const cacheDatos = () => lsSet('pd_cache', { productos, clientes, combos, novedades, pedidos: pedidos.slice(0, 200) });
 const leerCola = () => lsGet('pd_cola', []);
 const colaMia = () => leerCola().filter(x => x.u === user.id);
-function usarCache() { const c = lsGet('pd_cache', null); if (c) { productos = c.productos; pedidos = c.pedidos; clientes = c.clientes || []; combos = c.combos || []; } else toast('Sin señal y sin datos guardados todavía'); }
+function usarCache() { const c = lsGet('pd_cache', null); if (c) { productos = c.productos; pedidos = c.pedidos; clientes = c.clientes || []; combos = c.combos || []; novedades = c.novedades || []; } else toast('Sin señal y sin datos guardados todavía'); }
 function estado() {
   const el = $('#estado'); if (!el) return;
   const n = colaMia().filter(x => !x.error).length, rech = colaMia().filter(x => x.error).length;
@@ -240,8 +240,8 @@ window.addEventListener('offline', estado);
 setInterval(sincronizar, 30000);
 
 async function cargar() {
-  const [a, b, c, y, cl, cb] = await Promise.all([api('GET', 'p/productos'), api('GET', 'p/pedidos'), esAdmin() ? api('GET', 'p/usuarios') : { usuarios: [] }, api('GET', 'p/yo'), api('GET', 'p/clientes'), api('GET', 'p/combos')]);
-  clientes = cl.clientes; combos = cb.combos;
+  const [a, b, c, y, cl, cb, nv] = await Promise.all([api('GET', 'p/productos'), api('GET', 'p/pedidos'), esAdmin() ? api('GET', 'p/usuarios') : { usuarios: [] }, api('GET', 'p/yo'), api('GET', 'p/clientes'), api('GET', 'p/combos'), api('GET', 'p/novedades')]);
+  clientes = cl.clientes; combos = cb.combos; novedades = nv.novedades;
   dbOk = y.db;
   productos = a.productos.sort((x, y) => x.nombre.localeCompare(y.nombre));
   pedidos = b.pedidos;
@@ -296,7 +296,7 @@ window.addEventListener('popstate', e => {
 });
 
 /* ---------- vistas ---------- */
-const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes' };
+const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', novedades: 'Novedades' };
 const escritorio = () => window.matchMedia('(min-width:900px)').matches;
 const TABS = ['menu', 'pedidos', 'clientes', 'precios', 'faltantes', 'config'];   // pantallas con barra de botones abajo
 function render() {
@@ -306,9 +306,9 @@ function render() {
   if (view !== 'pedidos' && view !== 'pedido') { fdiaInit = false; selMode = false; selPeds = new Set(); }   // al volver a Pedidos desde otra sección arranca en el día de hoy
   const tab = TABS.includes(view), desk = escritorio();
   document.body.classList.toggle('hay-tabs', desk || tab);
-  $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1><span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab || desk ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '📦', 'Listado'], ...(desk ? [['promos', '🏷️', 'Promociones']] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo"><button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
+  $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1><span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab || desk ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '📦', 'Listado'], ...(desk ? [['promos', '🏷️', 'Promociones'], ['novedades', '📣', 'Novedades' + (nNuevas() ? ' (' + nNuevas() + ')' : '')]] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo"><button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
   estado();
-  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes })[view]();
+  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, novedades: vNovedades })[view]();
 }
 function login() {
   document.body.classList.remove('hay-tabs'); document.body.classList.add('login-pg');
@@ -340,10 +340,50 @@ function abrirNuevoPedido() { const b = leerBorrador(); if (b) draft = b; else n
 function vMenu() {
   const a = esAdmin(), hoyP = pedidos.filter(p => p.dia === hoy());
   $('#main').innerHTML = `${a && !dbOk ? '<div class="hint" style="background:#fee2e2;color:#7f1d1d;padding:10px;border-radius:8px;margin-bottom:10px"><b>Base de datos no conectada.</b> Los usuarios y pedidos se borran en cada deploy. Revisá la variable DATABASE_URL en Railway.</div>' : ''}${a && pedidos.some(hayAgregados) ? `<button class="btn" data-tab="pedidos" data-festado="agregados" style="background:var(--bad);margin-bottom:10px">⚠️ ${pedidos.filter(hayAgregados).length} pedido(s) modificados por el vendedor después de cargarlos (Agregar)</button>` : ''}<p class="mut">${esc(user.nombre)}${user.nombre === 'Administrador' || !a ? '' : ' · Administrador'}${!a ? ' · Vendedor' : ''}</p>
+    ${a ? '' : novedades.filter(n => !n.leida).map(n => `<div class="card" style="border-color:var(--acc);border-width:2px;margin-bottom:10px"><b>📣 ${esc(n.titulo || 'Novedad')}</b> <span class="tag bad">Nueva</span><br><span class="mut">${esc(fechaHora(n.editado || n.creado))}</span><p style="margin:6px 0;white-space:pre-wrap">${esc(n.texto)}</p><button class="btn sec" data-nleer="${n.id}">Entendido</button></div>`).join('')}
     ${(() => { const b = leerBorrador(); if (!b) return ''; const k = Object.keys(b.items).length; return `<div class="card" style="border-color:var(--warn);margin-bottom:10px"><b>📝 Pedido sin guardar</b><br><span class="mut">${b.cliente ? esc(b.cliente) : 'Sin cliente'} · ${k} ${k === 1 ? 'producto' : 'productos'}</span><div class="row" style="border:0;padding:8px 0 0;gap:8px"><button class="btn" data-go="pedido" data-nuevo="1">Continuar</button><button class="btn sec" data-act="descartarBorrador">Descartar</button></div></div>`; })()}
     <div class="menu"><button class="main" data-go="pedido" data-nuevo="1"><span>🛒</span>${leerBorrador() ? 'Continuar pedido' : 'Cargar pedido'}</button>
     <button data-go="promos"><span>🏷️</span>Promociones</button>
+    <button data-go="novedades"><span>📣</span>Novedades${nNuevas() ? `<br><small class="tag bad">${nNuevas()} ${nNuevas() === 1 ? 'nueva' : 'nuevas'}</small>` : ''}</button>
     <button data-tab="pedidos"><span>📋</span>Para hoy<br><small class="mut">${hoyP.length} pedidos · ${money(hoyP.reduce((t, p) => t + p.total, 0))}</small></button></div>`;
+}
+
+/* ---------- novedades: las escribe el administrador y las ven los vendedores ---------- */
+const nNuevas = () => esAdmin() ? 0 : novedades.filter(n => !n.leida).length;
+const nombreDestino = n => n.para === 'todos' ? 'Todos los vendedores' : ((usuarios.find(u => u.id === n.para) || {}).nombre || 'Un vendedor');
+function vNovedades() {
+  const a = esAdmin(), vendedores = usuarios.filter(u => u.rol === 'vendedor' && u.activo);
+  const nuevas = a ? [] : novedades.filter(n => !n.leida).map(n => n.id);
+  $('#main').innerHTML = `${a ? '<button class="btn" data-act="nuevaNovedad" style="margin-bottom:10px">+ Nueva novedad</button>' : ''}` + (novedades.length ? novedades.map(n => {
+    const dest = n.para === 'todos' ? vendedores : vendedores.filter(u => u.id === n.para), leyeron = dest.filter(u => (n.leidas || {})[u.id]), faltan = dest.filter(u => !(n.leidas || {})[u.id]);
+    return `<div class="card" ${nuevas.includes(n.id) ? 'style="border-color:var(--acc);border-width:2px"' : ''}><div class="row" style="border:0;padding:0"><div class="nm"><b>📣 ${esc(n.titulo || 'Novedad')}</b>${nuevas.includes(n.id) ? ' <span class="tag bad">Nueva</span>' : ''}<span class="mut">${esc(fechaHora(n.editado || n.creado))}${n.editado ? ' (editada)' : ''}${a ? ' · Para: ' + esc(nombreDestino(n)) : ' · ' + esc(n.por || '')}</span></div></div>
+      <p style="margin:8px 0;white-space:pre-wrap">${esc(n.texto)}</p>
+      ${a ? `<p class="mut" style="margin:0 0 8px">${dest.length ? `Leída por ${leyeron.length} de ${dest.length}${faltan.length ? ' · Falta: ' + esc(faltan.map(u => u.nombre).join(', ')) : ' ✓'}` : ''}</p><div class="row" style="border:0;padding:0;gap:8px"><button class="btn sec" data-ned="${n.id}">Editar</button><button class="btn bad" data-ndel="${n.id}" style="width:auto;padding:0 16px">Eliminar</button></div>` : ''}</div>`;
+  }).join('') : vacio(a ? 'Todavía no enviaste novedades' : 'No hay novedades'));
+  if (nuevas.length) { for (const id of nuevas) api('PUT', 'p/novedadleida/' + id).catch(() => {}); novedades.forEach(n => { n.leida = true; }); cacheDatos(); }   // al entrar quedan como leídas (se siguen viendo marcadas en esta pantalla)
+}
+function abrirNovedad(n) {
+  if (!esAdmin()) return;
+  const el = document.createElement('div'); el.id = 'modal'; el.className = 'modal';
+  const vendedores = usuarios.filter(u => u.rol === 'vendedor' && u.activo);
+  el.innerHTML = `<div class="modal-card"><div class="row" style="border:0;padding:0 0 4px"><h2 style="flex:1;margin:0;font-size:19px">${n ? 'Editar novedad' : 'Nueva novedad'}</h2><button class="btn sec" data-modal="cerrar" aria-label="Cerrar" style="width:40px;min-height:40px;padding:0;flex:none">✕</button></div>
+    <form id="fn" autocomplete="off"><label>Título (opcional)</label><input name="titulo" maxlength="80" value="${esc(n ? n.titulo : '')}" placeholder="Ej: Cambio de precios">
+    <label>Mensaje</label><textarea name="texto" required maxlength="2000" style="min-height:130px" placeholder="Escribí la novedad para los vendedores">${esc(n ? n.texto : '')}</textarea>
+    <label>Enviar a</label><select name="para" style="width:100%;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="todos">Todos los vendedores</option>${vendedores.map(u => `<option value="${u.id}" ${n && n.para === u.id ? 'selected' : ''}>${esc(u.nombre)}</option>`).join('')}</select>
+    ${n ? '<p class="mut" style="margin:8px 0 0">Al guardar los cambios, la novedad vuelve a figurar como nueva para los vendedores.</p>' : ''}
+    <div style="height:14px"></div><button class="btn">${n ? 'Guardar cambios' : 'Enviar novedad'}</button></form></div>`;
+  document.body.appendChild(el);
+  try { history.pushState({ v: view, d: pila.length - 1, modal: 1 }, ''); } catch {}
+  el.addEventListener('click', e => { if (e.target === el) cerrarModal(); });
+  $('#fn').onsubmit = async e => {
+    e.preventDefault();
+    const d = Object.fromEntries(new FormData(e.target));
+    try {
+      if (n) await api('PUT', 'p/novedades/' + n.id, d); else await api('POST', 'p/novedades', d);
+      novedades = (await api('GET', 'p/novedades')).novedades; cacheDatos(); toast(n ? 'Novedad actualizada' : 'Novedad enviada ✓'); cerrarModal();
+    } catch (er) { toast(er.message); }
+  };
+  const t = $('#fn [name=texto]'); if (t) t.focus();
 }
 
 /* ---------- configuración ---------- */
@@ -1130,6 +1170,10 @@ document.addEventListener('click', async e => {
   else if (d.act === 'guardarPedido') guardarPedido();
   else if (d.modal) cerrarModal();
   else if (d.act === 'nuevoCombo') abrirCombo(null);
+  else if (d.act === 'nuevaNovedad') abrirNovedad(null);
+  else if (d.ned) abrirNovedad(novedades.find(n => n.id == d.ned));
+  else if (d.ndel) { if (confirm('¿Eliminar la novedad? Los vendedores dejan de verla.')) { try { await api('DELETE', 'p/novedades/' + d.ndel); novedades = novedades.filter(n => n.id != d.ndel); cacheDatos(); toast('Novedad eliminada'); render(); } catch (er) { toast(er.message); } } }
+  else if (d.nleer) { try { await api('PUT', 'p/novedadleida/' + d.nleer); const n = novedades.find(x => x.id == d.nleer); if (n) n.leida = true; cacheDatos(); render(); } catch (er) { toast(er.message); } }
   else if (d.editcombo) abrirCombo(combos.find(c => c.id == d.editcombo));
   else if (d.gnuevo !== undefined) { comboEd.grupos.push({ cant: 6, pids: [] }); pintarCombo(); }
   else if (d.gdelg !== undefined) { comboEd.grupos.splice(+d.gdelg, 1); pintarCombo(); }

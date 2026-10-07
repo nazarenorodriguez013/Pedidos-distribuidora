@@ -21,6 +21,8 @@ async function load(pool) {
   state.clientes = state.clientes || [];
   state.seq.c = state.seq.c || 1;
   state.combos = state.combos || [];
+  state.novedades = state.novedades || [];
+  state.seq.n = state.seq.n || 1;
   for (const c of state.combos) for (const g of c.grupos) if (!g.codigos) g.codigos = g.pids.map(pid => (state.productos.find(p => p.id === pid) || {}).codigo).filter(Boolean);
   state.seq.k = state.seq.k || 1;
   for (const c of state.combos) if (c.tipo === 'precio' && !c.precios) { c.precios = {}; for (const g of c.grupos) for (const pid of g.pids) c.precios[pid] = c.precio; delete c.precio; }
@@ -573,6 +575,37 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       }
       await save(pool);
       return send(res, 200, { ok: true, n: lista.length });
+    }
+
+    if (rec === 'novedades' || rec === 'novedadleida') {   // novedades: las escribe el administrador y las ven los vendedores (todos o uno)
+      const visibleN = n => admin || n.para === 'todos' || n.para === yo.id;
+      const paraMi = n => admin ? n : { id: n.id, titulo: n.titulo, texto: n.texto, para: n.para, creado: n.creado, editado: n.editado, por: n.por, leida: !!(n.leidas || {})[yo.id] };
+      if (rec === 'novedadleida' && req.method === 'PUT') {
+        const n = s.novedades.find(x => x.id === id && visibleN(x));
+        if (!n) throw { code: 404, msg: 'No existe' };
+        n.leidas = { ...(n.leidas || {}), [yo.id]: new Date().toISOString() };
+        await save(pool);
+        return send(res, 200, { ok: true });
+      }
+      if (!id && req.method === 'GET') return send(res, 200, { novedades: [...s.novedades].filter(visibleN).reverse().map(paraMi) });
+      soloAdmin();
+      const limpiar = (b, prev) => {
+        const titulo = String(b.titulo ?? prev?.titulo ?? '').trim().slice(0, 80), texto = String(b.texto ?? prev?.texto ?? '').trim().slice(0, 2000);
+        if (!texto) throw { code: 400, msg: 'Escribí la novedad' };
+        const para = b.para === undefined ? prev?.para ?? 'todos' : b.para === 'todos' ? 'todos' : Number(b.para);
+        if (para !== 'todos' && !s.usuarios.some(u => u.id === para && u.rol === 'vendedor')) throw { code: 400, msg: 'Elegí a quién va dirigida' };
+        return { titulo, texto, para };
+      };
+      if (!id && req.method === 'POST') {
+        const n = { id: s.seq.n++, ...limpiar(await body(req, 1e5)), creado: new Date().toISOString(), por: yo.nombre, leidas: {} };
+        s.novedades.push(n); await save(pool);
+        return send(res, 200, n);
+      }
+      const n = s.novedades.find(x => x.id === id);
+      if (!n) throw { code: 404, msg: 'No existe' };
+      if (req.method === 'PUT') { Object.assign(n, limpiar(await body(req, 1e5), n), { editado: new Date().toISOString(), leidas: {} }); await save(pool); return send(res, 200, n); }   // al editarla vuelve a figurar como nueva
+      if (req.method === 'DELETE') { s.novedades.splice(s.novedades.indexOf(n), 1); await save(pool); return send(res, 200, { ok: true }); }
+      throw { code: 405, msg: 'Método no permitido' };
     }
 
     if (rec !== 'productos' && rec !== 'pedidos') throw { code: 404, msg: 'No encontrado' };
