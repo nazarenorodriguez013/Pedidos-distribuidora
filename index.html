@@ -519,14 +519,14 @@ async function guardarPedido() {
     await cargar();
     if (draft.id && esAdmin()) { nuevoDraft(pedidos.find(x => x.id === draft.id)); render(); toast('Cambios guardados. Ahora podés cargarlo.'); return; }   // el admin se queda en el pedido para cargarlo
     if (!draft.id) descartarBorrador();
-    toast('Pedido guardado'); volverA('pedidos');
+    toast('Pedido guardado'); if (draft.dia) { fdia = draft.dia; fdiaInit = true; } volverA('pedidos');   // la lista muestra el día del pedido recién guardado
   } catch (e) {
     if (!e.offline) return toast(e.message);
     if (draft.id) return toast('Sin señal: para editar un pedido ya enviado necesitás conexión');
     // sin señal: queda en el teléfono y se envía solo cuando vuelva
     const total = totalDraft();
     if (!lsSet('pd_cola', [...leerCola(), { uid: draft.uid, u: user.id, body, total, t: new Date().toISOString() }])) return toast('No hay espacio para guardar el pedido');
-    descartarBorrador(); toast('Sin señal: pedido guardado, se enviará solo'); volverA('pedidos');
+    descartarBorrador(); toast('Sin señal: pedido guardado, se enviará solo'); if (draft.dia) { fdia = draft.dia; fdiaInit = true; } volverA('pedidos');
   }
 }
 
