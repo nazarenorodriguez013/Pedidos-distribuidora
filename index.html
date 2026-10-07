@@ -347,7 +347,7 @@ function vMenu() {
     <button data-go="promos"><span>🏷️</span>Promociones</button>
     <button data-go="novedades"><span>📣</span>Novedades${nNuevas() ? `<br><small class="tag bad">${nNuevas()} ${nNuevas() === 1 ? 'nueva' : 'nuevas'}</small>` : ''}</button>
     <button data-tab="pedidos"><span>📋</span>Para hoy<br><small class="mut">${hoyP.length} pedidos · ${money(hoyP.reduce((t, p) => t + p.total, 0))}</small></button></div>
-    ${a ? '' : novedades.filter(n => !n.leida).map(n => `<div class="card" style="border-color:var(--acc);border-width:2px;margin-top:12px"><b>📣 ${esc(n.titulo || 'Novedad')}</b> <span class="tag bad">Nueva</span><br><span class="mut">${esc(fechaHora(n.editado || n.creado))}</span><p style="margin:6px 0;white-space:pre-wrap">${esc(n.texto)}</p><button class="btn sec" data-nleer="${n.id}">Entendido</button></div>`).join('')}`;
+    ${a ? '' : [...novedades.filter(n => n.fija), ...novedades.filter(n => !n.fija && !n.leida)].map(n => `<div class="card" style="${n.leida ? '' : 'border-color:var(--acc);border-width:2px;'}margin-top:12px"><b>${n.fija ? '📌' : '📣'} ${esc(n.titulo || 'Novedad')}</b> ${n.leida ? '' : '<span class="tag bad">Nueva</span>'}<br><span class="mut">${esc(fechaHora(n.editado || n.creado))}</span><p style="margin:6px 0;white-space:pre-wrap">${esc(n.texto)}</p>${n.leida ? '' : `<button class="btn sec" data-nleer="${n.id}">Entendido</button>`}</div>`).join('')}`;
 }
 
 /* ---------- notificaciones push ---------- */
@@ -396,7 +396,7 @@ function vNovedades() {
   const nuevas = a ? [] : novedades.filter(n => !n.leida).map(n => n.id);
   $('#main').innerHTML = `${a ? '<button class="btn" data-act="nuevaNovedad" style="margin-bottom:10px">+ Nueva novedad</button>' : '<div class="card" id="pushAviso" hidden></div>'}` + (novedades.length ? novedades.map(n => {
     const dest = n.para === 'todos' ? vendedores : vendedores.filter(u => u.id === n.para), leyeron = dest.filter(u => (n.leidas || {})[u.id]), faltan = dest.filter(u => !(n.leidas || {})[u.id]);
-    return `<div class="card" ${nuevas.includes(n.id) ? 'style="border-color:var(--acc);border-width:2px"' : ''}><div class="row" style="border:0;padding:0"><div class="nm"><b>📣 ${esc(n.titulo || 'Novedad')}</b>${nuevas.includes(n.id) ? ' <span class="tag bad">Nueva</span>' : ''}<span class="mut">${esc(fechaHora(n.editado || n.creado))}${n.editado ? ' (editada)' : ''}${a ? ' · Para: ' + esc(nombreDestino(n)) : ' · ' + esc(n.por || '')}</span></div></div>
+    return `<div class="card" ${nuevas.includes(n.id) ? 'style="border-color:var(--acc);border-width:2px"' : ''}><div class="row" style="border:0;padding:0"><div class="nm"><b>📣 ${esc(n.titulo || 'Novedad')}</b>${nuevas.includes(n.id) ? ' <span class="tag bad">Nueva</span>' : ''}${n.fija ? ' <span class="tag warn">📌 Fija</span>' : ''}<span class="mut">${esc(fechaHora(n.editado || n.creado))}${n.editado ? ' (editada)' : ''}${a ? ' · Para: ' + esc(nombreDestino(n)) : ' · ' + esc(n.por || '')}</span></div></div>
       <p style="margin:8px 0;white-space:pre-wrap">${esc(n.texto)}</p>
       ${a ? `<p class="mut" style="margin:0 0 8px">${dest.length ? `Leída por ${leyeron.length} de ${dest.length}${faltan.length ? ' · Falta: ' + esc(faltan.map(u => u.nombre).join(', ')) : ' ✓'}` : ''}</p><div class="row" style="border:0;padding:0;gap:8px"><button class="btn sec" data-ned="${n.id}">Editar</button><button class="btn bad" data-ndel="${n.id}" style="width:auto;padding:0 16px">Eliminar</button></div>` : ''}</div>`;
   }).join('') : vacio(a ? 'Todavía no enviaste novedades' : 'No hay novedades'));
@@ -410,6 +410,7 @@ function abrirNovedad(n) {
   el.innerHTML = `<div class="modal-card"><div class="row" style="border:0;padding:0 0 4px"><h2 style="flex:1;margin:0;font-size:19px">${n ? 'Editar novedad' : 'Nueva novedad'}</h2><button class="btn sec" data-modal="cerrar" aria-label="Cerrar" style="width:40px;min-height:40px;padding:0;flex:none">✕</button></div>
     <form id="fn" autocomplete="off"><label>Mensaje</label><textarea name="texto" required maxlength="2000" style="min-height:130px" placeholder="Escribí la novedad para los vendedores">${esc(n ? n.texto : '')}</textarea>
     <label>Enviar a</label><select name="para" style="width:100%;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="todos">Todos los vendedores</option>${vendedores.map(u => `<option value="${u.id}" ${n && n.para === u.id ? 'selected' : ''}>${esc(u.nombre)}</option>`).join('')}</select>
+    <div class="row" style="border:0"><div class="nm"><b>📌 Fijar en el menú</b><span class="mut">Los vendedores la siguen viendo siempre en el menú, aunque ya la hayan leído (la campanita se apaga igual)</span></div><label class="sw" style="margin:0"><input type="checkbox" name="fija" ${n && n.fija ? 'checked' : ''}><i></i></label></div>
     ${n ? '<p class="mut" style="margin:8px 0 0">Al guardar los cambios, la novedad vuelve a figurar como nueva para los vendedores.</p>' : ''}
     <div style="height:14px"></div><button class="btn">${n ? 'Guardar cambios' : 'Enviar novedad'}</button></form></div>`;
   document.body.appendChild(el);
@@ -417,7 +418,7 @@ function abrirNovedad(n) {
   el.addEventListener('click', e => { if (e.target === el) cerrarModal(); });
   $('#fn').onsubmit = async e => {
     e.preventDefault();
-    const d = Object.fromEntries(new FormData(e.target));
+    const d = Object.fromEntries(new FormData(e.target)); d.fija = !!d.fija;
     try {
       if (n) await api('PUT', 'p/novedades/' + n.id, d); else await api('POST', 'p/novedades', d);
       novedades = (await api('GET', 'p/novedades')).novedades; cacheDatos(); toast(n ? 'Novedad actualizada' : 'Novedad enviada ✓'); cerrarModal();
