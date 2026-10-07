@@ -363,10 +363,10 @@ function vMenu() {
 
 /* ---------- hoja de pedido (admin): los pedidos sin cargar, uno por uno, para pasarlos deslizando ---------- */
 let hojaIds = [], hojaI = 0;
-function abrirHoja() {
-  const l = (typeof visiblesPeds !== 'undefined' ? visiblesPeds : pedidos).filter(p => p.estado !== 'cargado');
-  if (!l.length) return toast('No hay pedidos sin cargar con estos filtros');
-  hojaIds = l.map(p => p.id); hojaI = 0; go('hoja');
+function abrirHoja(ids) {   // los pedidos elegidos (sin cargar), en el orden en que se ven en la lista
+  const l = visiblesPeds.filter(p => ids.includes(p.id) && p.estado !== 'cargado');
+  if (!l.length) return toast('Elegí al menos un pedido sin cargar');
+  hojaIds = l.map(p => p.id); hojaI = 0; selMode = false; selPeds = new Set(); go('hoja');
 }
 function filasHoja(p) {   // una fila por artículo; si parte de las unidades van con promo de pack, se separan en dos filas
   return p.items.flatMap(i => i.cantPromo !== undefined && i.cantPromo > 0 && i.cantPromo < i.cant
@@ -855,15 +855,16 @@ function vCliente() {
 }
 
 /* ---------- pedidos cargados ---------- */
-let selMode = false, selPeds = new Set(), repintarPeds = null, visiblesPeds = [];
-const cargadosVisibles = () => visiblesPeds.filter(p => p.estado === 'cargado');
+let selMode = false, selTipo = 'cargados', selPeds = new Set(), repintarPeds = null, visiblesPeds = [];   // selTipo: 'cargados' (marcar entrega) o 'pendientes' (abrirlos en la hoja)
+const esElegible = p => selTipo === 'cargados' ? p.estado === 'cargado' : p.estado !== 'cargado';
+const cargadosVisibles = () => visiblesPeds.filter(esElegible);
 function pintarSel() {
   const t = $('#selTools'), b = $('#selBar'); if (!t || !b) return;
-  if (!selMode) { t.innerHTML = '<button class="btn sec" data-act="selModo" style="grid-column:1/-1">☑ Seleccionar varios (cargados)</button>'; b.innerHTML = ''; return; }
-  const cv = cargadosVisibles();
-  t.innerHTML = `<button class="btn sec" data-act="selTodos">${cv.length && cv.every(p => selPeds.has(p.id)) ? 'Quitar selección' : `Seleccionar todos los cargados (${cv.length})`}</button><button class="btn sec" data-act="selModo">Cancelar</button>`;
+  if (!selMode) { t.innerHTML = '<button class="btn sec" data-act="selModo" data-tipo="pendientes" style="grid-column:1/-1">☑ Seleccionar sin cargar (para abrirlos)</button><button class="btn sec" data-act="selModo" data-tipo="cargados" style="grid-column:1/-1">☑ Seleccionar cargados (entrega)</button>'; b.innerHTML = ''; return; }
+  const cv = cargadosVisibles(), pend = selTipo === 'pendientes';
+  t.innerHTML = `<button class="btn sec" data-act="selTodos">${cv.length && cv.every(p => selPeds.has(p.id)) ? 'Quitar selección' : `Seleccionar todos (${cv.length})`}</button><button class="btn sec" data-act="selModo">Cancelar</button>`;
   const n = selPeds.size;
-  b.innerHTML = `<div class="bar sel"><div class="tot" style="font-size:15px;white-space:nowrap">${n} elegidos</div><button class="btn sec" data-act="selEntrega" ${n ? '' : 'disabled'} style="padding:12px 12px">Opciones…</button><button class="btn" data-act="selEntregado" ${n ? '' : 'disabled'} style="padding:12px 14px">✓ Entregados</button></div>`;
+  b.innerHTML = `<div class="bar sel"><div class="tot" style="font-size:15px;white-space:nowrap">${n} elegidos</div>${pend ? `<button class="btn" data-act="abrirElegidos" ${n ? '' : 'disabled'} style="padding:12px 18px">📄 Abrir</button>` : `<button class="btn sec" data-act="selEntrega" ${n ? '' : 'disabled'} style="padding:12px 12px">Opciones…</button><button class="btn" data-act="selEntregado" ${n ? '' : 'disabled'} style="padding:12px 14px">✓ Entregados</button>`}</div>`;
 }
 async function enviarEntrega(pasos) {   // pasos: [{accion, motivo?, numero?, monto?}] sobre los pedidos elegidos
   const ids = [...selPeds]; if (!ids.length) return false;
@@ -917,14 +918,14 @@ function vPedidos() {
     <input id="q" type="search" placeholder="Buscar por cliente o número" value="${esc(q)}">
     <div class="fgrid">${esAdmin() ? selVend + selEstado : selEstado + selTurno}</div>
     ${esAdmin() ? `<div class="fgrid">${selTurno}${btnHoy}</div><div class="fgrid" style="grid-template-columns:1fr">${fecha}</div>` : `<div class="fgrid" style="grid-template-columns:1.9fr 1fr">${fecha}${btnHoy}</div>`}
-    ${esAdmin() ? '<button class="btn sec" data-act="verSinCargar" style="margin-top:8px">📄 Abrir pedidos sin cargar</button><div id="selTools" class="fgrid" style="margin-top:8px"></div>' : ''}<div id="lista" class="grid2" style="margin-top:10px"></div><div id="selBar"></div>`;
+    ${esAdmin() ? '<div id="selTools" class="fgrid" style="margin-top:8px"></div>' : ''}<div id="lista" class="grid2" style="margin-top:10px"></div><div id="selBar"></div>`;
   const pintar = () => {
     const n = norm(q), l = pedidos.filter(p => (!n || norm(p.cliente).includes(n) || String(p.id) === n) && (!vend || p.vendedor === vend) && (!fdia || p.dia === fdia) && (!fturno || p.turno === fturno) && (!festado || (festado === 'sinentregar' ? p.estado === 'cargado' && !p.entrega : ['entregado', 'devoluciones', 'rechazado'].includes(festado) ? p.entrega && p.entrega.estado === festado : festado === 'agregados' ? hayAgregados(p) : festado === 'cargado' ? p.estado === 'cargado' : p.estado !== 'cargado')));
     visiblesPeds = l; const tot = l.reduce((a, p) => a + p.total, 0);
     const pend = colaMia().filter(x => !n || norm(x.body.cliente).includes(n)).map(x => `<div class="card" style="border-color:${x.error ? 'var(--bad)' : 'var(--warn)'}"><div class="row" style="border:0;padding:0"><div class="nm"><b>${esc(x.body.cliente)}</b>
       <span class="mut">${x.body.dia ? esc(diaTxt(x.body.dia)) + ' · ' + (TURNOS[x.body.turno] || '') + ' · ' : ''}${x.error ? 'Rechazado: ' + esc(x.error) : '⏳ Esperando señal para enviarse'} · ${x.body.items.length} prod. · ${x.body.items.reduce((s, i) => s + i.cant, 0)} u.</span></div><span class="price">${money(x.total)}</span></div>
       <div class="row" style="border:0;padding:8px 0 0">${x.error ? `<button class="btn sec" data-reint="${esc(x.uid)}">Reintentar</button>` : ''}<button class="btn sec" data-delcola="${esc(x.uid)}">Eliminar</button></div></div>`).join('');
-    $('#lista').innerHTML = pend + (l.length ? `<p class="mut">${l.length} ${l.length === 1 ? 'pedido' : 'pedidos'} · ${money(tot)}</p>` + (() => { const tarj = p => `<div class="card" data-ped="${p.id}" style="${selMode && p.estado === 'cargado' && selPeds.has(p.id) ? 'border-color:var(--pri);background:color-mix(in srgb,var(--pri) 10%,var(--card))' : ''}"><div class="row" style="border:0;padding:0">${selMode && p.estado === 'cargado' ? `<input type="checkbox" ${selPeds.has(p.id) ? 'checked' : ''} tabindex="-1" style="width:22px;min-height:22px;flex:none;pointer-events:none">` : ''}<div class="nm"><b>#${p.id} · ${p.clienteCodigo ? esc(p.clienteCodigo) + ' · ' : ''}${esc(p.cliente)}</b> ${estadoTag(p)}
+    $('#lista').innerHTML = pend + (l.length ? `<p class="mut">${l.length} ${l.length === 1 ? 'pedido' : 'pedidos'} · ${money(tot)}</p>` + (() => { const tarj = p => `<div class="card" data-ped="${p.id}" style="${selMode && esElegible(p) && selPeds.has(p.id) ? 'border-color:var(--pri);background:color-mix(in srgb,var(--pri) 10%,var(--card))' : ''}"><div class="row" style="border:0;padding:0">${selMode && esElegible(p) ? `<input type="checkbox" ${selPeds.has(p.id) ? 'checked' : ''} tabindex="-1" style="width:22px;min-height:22px;flex:none;pointer-events:none">` : ''}<div class="nm"><b>#${p.id} · ${p.clienteCodigo ? esc(p.clienteCodigo) + ' · ' : ''}${esc(p.cliente)}</b> ${estadoTag(p)}
       <span class="mut">${p.dia ? `<b>${esc(diaTxt(p.dia))} · ${TURNOS[p.turno] || ''}</b> · ` : ''}${esAdmin() ? esc(p.vendedor || '—') + ' · ' : ''}${p.items.length} prod. · ${p.items.reduce((s, i) => s + i.cant, 0)} u.${p.estado === 'cargado' && p.cargadoEn && p.editado > p.cargadoEn ? ' · <b>✎ editado ' + new Date(p.editado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) + '</b>' : ''}</span></div><span class="price">${money(p.total)}</span></div></div>`; const cab = (t, lst, sub) => `<div style="grid-column:1/-1;margin-top:${sub ? 2 : 10}px;padding:${sub ? '4px 2px' : '8px 2px'};border-bottom:${sub ? '1px solid' : '2px solid'} var(--bd)"><b${sub ? ' class="mut"' : ''}>${t}</b> <span class="mut">· ${lst.length} ${lst.length === 1 ? 'pedido' : 'pedidos'} · ${money(lst.reduce((a, p) => a + p.total, 0))}</span></div>`; const bloque = (t, lst) => { if (!lst.length) return ''; if (!esAdmin()) return cab(t, lst) + lst.map(tarj).join('');  const g = {}; lst.forEach(p => (g[p.vendedor || '—'] = g[p.vendedor || '—'] || []).push(p));  return cab(t, lst) + Object.keys(g).sort().map(v => cab('👤 ' + esc(v), g[v], true) + g[v].map(tarj).join('')).join(''); }; return bloque('⏳ Por cargar', l.filter(p => p.estado !== 'cargado')) + bloque('✓ Cargados', l.filter(p => p.estado === 'cargado')); })() : (pend ? '' : vacio('No hay pedidos')));
     pintarSel();
   };
@@ -1319,11 +1320,11 @@ document.addEventListener('click', async e => {
   else if (d.act === 'importarConfirmar') importarConfirmar(t);
   else if (d.act === 'exportarExcel') exportarExcel();
   else if (d.act === 'borrarPedido') borrarPedido();
-  else if (d.act === 'verSinCargar') abrirHoja();
   else if (d.act === 'hojaCargar') hojaCargar();
   else if (d.hnav) hojaMover(+d.hnav);
   else if (d.pnav) irAPedido(+d.pnav);
-  else if (d.act === 'selModo') { selMode = !selMode; selPeds = new Set(); if (repintarPeds) repintarPeds(); }
+  else if (d.act === 'selModo') { selMode = d.tipo ? true : false; if (d.tipo) selTipo = d.tipo; selPeds = new Set(); if (repintarPeds) repintarPeds(); }
+  else if (d.act === 'abrirElegidos') abrirHoja([...selPeds]);
   else if (d.act === 'selTodos') { const cv = cargadosVisibles(), todos = cv.length && cv.every(p => selPeds.has(p.id)); selPeds = todos ? new Set() : new Set(cv.map(p => p.id)); if (repintarPeds) repintarPeds(); }
   else if (d.act === 'selEntregado') aplicarSel('entregado');
   else if (d.act === 'selEntrega') abrirEntrega();
@@ -1332,7 +1333,7 @@ document.addEventListener('click', async e => {
     entSel = d.entsel; document.querySelectorAll('[data-entsel]').forEach(x => { const on = x.dataset.entsel === entSel; x.style.borderColor = on ? 'var(--pri)' : ''; x.style.color = on ? 'var(--pri)' : ''; });
     const mb = $('#entMotivoBox'); if (mb) mb.hidden = !(entSel === 'devoluciones' || entSel === 'rechazado');
   }
-  else if (d.ped && selMode && (pedidos.find(x => x.id === +d.ped) || {}).estado === 'cargado') { const id = +d.ped; selPeds.has(id) ? selPeds.delete(id) : selPeds.add(id); if (repintarPeds) repintarPeds(); }
+  else if (d.ped && selMode && esElegible(pedidos.find(x => x.id === +d.ped) || {})) { const id = +d.ped; selPeds.has(id) ? selPeds.delete(id) : selPeds.add(id); if (repintarPeds) repintarPeds(); }
   else if (d.ped) {
     navPeds = [...document.querySelectorAll('#lista [data-ped]')].map(x => +x.dataset.ped);
     try { const f = await api('GET', 'p/pedidos/' + d.ped); const i = pedidos.findIndex(x => x.id === f.id); if (i >= 0) pedidos[i] = f; } catch {}   // estado al día; sin señal se usa lo guardado
