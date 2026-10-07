@@ -1,4 +1,4 @@
-{"name":"Distribuidora Don Luis","short_name":"Don Luis","id":"/","start_url":"/","scope":"/","display":"standalone","orientation":"portrait","background_color":"#121212","theme_color":"#121212",
+{"name":"Distribuidora Don Luis","short_name":"Distribuidora Don Luis","id":"/","start_url":"/","scope":"/","display":"standalone","orientation":"portrait","background_color":"#121212","theme_color":"#121212",
 "icons":[
 {"src":"/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
 {"src":"/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"},
