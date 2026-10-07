@@ -410,10 +410,28 @@ const precioLinea = p => {
   }
   return cb ? precioComboDe(cb, p) : ap ? precioPromoDe(p) : p.precio;
 };
+// Promo combinada = pack: solo las unidades que completan packs llevan el precio de la promo; el resto va a precio normal
+function unidadesPromo(p) {
+  const cb = comboDeLinea(p); if (!cb) return draft.items[p.id] || 0;
+  const packs = Math.min(...cb.grupos.map(g => Math.floor(sumaGrupo(g) / g.cant))), g = cb.grupos.find(x => x.pids.includes(p.id));
+  let resto = packs * g.cant;
+  for (const pid of draft.orden || []) {
+    if (!(draft.items[pid] > 0) || !g.pids.includes(pid)) continue;
+    const q = productos.find(x => x.id === pid), cq = q && comboDeLinea(q); if (!cq || cq.id !== cb.id) continue;
+    const t = Math.min(draft.items[pid], resto); if (pid === p.id) return t; resto -= t;
+  }
+  return 0;
+}
+const precioNormal = p => { const o = draft.orig[p.id]; return draft.estado === 'cargado' && o && o.precioLista !== undefined ? o.precioLista : p.precio; };
+function totalLinea(p) {
+  const ex = draft.items[p.id] || 0, cb = comboDeLinea(p), pl = precioLinea(p);
+  if (!cb) return ex * pl;
+  const up = unidadesPromo(p); return up * pl + (ex - up) * precioNormal(p);
+}
 const REDONDEO = 50;   // el total de cada pedido se redondea hacia arriba a múltiplo de 50
 const redondear50 = x => Math.ceil(Math.round(x * 100) / (REDONDEO * 100)) * REDONDEO;
 const multiploDe = p => p.multiplo || 1;
-function subtotalDraft() { return Math.round(productos.reduce((s, p) => s + (draft.items[p.id] || 0) * precioLinea(p), 0) * 100) / 100; }
+function subtotalDraft() { return Math.round(productos.reduce((s, p) => s + totalLinea(p), 0) * 100) / 100; }
 function totalDraft() { return redondear50(subtotalDraft()); }
 let navPeds = [];   // ids de los pedidos de la lista que se estaba mirando, en el orden en que se ven
 function navPedidos() {
@@ -482,7 +500,7 @@ function bloqueCombos() {   // ofertas y avance de las promos combinadas
     if (!c.activa || !c.grupos.every(g => sumaGrupo(g) > 0)) continue;   // la promo solo aparece cuando ya cargó algo de cada grupo de la promo
     const st = draft.combos[c.id], avance = c.grupos.map(g => `${Math.min(sumaGrupo(g), g.cant)}/${g.cant} ${esc(nombresGrupo(g, c))}`).join(' · ');
     if (!comboCumple(c)) out.push(`<div class="promo-hint" style="padding:4px 0">🏷️ <b>${esc(c.nombre)}</b>: ${avance} → ${esc(comboBeneficio(c))}</div>`);
-    else if (st === 'si') out.push(`<div class="promo-ok" style="margin:6px 0" data-cid="${c.id}"><span>✓ Promo aplicada: <b>${esc(c.nombre)}</b> (${esc(comboBeneficio(c))})</span><button class="btn sec" data-combo="no">Quitar</button></div>`);
+    else if (st === 'si') out.push(`<div class="promo-ok" style="margin:6px 0" data-cid="${c.id}"><span>✓ Promo aplicada: <b>${esc(c.nombre)}</b> (${esc(comboBeneficio(c))}) · ${(() => { const n = Math.min(...c.grupos.map(g => Math.floor(sumaGrupo(g) / g.cant))); return n + (n === 1 ? ' pack' : ' packs'); })()}<br><small>Las unidades que no completan otro pack van a precio normal.</small></span><button class="btn sec" data-combo="no">Quitar</button></div>`);
     else if (st === 'no') out.push(`<div class="promo-hint" style="padding:4px 0" data-cid="${c.id}">Promo ${esc(c.nombre)} no aplicada <button class="btn sec" data-combo="ask">Aplicar</button></div>`);
     else out.push(`<div class="promo-offer" style="margin:6px 0" data-cid="${c.id}"><b>🏷️ ¡Hay una promo!</b> ${esc(c.nombre)}: ${esc(comboBeneficio(c))} en ${esc(c.grupos.map(g => nombresGrupo(g, c)).join(' + '))}. ¿La aplicás?<div class="row" style="border:0;padding:8px 0 0"><button class="btn" data-combo="si">Aceptar</button><button class="btn sec" data-combo="no">No, gracias</button></div></div>`);
   }
@@ -511,7 +529,7 @@ function pintarDetalle() {
   for (const c of combos) if (comboCumple(c) && !draft.combos[c.id] && !draft.avisadoC[c.id]) { draft.avisadoC[c.id] = true; toast(`🏷️ Promo disponible: ${c.nombre}`); }
   $('#detalle').innerHTML = sel.length ? `<b>Detalle del pedido</b>` + bloqueCombos() + sel.map(p => { const pl = precioLinea(p); const ex = draft.items[p.id], cc = cargadaDe(p.id), ref = (draft.estado === 'cargado' && draft.orig[p.id] && draft.orig[p.id].precioLista) || p.precio;   // precio de lista con el que se armó la línea
     return `<div class="drow" data-pid="${p.id}"><div class="dtop"><div class="dn"><b>${esc(p.nombre)}</b></div>
-      <div class="dp">${pl < ref ? `<s>${money(ref)}</s> ` : ''}${money(pl)} c/u<b data-sub>${money(ex * pl)}</b></div>
+      <div class="dp">${(() => { const cb = comboDeLinea(p), up = cb ? unidadesPromo(p) : ex; return cb && up < ex ? `${up ? up + ' a ' + money(pl) + ' + ' : ''}${ex - up} a ${money(precioNormal(p))}` : `${pl < ref ? `<s>${money(ref)}</s> ` : ''}${money(pl)} c/u`; })()}<b data-sub>${money(totalLinea(p))}</b></div>
       <button class="btn sec xq" data-quitar="${p.id}" aria-label="Quitar del pedido">✕</button></div>
       <div class="dsub"><div class="dcode">${esc(p.codigo)}${draft.estado === 'cargado' && ex > cc ? ` <span class="tag bad">Agregar${cc ? ' +' + (ex - cc) : ''}</span>` : draft.estado === 'cargado' && ex < cc ? ` <span class="tag warn">−${cc - ex}</span>` : ''}</div><div class="dctl"><div class="qty"><button data-q="-1">−</button><input class="qin" type="number" inputmode="numeric" min="0" step="${multiploDe(p)}" data-qin="${p.id}" value="${ex}"><button data-q="1">+</button></div></div></div>${bloquePromo(p)}</div>`; }).join('') + (draft.estado === 'cargado' ? (draft.cargadoItems || []).filter(o => !(draft.items[o.pid] > 0)).map(o => `<div class="row" style="border:0"><span class="tag warn">Quitado</span><span class="mut">${esc(o.nombre)} ×${o.cant}</span></div>`).join('') : '') + '<div id="dtotales"></div>' : '<span class="mut">Tocá un producto de la lista para agregarlo con cantidad 1. Después ajustás la cantidad acá.</span>';
 }
@@ -1123,7 +1141,7 @@ document.addEventListener('input', e => {
   const c = parseInt(e.target.value);
   if (c > 0) draft.items[pid] = Math.min(c, 99999); else if (e.target.value !== '') delete draft.items[pid];
   const p = productos.find(x => x.id == pid), sub = e.target.closest('[data-pid]').querySelector('[data-sub]');
-  if (sub && c > 0) sub.textContent = money(c * precioLinea(p));
+  if (sub && c > 0) sub.textContent = money(totalLinea(p));
   pintarLista(); pintarTotal();
 });
 document.addEventListener('change', e => {
