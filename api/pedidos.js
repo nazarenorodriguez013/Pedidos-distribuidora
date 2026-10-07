@@ -306,20 +306,21 @@ function importar(b) {
     let p = state.productos.find(x => x.codigo.toLowerCase() === codigo.toLowerCase());
     const mult = f.multiplo === undefined || f.multiplo === '' ? null : parseNum(f.multiplo);
     if (f.multiplo !== undefined && f.multiplo !== '' && !(mult >= 1)) return r.errores.push(`Fila ${fila} (${codigo}): unidad de venta inválida`);
-    const sinPrecio = precio === 0 && (f.activo === undefined || f.activo === '');   // precio 0 = sin precio: queda desactivado
+    const sinPrecio = precio === 0;   // precio 0 = sin precio: queda desactivado
     vistos.add(codigo.toLowerCase());
     if (!p) {
       const nombre = String(f.nombre ?? '').trim();
       if (!nombre || precio === null) return r.errores.push(`Fila ${fila} (${codigo}): producto nuevo necesita nombre y precio`);
-      const nuevoProd = { id: state.seq.p++, codigo, nombre, precio, multiplo: mult ? Math.floor(mult) : 1, multiploSet: !!mult, activo: f.activo === undefined || f.activo === '' ? !sinPrecio : truthy(f.activo), promo: false, precioPromo: 0 };
+      const nuevoProd = { id: state.seq.p++, codigo, nombre, precio, multiplo: mult ? Math.floor(mult) : 1, multiploSet: !!mult, activo: sinPrecio ? false : f.activo === undefined || f.activo === '' ? true : truthy(f.activo), promo: false, precioPromo: 0 };
       state.productos.push(nuevoProd); restaurarProducto(nuevoProd);
       return r.creados++;
     }
     if (String(f.nombre ?? '').trim()) p.nombre = String(f.nombre).trim();
-    if (precio !== null && !sinPrecio) p.precio = precio;
+    if (precio !== null) p.precio = precio;   // precio 0: queda en 0 (y desactivado)
     if (mult && !p.multiploSet) { p.multiplo = Math.floor(mult); p.multiploSet = true; }   // la unidad de venta solo se carga si todavía no estaba definida
-    if (f.activo !== undefined && f.activo !== '') p.activo = truthy(f.activo);
-    else if (precio !== null) p.activo = !sinPrecio;   // lista nueva: precio 0 queda desactivado y con precio queda activo
+    if (sinPrecio) p.activo = false;
+    else if (f.activo !== undefined && f.activo !== '') p.activo = truthy(f.activo);
+    else if (precio !== null) p.activo = true;   // lista nueva: precio 0 queda desactivado y con precio queda activo
     r.actualizados++;
   });
   if (b.catalogoCompleto) for (const p of state.productos) if (p.activo && !vistos.has(p.codigo.toLowerCase())) { p.activo = false; r.desactivados++; }
