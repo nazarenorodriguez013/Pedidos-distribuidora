@@ -37,8 +37,21 @@ async function load(pool) {
   return state;
 }
 // Los pedidos pendientes siguen los precios y promos vigentes; al cargarlos (estado 'cargado') quedan con el precio de ese momento.
+// Promo combinada = pack: solo las unidades que completan packs llevan el precio de la promo; el resto va a precio normal.
+function asignarPack(items) {
+  for (const i of items) if (i.comboId) i.cantPromo = 0; else delete i.cantPromo;
+  for (const cid of new Set(items.filter(i => i.comboId).map(i => i.comboId))) {
+    const c = state.combos.find(x => x.id === cid); if (!c) continue;
+    const cant = new Map(items.map(i => [i.pid, i.cant]));
+    const packs = Math.min(...c.grupos.map(g => Math.floor(sumaGrupo(g, cant) / g.cant)));
+    for (const g of c.grupos) {
+      let rest = packs * g.cant;
+      for (const i of items) if (i.comboId === cid && g.pids.includes(i.pid) && rest > 0) { const t = Math.min(i.cant, rest); i.cantPromo += t; rest -= t; }
+    }
+  }
+}
 function totalesDe(items) {
-  const subtotal = Math.round(items.reduce((t, i) => t + i.precio * i.cant, 0) * 100) / 100, total = redondear(subtotal);
+  const subtotal = Math.round(items.reduce((t, i) => t + (i.cantPromo === undefined ? i.precio * i.cant : i.precio * i.cantPromo + (i.precioLista ?? i.precio) * (i.cant - i.cantPromo)), 0) * 100) / 100, total = redondear(subtotal);
   return { subtotal, redondeo: Math.round((total - subtotal) * 100) / 100, total };
 }
 function repreciarPendientes() {
@@ -55,6 +68,7 @@ function repreciarPendientes() {
       if (!(unit > 0)) continue;   // producto sin precio: se deja el último
       Object.assign(i, { nombre: p.nombre, codigo: p.codigo, precio: unit, precioLista: p.precio, promo: (qty || auto) || undefined, promoQty: qty || undefined, comboId: combo ? combo.id : undefined, comboNombre: combo ? combo.nombre : undefined });
     }
+    asignarPack(o.items);
     Object.assign(o, totalesDe(o.items));
   }
 }
@@ -262,6 +276,7 @@ function armarPedido(b, viejo, quien, admin) {
     const mismo = old && viejo.estado === 'cargado' && (old.comboId || 0) === (combo ? combo.id : 0) && oldQty === qtyNow;   // los pendientes siguen el precio vigente
     items.push({ pid, codigo: p.codigo, nombre: p.nombre, precio: mismo ? old.precio : unit, precioLista: mismo ? old.precioLista ?? p.precio : p.precio, promo: aplica || undefined, promoQty: qtyNow || undefined, comboId: combo ? combo.id : undefined, comboNombre: combo ? combo.nombre : undefined, cant });
   }
+  asignarPack(items);
   const antes = cantsStock(viejo);
   for (const i of items) {
     const p = state.productos.find(x => x.id === i.pid);
