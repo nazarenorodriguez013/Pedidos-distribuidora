@@ -610,7 +610,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     }
     if (rec === 'novedades' || rec === 'novedadleida') {   // novedades: las escribe el administrador y las ven los vendedores (todos o uno)
       const visibleN = n => admin || n.para === 'todos' || n.para === yo.id;
-      const paraMi = n => admin ? n : { id: n.id, titulo: n.titulo, texto: n.texto, para: n.para, creado: n.creado, editado: n.editado, por: n.por, leida: !!(n.leidas || {})[yo.id] };
+      const paraMi = n => admin ? n : { id: n.id, titulo: n.titulo, texto: n.texto, para: n.para, fija: !!n.fija, creado: n.creado, editado: n.editado, por: n.por, leida: !!(n.leidas || {})[yo.id] };
       if (rec === 'novedadleida' && req.method === 'PUT') {
         const n = s.novedades.find(x => x.id === id && visibleN(x));
         if (!n) throw { code: 404, msg: 'No existe' };
@@ -625,7 +625,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         if (!texto) throw { code: 400, msg: 'Escribí la novedad' };
         const para = b.para === undefined ? prev?.para ?? 'todos' : b.para === 'todos' ? 'todos' : Number(b.para);
         if (para !== 'todos' && !s.usuarios.some(u => u.id === para && u.rol === 'vendedor')) throw { code: 400, msg: 'Elegí a quién va dirigida' };
-        return { titulo, texto, para };
+        return { titulo, texto, para, fija: b.fija === undefined ? !!prev?.fija : !!b.fija };
       };
       if (!id && req.method === 'POST') {
         const n = { id: s.seq.n++, ...limpiar(await body(req, 1e5)), creado: new Date().toISOString(), por: yo.nombre, leidas: {} };
