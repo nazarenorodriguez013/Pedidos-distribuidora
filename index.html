@@ -147,7 +147,9 @@ body.login-pg .btn:not(.sec){color:#04231c}
 <script>
 window.addEventListener('error', e => { const a = document.getElementById('app'); if (a && /Cargando/.test(a.textContent)) a.innerHTML = '<p style="padding:24px;color:#b91c1c">Error al iniciar: ' + String(e.message).replace(/</g, '&lt;') + '</p>'; });
 let instalar = null;
-window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); instalar = e; const b = document.getElementById('inst'); if (b) b.hidden = false; });
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); instalar = e; if (view === 'config') render(); });
+window.addEventListener('appinstalled', () => { instalar = null; if (view === 'config') render(); });
+const yaInstalada = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = n => Number(n || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
@@ -291,10 +293,7 @@ function login() {
   $('#app').innerHTML = `<form class="login"><img class="logo" src="/logo.png" alt="Distribuidora Don Luis">
     <label>Usuario</label><input id="u" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required>
     <label>Contraseña</label><input id="pw" type="password" autocomplete="current-password" required>
-    <p id="err" class="mut" style="color:var(--bad)"></p><button class="btn">Ingresar</button>
-    <button type="button" id="inst" class="btn sec" style="margin-top:12px" ${instalar ? '' : 'hidden'}>📲 Instalar app en el celular</button>
-    <p class="mut" style="text-align:center;margin-top:14px">iPhone: Safari → Compartir → "Agregar a inicio".<br>Android: menú de Chrome → "Instalar app".</p></form>`;
-  $('#inst').onclick = async () => { if (instalar) { instalar.prompt(); instalar = null; $('#inst').hidden = true; } };
+    <p id="err" class="mut" style="color:var(--bad)"></p><button class="btn">Ingresar</button></form>`;
   $('form').onsubmit = async e => {
     e.preventDefault();
     try {
@@ -329,6 +328,13 @@ function vConfig() {
   const a = esAdmin(), fila = (v, i, t) => `<div class="row" data-go="${v}" style="cursor:pointer"><span style="font-size:22px">${i}</span><div class="nm"><b>${t}</b></div><span class="mut">›</span></div>`;
   $('#main').innerHTML = `<div class="card"><b>${esc(user.nombre)}</b><br><span class="mut">usuario: ${esc(user.usuario)} · ${a ? 'Administrador' : 'Vendedor'}</span></div>
     ${a ? `<div class="card">${fila('productos', '🗂️', `Productos (${productos.length})`)}${fila('importar', '📥', 'Importar / exportar Excel')}${fila('usuarios', '👥', 'Usuarios')}${fila('promos', '🏷️', 'Promociones')}</div>` : ''}
+    ${yaInstalada() ? '' : `<div class="card"><h2>Instalar la app</h2><p class="mut" style="margin:0 0 8px">Se abre como una aplicación, en la computadora o en el celular, sin escribir la dirección.</p>
+      ${instalar ? '<button class="btn" data-act="instalarApp">📲 Instalar ahora</button>' : ''}
+      <details style="margin-top:8px"><summary style="cursor:pointer;font-weight:700">¿Cómo la instalo?</summary>
+        <p><b>En la PC (Chrome o Edge):</b> tocá el ícono de instalar <b>⊕</b> a la derecha de la barra de direcciones, o el menú <b>⋮</b> → <b>Instalar Distribuidora Don Luis</b> (en Edge: <b>⋯</b> → Aplicaciones → Instalar este sitio como aplicación).</p>
+        <p><b>Android (Chrome):</b> menú <b>⋮</b> → <b>Instalar app</b> o <b>Agregar a la pantalla principal</b>.</p>
+        <p><b>iPhone (Safari):</b> botón <b>Compartir</b> → <b>Agregar a inicio</b>.</p>
+        <p class="mut">Si no aparece la opción, abrí la página en Chrome o Edge (en iPhone, en Safari).</p></details></div>`}
     <div class="card"><h2>Cambiar contraseña</h2><form id="f"><label>Contraseña actual</label><input name="actual" type="password" autocomplete="current-password" required>
       <label>Nueva contraseña</label><input name="nueva" type="password" minlength="4" autocomplete="new-password" required>
       <label>Repetir nueva contraseña</label><input name="rep" type="password" autocomplete="new-password" required><div style="height:14px"></div><button class="btn">Cambiar contraseña</button></form></div>
@@ -1071,6 +1077,7 @@ document.addEventListener('click', async e => {
     pila.length > 1 ? history.back() : go('menu', true);
   }
   else if (d.act === 'salir') salir();
+  else if (d.act === 'instalarApp') { if (instalar) { instalar.prompt(); instalar.userChoice.then(() => { instalar = null; if (view === 'config') render(); }); } }
   else if (d.act === 'guardarPedido') guardarPedido();
   else if (d.modal) cerrarModal();
   else if (d.act === 'nuevoCombo') abrirCombo(null);
