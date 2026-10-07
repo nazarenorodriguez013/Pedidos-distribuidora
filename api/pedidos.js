@@ -262,7 +262,8 @@ function armarPedido(b, viejo, quien, admin) {
 
 // ---- sesiones: token firmado con el usuario; el rol se lee de la base en cada pedido ----
 const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64url');
-const makeToken = (u, secret) => { const p = b64({ u: u.id, exp: Date.now() + 30 * 864e5 }); return p + '.' + crypto.createHmac('sha256', secret).update(p).digest('hex'); };
+// 'h' ata el token a la clave: al cambiarla, los tokens anteriores dejan de valer
+const makeToken = (u, secret) => { const p = b64({ u: u.id, h: u.hash.slice(0, 12), exp: Date.now() + 30 * 864e5 }); return p + '.' + crypto.createHmac('sha256', secret).update(p).digest('hex'); };
 function userFromToken(h, secret) {
   const [p, sig] = String(h || '').replace(/^Bearer /, '').split('.');
   if (!p || !sig) return null;
@@ -271,7 +272,7 @@ function userFromToken(h, secret) {
   try {
     const d = JSON.parse(Buffer.from(p, 'base64url').toString());
     const u = state.usuarios.find(x => x.id === d.u);
-    return d.exp > Date.now() && u && u.activo ? u : null;
+    return d.exp > Date.now() && u && u.activo && d.h === u.hash.slice(0, 12) ? u : null;
   } catch { return null; }
 }
 const fallos = new Map();   // usuario -> [timestamps] de intentos fallidos
@@ -383,11 +384,16 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       const b = await body(req, 1e4);
       const usuario = String(b.user || '').trim().toLowerCase();
       const ahora = Date.now();
+      if (fallos.size > 5000) for (const [k, v] of fallos) if (!v.some(t => ahora - t < 10 * 60 * 1000)) fallos.delete(k);
+      const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+      const fi = (fallos.get('ip:' + ip) || []).filter(t => ahora - t < 10 * 60 * 1000);
       const f = (fallos.get(usuario) || []).filter(t => ahora - t < 10 * 60 * 1000);
-      if (f.length >= 10) throw { code: 429, msg: 'Demasiados intentos. Probá en unos minutos.' };
+      if (f.length >= 10 || fi.length >= 40) throw { code: 429, msg: 'Demasiados intentos. Probá en unos minutos.' };
       const u = s.usuarios.find(x => x.usuario === usuario);
       const clave = String(b.pass || '');
+      if (!u) hashPass(clave, 'a'.repeat(32));   // mismo costo si el usuario no existe: no se puede averiguar qué usuarios hay
       if (!u || !u.activo || !(passOk(u, clave) || passOk(u, clave.trim()))) {
+        fallos.set('ip:' + ip, [...fi, ahora]);
         console.log('Login fallido:', usuario, !u ? '(el usuario no existe)' : !u.activo ? '(desactivado)' : '(contraseña)'); fallos.set(usuario, [...f, ahora]); throw { code: 401, msg: 'Usuario o contraseña incorrectos' }; }
       fallos.delete(usuario);
       return send(res, 200, { token: makeToken(u, secret), user: pub(u) });
@@ -403,7 +409,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       if (!passOk(yo, b.actual || '')) throw { code: 403, msg: 'La contraseña actual no es correcta' };
       Object.assign(yo, cleanUsuario({ password: b.nueva }, yo));
       await save(pool);
-      return send(res, 200, { ok: true });
+      return send(res, 200, { ok: true, token: makeToken(yo, secret) });   // la sesión actual sigue valiendo con la clave nueva
     }
 
     if (rec === 'importar' && req.method === 'POST') {
