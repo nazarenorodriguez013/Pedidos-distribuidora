@@ -102,7 +102,10 @@ body.login-pg{background:#121212;--tx:#f3f4f6;--mut:#a3a3a3;--card:#1c1c1c;--bd:
 header img.marca{height:34px;width:auto;flex:none}
 body.login-pg .btn:not(.sec){color:#04231c}
 .login h1{text-align:center;color:var(--pri)}
-.login-card h2,.login-card .sub{display:none}
+.login-card{background:#1c1c1c;border:1px solid #2e2e2e;border-top:3px solid var(--acc);border-radius:20px;padding:22px 20px;box-shadow:0 16px 40px rgba(0,0,0,.4)}
+.login-card h2{margin:0 0 2px;font-size:24px;color:#fff}
+.login-card .sub{margin:0 0 8px;color:var(--mut)}
+.login-card input{background:#121212}
 @media (min-width:900px){
   body.login-pg{background:radial-gradient(900px 640px at 22% 45%,rgba(42,179,151,.05),transparent 62%),radial-gradient(700px 520px at 88% 85%,rgba(229,199,79,.12),transparent 60%),#121212;min-height:100vh;padding-bottom:0}
   .login{display:grid;grid-template-columns:1fr 410px;gap:72px;align-items:center;max-width:1080px;min-height:100vh;margin:0 auto;padding:40px 32px}
