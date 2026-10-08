@@ -481,7 +481,7 @@ function vConfig() {
   $('#main').innerHTML = `<div class="card"><b>${esc(user.nombre)}</b><br><span class="mut">usuario: ${esc(user.usuario)} · ${a ? 'Administrador' : 'Vendedor'}</span></div>
     ${a ? `<div class="card">${fila('productos', '🗂️', `Productos (${productos.length})`)}${fila('importar', '📥', 'Importar / exportar Excel')}${fila('usuarios', '👥', 'Usuarios')}${fila('promos', '🏷️', 'Promociones')}</div>` : ''}
     ${a ? `<div class="card"><h2>Copia de seguridad</h2><p class="mut" style="margin:0 0 8px">Se guarda una copia automática por día (las últimas 14) dentro de la base de datos. Además podés bajar una copia a tu computadora o el detalle de los pedidos en Excel.</p>
-      <button class="btn" data-act="respaldo">💾 Descargar copia completa</button><button class="btn sec" data-act="pedidosExcel" style="margin-top:8px">📊 Descargar pedidos en Excel</button></div>` : ''}
+      <button class="btn" data-act="respaldo">💾 Descargar copia completa</button><button class="btn sec" data-act="pedidosExcel" style="margin-top:8px">📊 Descargar pedidos en Excel</button><button class="btn sec" data-act="abrirRestaurar" style="margin-top:8px">♻️ Restaurar una copia</button></div>` : ''}
     <div class="card"><h2>Notificaciones</h2><div id="pushBox"></div></div>
     ${yaInstalada() ? '' : `<div class="card"><h2>Instalar la app</h2><p class="mut" style="margin:0 0 8px">Se abre como una aplicación, en la computadora o en el celular, sin escribir la dirección.</p>
       ${instalar ? '<button class="btn" data-act="instalarApp">📲 Instalar ahora</button>' : ''}
@@ -1228,6 +1228,39 @@ async function importarConfirmar(btn) {
     $('#prev').innerHTML = `<p><b>Listo:</b> ${r.creados} creados, ${r.actualizados} actualizados${r.borrados ? `, <b>${r.borrados} borrados</b>` : ''}.</p>${r.errores.length ? `<p class="mut" style="color:var(--bad)">${r.errores.length} filas con error:<br>${r.errores.slice(0, 30).map(esc).join('<br>')}</p>` : ''}`;
   } catch (e) { toast(e.message); }
 }
+/* restaurar una copia (admin): de un archivo descargado o de las copias automáticas. Usuarios y contraseñas no se tocan; antes se guarda lo actual */
+let restDatos = null;
+async function abrirRestaurar() {
+  if (!esAdmin()) return; restDatos = null;
+  const el = document.createElement('div'); el.id = 'modal'; el.className = 'modal';
+  el.innerHTML = `<div class="modal-card"><div class="row" style="border:0;padding:0 0 4px"><h2 style="flex:1;margin:0;font-size:19px">Restaurar una copia</h2><button class="btn sec" data-modal="cerrar" aria-label="Cerrar" style="width:40px;min-height:40px;padding:0;flex:none">✕</button></div>
+    <p style="margin:0 0 8px;color:var(--bad)"><b>⚠ Reemplaza</b> los pedidos, clientes, productos, promociones y novedades actuales por los de la copia. <b>Los usuarios y contraseñas no se tocan.</b> Antes de restaurar se guarda automáticamente lo que hay ahora.</p>
+    <div class="card"><b>Desde un archivo</b><p class="mut" style="margin:4px 0">El archivo .json que descargaste con "Descargar copia completa".</p><input id="restArch" type="file" accept=".json,application/json"><p id="restInfo" class="mut" style="margin:6px 0 0"></p></div>
+    <div class="card"><b>Desde una copia automática</b><p class="mut" style="margin:4px 0">Una por día (la del último guardado del día), las últimas 14. También figuran las copias que se guardan justo antes de cada restauración, por si querés volver atrás.</p><select id="restCopia" style="width:100%;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Cargando copias…</option></select></div>
+    <label>Para confirmar, escribí RESTAURAR</label><input id="restConf" autocomplete="off" placeholder="RESTAURAR">
+    <div class="row" style="border:0;padding:12px 0 0;gap:8px"><button class="btn bad" data-act="restDesdeArchivo">Restaurar archivo</button><button class="btn bad" data-act="restDesdeCopia">Restaurar copia</button></div></div>`;
+  document.body.appendChild(el);
+  try { history.pushState({ v: view, d: pila.length - 1, modal: 1 }, ''); } catch {}
+  el.addEventListener('click', e => { if (e.target === el) cerrarModal(); });
+  $('#restArch').onchange = async e => {
+    restDatos = null; const f = e.target.files[0]; if (!f) return;
+    try { const d = JSON.parse(await f.text()); if (!Array.isArray(d.pedidos) || !Array.isArray(d.clientes) || !Array.isArray(d.productos)) throw new Error('x'); restDatos = d; $('#restInfo').textContent = `Archivo válido: ${d.pedidos.length} pedidos, ${d.clientes.length} clientes, ${d.productos.length} productos${d.fecha ? ' · copia del ' + fechaHora(d.fecha) : ''}.`; }
+    catch { $('#restInfo').textContent = 'Ese archivo no es una copia válida.'; }
+  };
+  try {
+    const { copias } = await api('GET', 'p/copias');
+    $('#restCopia').innerHTML = copias.length ? `<option value="">Elegí una copia…</option>` + copias.map(c => `<option value="${c.fecha}">${c.fecha.startsWith('previa-') ? '↩ Antes de restaurar · ' + fechaHora(c.fecha.slice(7).replace(/T(\d\d)-(\d\d)-(\d\d)-\d+Z$/, 'T$1:$2:$3Z')) : c.fecha} · ${c.pedidos} pedidos, ${c.clientes} clientes, ${c.productos} productos</option>`).join('') : '<option value="">Todavía no hay copias automáticas</option>';
+  } catch (er) { $('#restCopia').innerHTML = '<option value="">No se pudieron leer las copias</option>'; }
+}
+async function restaurar(cuerpo) {
+  if ((($('#restConf') || {}).value || '').trim().toUpperCase() !== 'RESTAURAR') return toast('Escribí RESTAURAR para confirmar');
+  if (!confirm('¿Seguro? Se reemplazan los pedidos, clientes y productos actuales por los de la copia.')) return;
+  try {
+    const r = await api('POST', 'p/restaurar', cuerpo);
+    await cargar(); toast(`Restaurado ✓ ${r.ahora.pedidos} pedidos, ${r.ahora.clientes} clientes, ${r.ahora.productos} productos`);
+    cerrarModal();
+  } catch (e) { toast(e.message); }
+}
 async function descargarRespaldo() {
   try {
     const d = await api('GET', 'p/respaldo'), blob = new Blob([JSON.stringify(d)], { type: 'application/json' }), a = document.createElement('a');
@@ -1281,6 +1314,9 @@ document.addEventListener('click', async e => {
   else if (d.modal) cerrarModal();
   else if (d.act === 'nuevoCombo') abrirCombo(null);
   else if (d.act === 'campana') { if (esAdmin()) { festado = 'agregados'; if (view === 'pedidos') render(); else go('pedidos'); } else go('novedades'); }
+  else if (d.act === 'abrirRestaurar') abrirRestaurar();
+  else if (d.act === 'restDesdeArchivo') { if (!restDatos) toast('Elegí primero el archivo de la copia'); else restaurar({ origen: 'archivo', datos: restDatos }); }
+  else if (d.act === 'restDesdeCopia') { const f = ($('#restCopia') || {}).value; if (!f) toast('Elegí una copia automática'); else restaurar({ origen: 'copia', fecha: f }); }
   else if (d.act === 'respaldo') descargarRespaldo();
   else if (d.act === 'pedidosExcel') pedidosExcel();
   else if (d.act === 'pushOn') activarPush();
