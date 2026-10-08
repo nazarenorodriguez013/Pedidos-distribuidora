@@ -56,12 +56,13 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .hoja{background:#fff;color:#111827;border:1px solid #d1d5db;border-radius:12px;padding:16px;box-shadow:0 4px 18px rgba(0,0,0,.12)}
 .hoja-meta{font-size:12px;color:#6b7280;margin-bottom:8px}
 .hoja-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding-bottom:12px;border-bottom:2px solid #111827}
-.hoja-cod{font-size:26px;font-weight:800;line-height:1.1}
-.hoja-cli{text-align:right;min-width:0}.hoja-cli b{display:block;font-size:17px;overflow-wrap:anywhere}.hoja-cli span{display:block;font-size:14px;color:#374151;overflow-wrap:anywhere}
+.hoja-cod{font-size:26px;font-weight:800;line-height:1.1;white-space:nowrap;flex:none}
+.hoja-cli{text-align:right;min-width:0}.hoja-cli b{display:block;font-size:23px;line-height:1.15;overflow-wrap:anywhere}.hoja-cli span{display:block;font-size:18px;line-height:1.25;color:#374151;margin-top:2px;overflow-wrap:anywhere}
 .hoja table{width:100%;border-collapse:collapse;margin-top:12px;font-size:16px}
 .hoja th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;border-bottom:1px solid #d1d5db;padding:4px 4px}
 .hoja td{padding:9px 4px;border-bottom:1px solid #e5e7eb;vertical-align:top}
 .hoja .n{text-align:right;white-space:nowrap}.hoja td.c{font-weight:700;white-space:nowrap}
+.hoja td.q{font-weight:800;font-size:19px}
 .hoja-nota{margin-top:10px;padding:8px;background:#fef3c7;border-radius:8px;font-size:14px}
 .hoja-total{margin-top:16px;text-align:right;font-size:16px}.hoja-total b{font-size:28px;margin-left:6px}
 .chips{display:flex;gap:8px;margin:8px 0;overflow-x:auto}
@@ -381,7 +382,7 @@ function vHoja() {
   $('#main').innerHTML = `<div class="row" style="border:0;padding:0 0 8px;gap:8px;align-items:center">${b(-1, '‹ Anterior', hojaI === 0)}<div class="nm" style="text-align:center"><b>${hojaI + 1} de ${n}</b> <span class="mut">· #${p.id}</span></div>${b(1, 'Siguiente ›', hojaI === n - 1)}</div>
     <div class="hoja">
       <div class="hoja-cab"><div class="hoja-cod">${p.clienteCodigo ? esc(p.clienteCodigo) : '—'}</div><div class="hoja-cli"><b>${esc(p.cliente)}</b><span>${esc(cli.direccion || '')}</span></div></div>
-      <table><thead><tr><th>Código</th><th class="n">Cant.</th><th>Descripción</th><th class="n">Precio</th></tr></thead><tbody>${filasHoja(p).map(i => `<tr><td class="c">${esc(i.codigo)}</td><td class="n">${i.cant}</td><td>${esc(i.nombre)}</td><td class="n">${money(i.precio)}</td></tr>`).join('')}</tbody></table>
+      <table><thead><tr><th>Código</th><th class="n">Cant.</th><th>Descripción</th><th class="n">Precio</th></tr></thead><tbody>${filasHoja(p).map(i => `<tr><td class="c">${esc(i.codigo)}</td><td class="n q">${i.cant}</td><td>${esc(i.nombre)}</td><td class="n">${money(i.precio)}</td></tr>`).join('')}</tbody></table>
       <div class="hoja-total">Total <b>${money(p.total)}</b></div></div>
     <button class="btn" data-act="hojaCargar" style="margin-top:12px">✓ Marcar como cargado</button>`;
 }
