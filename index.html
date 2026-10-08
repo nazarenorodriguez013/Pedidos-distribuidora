@@ -1167,7 +1167,9 @@ function vUsuario() {
   };
 }
 /* ---------- Excel (admin) ---------- */
-let importFilas = null;
+let importFilas = null, importIgnoradas = [];
+const IGNORADOS_IMP = { '9999': 'redondeo', '7040': 'servicio de reparto' };   // renglones de la lista que no son productos (también los ignora el servidor)
+const ignoradoImp = f => { const c = String(f.codigo ?? '').trim().replace(/^0+(?=\d)/, ''); return IGNORADOS_IMP[c] ? c + ' (' + IGNORADOS_IMP[c] + ')' : ['redondeo', 'servicio de reparto'].includes(norm(String(f.nombre ?? '')).trim()) ? String(f.nombre).trim() : null; };
 const COLS = { codigo: ['codigo', 'cod', 'sku', 'code'], nombre: ['nombre', 'descripcion', 'producto', 'articulo', 'detalle'], precio: ['precio', 'price', 'importe', 'pvp', 'lista'], activo: ['activo', 'habilitado'], multiplo: ['unidad de venta', 'unidad', 'multiplo', 'multiple', 'se vende de a'], stock: ['stock', 'existencia', 'existencias'] };
 function leerHoja(rows) {
   rows = rows.filter(r => r.some(c => String(c ?? '').trim() !== ''));
@@ -1219,6 +1221,7 @@ function vImportar() {
       const wb = /\.csv$/i.test(f.name) ? XLSX.read(await f.text(), { type: 'string', raw: true }) : XLSX.read(await f.arrayBuffer(), { type: 'array' });
       importFilas = leerHoja(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true }));
       }
+      importIgnoradas = importFilas.map(ignoradoImp).filter(Boolean); importFilas = importFilas.filter(f => !ignoradoImp(f));   // 9999 y 7040 ni se muestran
       if (!importFilas.length) return toast('No se encontraron productos en el archivo');
       $('#prev').innerHTML = `<p><b>${importFilas.length}</b> filas leídas${importFilas.some(r => r.activo === 'no') ? ` (${importFilas.filter(r => r.activo === 'no').length} sin precio, quedan desactivadas)` : ''}. Ejemplo: ${esc(Object.values(importFilas[0] || {}).join(' | '))}</p>
         <p id="resumenImp"></p>
@@ -1244,7 +1247,7 @@ async function importarConfirmar(btn) {
   try {
     const r = await api('POST', 'p/importar', { rows: importFilas, reemplazar: $('#cat').checked });
     await cargar();
-    $('#prev').innerHTML = `<p><b>Listo:</b> ${r.creados} creados, ${r.actualizados} actualizados${r.borrados ? `, <b>${r.borrados} borrados</b>` : ''}.</p>${(r.nuevos || []).length ? `<div class="card" style="margin:8px 0"><b>🆕 Productos nuevos (${r.nuevos.length})</b>${r.nuevos.slice(0, 200).map(x => `<div class="tfila"><span><b>${esc(x.codigo)}</b> · ${esc(x.nombre)}</span><b style="white-space:nowrap">${money(x.precio)}</b></div>`).join('')}${r.nuevos.length > 200 ? `<p class="mut">y ${r.nuevos.length - 200} más</p>` : ''}</div>` : ''}${(r.ignorados || []).length ? `<p class="mut" style="margin:4px 0">Ignorados (no son productos): ${[...new Set(r.ignorados)].map(esc).join(', ')}${r.ignorados.length > 1 ? ' · ' + r.ignorados.length + ' filas' : ''}.</p>` : ''}${r.errores.length ? `<p class="mut" style="color:var(--bad)">${r.errores.length} filas con error:<br>${r.errores.slice(0, 30).map(esc).join('<br>')}</p>` : ''}`;
+    $('#prev').innerHTML = `<p><b>Listo:</b> ${r.creados} creados, ${r.actualizados} actualizados${r.borrados ? `, <b>${r.borrados} borrados</b>` : ''}.</p>${(r.nuevos || []).length ? `<div class="card" style="margin:8px 0"><b>🆕 Productos nuevos (${r.nuevos.length})</b>${r.nuevos.slice(0, 200).map(x => `<div class="tfila"><span><b>${esc(x.codigo)}</b> · ${esc(x.nombre)}</span><b style="white-space:nowrap">${money(x.precio)}</b></div>`).join('')}${r.nuevos.length > 200 ? `<p class="mut">y ${r.nuevos.length - 200} más</p>` : ''}</div>` : ''}${r.errores.length ? `<p class="mut" style="color:var(--bad)">${r.errores.length} filas con error:<br>${r.errores.slice(0, 30).map(esc).join('<br>')}</p>` : ''}`;
   } catch (e) { toast(e.message); }
 }
 /* restaurar una copia (admin): de un archivo descargado o de las copias automáticas. Usuarios y contraseñas no se tocan; antes se guarda lo actual */

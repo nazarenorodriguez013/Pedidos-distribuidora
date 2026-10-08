@@ -387,7 +387,10 @@ function cleanUsuario(b, prev) {
 }
 const adminsActivos = () => state.usuarios.filter(u => u.rol === 'admin' && u.activo);
 
-const CODIGOS_IGNORADOS = { '9999': 'redondeo', '7040': 'servicio de reparto' };   // renglones de la lista del proveedor que no son productos
+const CODIGOS_IGNORADOS = { '9999': 'redondeo', '7040': 'servicio de reparto' };
+const NOMBRES_IGNORADOS = ['redondeo', 'servicio de reparto'];
+const sinCeros = c => String(c ?? '').trim().replace(/^0+(?=\d)/, '');
+const ignoradoPor = f => CODIGOS_IGNORADOS[sinCeros(f.codigo)] ? sinCeros(f.codigo) : NOMBRES_IGNORADOS.includes(String(f.nombre ?? '').trim().toLowerCase()) ? String(f.nombre).trim().toUpperCase() : null;   // renglones de la lista del proveedor que no son productos
 function importar(b) {
   const filas = Array.isArray(b.rows) ? b.rows : [];
   const r = { creados: 0, actualizados: 0, desactivados: 0, borrados: 0, ignorados: [], nuevos: [], errores: [] };
@@ -396,7 +399,8 @@ function importar(b) {
     const codigo = String(f.codigo ?? '').trim();
     const fila = n + 1;
     if (!codigo) return r.errores.push(`Fila ${fila}: sin código`);
-    if (CODIGOS_IGNORADOS[codigo]) return r.ignorados.push(`${codigo} (${CODIGOS_IGNORADOS[codigo]})`);   // se saltea: no se crea ni se actualiza
+    const ign = ignoradoPor(f);
+    if (ign) return r.ignorados.push(CODIGOS_IGNORADOS[ign] ? `${ign} (${CODIGOS_IGNORADOS[ign]})` : ign);   // se saltea: no se crea ni se actualiza
     const precio = f.precio === undefined || f.precio === '' ? null : parseNum(f.precio);
     if (f.precio !== undefined && f.precio !== '' && precio === null) return r.errores.push(`Fila ${fila} (${codigo}): precio inválido`);
     let p = state.productos.find(x => x.codigo.toLowerCase() === codigo.toLowerCase());
@@ -423,6 +427,8 @@ function importar(b) {
     else if (precio !== null) p.activo = true;   // lista nueva: precio 0 queda desactivado y con precio queda activo
     r.actualizados++;
   });
+  const viejos = new Set(state.productos.filter(p => CODIGOS_IGNORADOS[sinCeros(p.codigo)]).map(p => p.id));   // si ya habían quedado cargados de antes, se quitan
+  if (viejos.size) quitarProductos(viejos);
   if (b.catalogoCompleto) for (const p of state.productos) if (p.activo && !vistos.has(p.codigo.toLowerCase())) { p.activo = false; r.desactivados++; }
   if (b.reemplazar) {   // la lista nueva reemplaza a la anterior: se borran los productos que no figuran en el archivo
     if (!vistos.size) r.errores.push('No se encontraron productos válidos en el archivo: no se borró nada');
