@@ -387,14 +387,16 @@ function cleanUsuario(b, prev) {
 }
 const adminsActivos = () => state.usuarios.filter(u => u.rol === 'admin' && u.activo);
 
+const CODIGOS_IGNORADOS = { '9999': 'redondeo', '7040': 'servicio de reparto' };   // renglones de la lista del proveedor que no son productos
 function importar(b) {
   const filas = Array.isArray(b.rows) ? b.rows : [];
-  const r = { creados: 0, actualizados: 0, desactivados: 0, borrados: 0, errores: [] };
+  const r = { creados: 0, actualizados: 0, desactivados: 0, borrados: 0, ignorados: [], nuevos: [], errores: [] };
   const vistos = new Set();
   filas.forEach((f, n) => {
     const codigo = String(f.codigo ?? '').trim();
     const fila = n + 1;
     if (!codigo) return r.errores.push(`Fila ${fila}: sin código`);
+    if (CODIGOS_IGNORADOS[codigo]) return r.ignorados.push(`${codigo} (${CODIGOS_IGNORADOS[codigo]})`);   // se saltea: no se crea ni se actualiza
     const precio = f.precio === undefined || f.precio === '' ? null : parseNum(f.precio);
     if (f.precio !== undefined && f.precio !== '' && precio === null) return r.errores.push(`Fila ${fila} (${codigo}): precio inválido`);
     let p = state.productos.find(x => x.codigo.toLowerCase() === codigo.toLowerCase());
@@ -409,6 +411,7 @@ function importar(b) {
       if (!nombre || precio === null) return r.errores.push(`Fila ${fila} (${codigo}): producto nuevo necesita nombre y precio`);
       const nuevoProd = { id: state.seq.p++, codigo, nombre, precio, multiplo: mult ? Math.floor(mult) : 1, multiploSet: !!mult, ...(stk !== null ? { usaStock: true, stock: Math.floor(stk) } : {}), activo: sinPrecio ? false : f.activo === undefined || f.activo === '' ? true : truthy(f.activo), promo: false, precioPromo: 0 };
       state.productos.push(nuevoProd); restaurarProducto(nuevoProd);
+      r.nuevos.push({ codigo, nombre, precio });
       return r.creados++;
     }
     if (String(f.nombre ?? '').trim()) p.nombre = String(f.nombre).trim();
