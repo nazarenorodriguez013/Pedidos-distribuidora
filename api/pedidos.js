@@ -98,6 +98,35 @@ async function copiaDiaria(pool, dia, json) {
     ultimaCopia = dia;
   } catch (e) { console.error('Copia diaria:', e.message); }
 }
+async function listarCopias(pool) {
+  if (pool) {
+    const r = await pool.query("SELECT key, jsonb_array_length(COALESCE(value->'pedidos','[]'::jsonb)) AS pedidos, jsonb_array_length(COALESCE(value->'clientes','[]'::jsonb)) AS clientes, jsonb_array_length(COALESCE(value->'productos','[]'::jsonb)) AS productos FROM kv WHERE key LIKE 'copia-2%' OR key LIKE 'previa-2%' ORDER BY key DESC");
+    return r.rows.map(x => ({ fecha: x.key.startsWith('copia-') ? x.key.slice(6) : x.key, pedidos: x.pedidos, clientes: x.clientes, productos: x.productos }));
+  }
+  const dir = path.join(path.dirname(FILE), 'copias'); if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir).filter(x => /^(\d{4}-\d{2}-\d{2}|previa-[\dTZ-]+)\.json$/.test(x)).sort().reverse().map(f => { const d = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); return { fecha: f.slice(0, -5), pedidos: (d.pedidos || []).length, clientes: (d.clientes || []).length, productos: (d.productos || []).length }; });
+}
+async function leerCopia(pool, fecha) {
+  if (!/^(\d{4}-\d{2}-\d{2}|previa-[\dTZ-]+)$/.test(fecha)) return null;
+  if (pool) { const r = await pool.query('SELECT value FROM kv WHERE key=$1', [fecha.startsWith('previa-') ? fecha : 'copia-' + fecha]); return r.rows[0] ? r.rows[0].value : null; }
+  const f = path.join(path.dirname(FILE), 'copias', fecha + '.json'); return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : null;
+}
+async function copiaPrevia(pool) {   // antes de restaurar se guarda lo actual, para poder volver atrás
+  const marca = new Date().toISOString().replace(/[:.]/g, '-'), json = JSON.stringify(state);
+  if (pool) { await pool.query('INSERT INTO kv (key, value) VALUES ($1, $2)', ['previa-' + marca, json]); await pool.query("DELETE FROM kv WHERE key LIKE 'previa-%' AND key NOT IN (SELECT key FROM kv WHERE key LIKE 'previa-%' ORDER BY key DESC LIMIT 10)"); }
+  else { const dir = path.join(path.dirname(FILE), 'copias'); fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, 'previa-' + marca + '.json'), json); }
+  return 'previa-' + marca;
+}
+function restaurarDatos(d) {   // reemplaza pedidos, clientes, productos, promos y novedades; NO toca usuarios ni contraseñas
+  for (const k of ['productos', 'pedidos', 'clientes']) if (!Array.isArray(d[k])) throw { code: 400, msg: 'El archivo no es una copia válida (falta ' + k + ')' };
+  if (d.pedidos.some(p => !p || !Number.isInteger(p.id) || !Array.isArray(p.items)) || d.clientes.some(c => !c || !Number.isInteger(c.id)) || d.productos.some(p => !p || !Number.isInteger(p.id))) throw { code: 400, msg: 'El archivo tiene datos dañados' };
+  state.productos = d.productos; state.pedidos = d.pedidos; state.clientes = d.clientes;
+  state.combos = Array.isArray(d.combos) ? d.combos : []; state.novedades = Array.isArray(d.novedades) ? d.novedades : [];
+  state.configPorCodigo = d.configPorCodigo && typeof d.configPorCodigo === 'object' ? d.configPorCodigo : {};
+  const mx = l => l.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1;
+  state.seq.p = Math.max(state.seq.p || 1, mx(state.productos), (d.seq || {}).p || 1); state.seq.o = Math.max(state.seq.o || 1, mx(state.pedidos), (d.seq || {}).o || 1);
+  state.seq.c = Math.max(state.seq.c || 1, mx(state.clientes), (d.seq || {}).c || 1); state.seq.k = Math.max(state.seq.k || 1, mx(state.combos), (d.seq || {}).k || 1); state.seq.n = Math.max(state.seq.n || 1, mx(state.novedades), (d.seq || {}).n || 1);
+}
 function save(pool) {
   repreciarPendientes();
   const json = JSON.stringify(state);
@@ -613,9 +642,23 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       return send(res, 200, { ok: true, n: lista.length });
     }
 
+    if (rec === 'copias' && req.method === 'GET') { soloAdmin(); return send(res, 200, { copias: await listarCopias(pool) }); }
+    if (rec === 'restaurar' && req.method === 'POST') {   // el administrador restaura una copia (de un archivo o de las automáticas); usuarios y contraseñas no se tocan
+      soloAdmin();
+      const b = await body(req, 30e6);
+      const datos = b.origen === 'copia' ? await leerCopia(pool, String(b.fecha || '')) : b.datos;
+      if (!datos || typeof datos !== 'object') throw { code: 404, msg: 'No se encontró la copia' };
+      const antes = { pedidos: s.pedidos.length, clientes: s.clientes.length, productos: s.productos.length };
+      const copiaDatos = JSON.parse(JSON.stringify(datos));
+      for (const k of ['productos', 'pedidos', 'clientes']) if (!Array.isArray(copiaDatos[k])) throw { code: 400, msg: 'El archivo no es una copia válida (falta ' + k + ')' };
+      const respaldoPrevio = await copiaPrevia(pool);
+      restaurarDatos(copiaDatos);
+      await save(pool);
+      return send(res, 200, { ok: true, antes, ahora: { pedidos: s.pedidos.length, clientes: s.clientes.length, productos: s.productos.length }, copiaPrevia: respaldoPrevio });
+    }
     if (rec === 'respaldo' && req.method === 'GET') {   // el administrador descarga todos los datos (sin contraseñas ni claves)
       soloAdmin();
-      return send(res, 200, { fecha: new Date().toISOString(), version: 1, productos: s.productos, pedidos: s.pedidos, clientes: s.clientes, combos: s.combos, novedades: s.novedades, usuarios: s.usuarios.map(pub) });
+      return send(res, 200, { fecha: new Date().toISOString(), version: 1, productos: s.productos, pedidos: s.pedidos, clientes: s.clientes, combos: s.combos, novedades: s.novedades, seq: s.seq, configPorCodigo: s.configPorCodigo || {}, usuarios: s.usuarios.map(pub) });
     }
     if (rec === 'pushkey' && req.method === 'GET') return send(res, 200, { key: webpush && s.vapid ? s.vapid.publica : null });
     if (rec === 'pushsub') {   // el dispositivo se suscribe / se da de baja para recibir notificaciones
