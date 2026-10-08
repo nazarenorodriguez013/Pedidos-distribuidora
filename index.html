@@ -480,6 +480,8 @@ function vConfig() {
   const a = esAdmin(), fila = (v, i, t) => `<div class="row" data-go="${v}" style="cursor:pointer"><span style="font-size:22px">${i}</span><div class="nm"><b>${t}</b></div><span class="mut">›</span></div>`;
   $('#main').innerHTML = `<div class="card"><b>${esc(user.nombre)}</b><br><span class="mut">usuario: ${esc(user.usuario)} · ${a ? 'Administrador' : 'Vendedor'}</span></div>
     ${a ? `<div class="card">${fila('productos', '🗂️', `Productos (${productos.length})`)}${fila('importar', '📥', 'Importar / exportar Excel')}${fila('usuarios', '👥', 'Usuarios')}${fila('promos', '🏷️', 'Promociones')}</div>` : ''}
+    ${a ? `<div class="card"><h2>Copia de seguridad</h2><p class="mut" style="margin:0 0 8px">Se guarda una copia automática por día (las últimas 14) dentro de la base de datos. Además podés bajar una copia a tu computadora o el detalle de los pedidos en Excel.</p>
+      <button class="btn" data-act="respaldo">💾 Descargar copia completa</button><button class="btn sec" data-act="pedidosExcel" style="margin-top:8px">📊 Descargar pedidos en Excel</button></div>` : ''}
     <div class="card"><h2>Notificaciones</h2><div id="pushBox"></div></div>
     ${yaInstalada() ? '' : `<div class="card"><h2>Instalar la app</h2><p class="mut" style="margin:0 0 8px">Se abre como una aplicación, en la computadora o en el celular, sin escribir la dirección.</p>
       ${instalar ? '<button class="btn" data-act="instalarApp">📲 Instalar ahora</button>' : ''}
@@ -1226,6 +1228,22 @@ async function importarConfirmar(btn) {
     $('#prev').innerHTML = `<p><b>Listo:</b> ${r.creados} creados, ${r.actualizados} actualizados${r.borrados ? `, <b>${r.borrados} borrados</b>` : ''}.</p>${r.errores.length ? `<p class="mut" style="color:var(--bad)">${r.errores.length} filas con error:<br>${r.errores.slice(0, 30).map(esc).join('<br>')}</p>` : ''}`;
   } catch (e) { toast(e.message); }
 }
+async function descargarRespaldo() {
+  try {
+    const d = await api('GET', 'p/respaldo'), blob = new Blob([JSON.stringify(d)], { type: 'application/json' }), a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'copia-seguridad-' + new Date().toISOString().slice(0, 10) + '.json'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast('Copia descargada ✓ (' + d.pedidos.length + ' pedidos)');
+  } catch (e) { toast(e.message); }
+}
+async function pedidosExcel() {   // todos los pedidos, una fila por artículo
+  if (!window.XLSX) return toast('No cargó el generador de Excel (revisá la conexión)');
+  try {
+    const d = await api('GET', 'p/respaldo'), filas = [];
+    for (const p of d.pedidos) for (const i of p.items) filas.push({ 'Pedido': p.id, 'Día': p.dia || '', 'Turno': TURNOS[p.turno] || '', 'Vendedor': p.vendedor || '', 'Cód. cliente': p.clienteCodigo || '', 'Cliente': p.cliente, 'Estado': p.estado === 'cargado' ? 'Cargado' : 'Pendiente', 'Entrega': p.entrega && ENTREGAS[p.entrega.estado] ? ENTREGAS[p.entrega.estado][0].replace(/^\S+\s/, '') : 'Sin entregar', 'Motivo': p.entrega ? p.entrega.motivo || '' : '', 'Nota de crédito': p.notaCredito ? p.notaCredito.numero : '', 'Código': i.codigo, 'Artículo': i.nombre, 'Cantidad': i.cant, 'Precio': i.precio, 'Total del pedido': p.total, 'Nota': p.nota || '' });
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas), 'Pedidos');
+    XLSX.writeFile(wb, 'pedidos-' + new Date().toISOString().slice(0, 10) + '.xlsx'); toast('Excel descargado ✓');
+  } catch (e) { toast(e.message); }
+}
 function exportarExcel() {
   if (!window.XLSX) return toast('No cargó el generador de Excel (revisá la conexión)');
   const ws = XLSX.utils.json_to_sheet(productos.map(p => ({ 'Código': p.codigo, 'Nombre': p.nombre, 'Precio': p.precio,'Unidad de venta': p.multiplo || 1, 'Stock': p.usaStock ? p.stock || 0 : '', 'Activo': p.activo ? 'si' : 'no' })));
@@ -1263,6 +1281,8 @@ document.addEventListener('click', async e => {
   else if (d.modal) cerrarModal();
   else if (d.act === 'nuevoCombo') abrirCombo(null);
   else if (d.act === 'campana') { if (esAdmin()) { festado = 'agregados'; if (view === 'pedidos') render(); else go('pedidos'); } else go('novedades'); }
+  else if (d.act === 'respaldo') descargarRespaldo();
+  else if (d.act === 'pedidosExcel') pedidosExcel();
   else if (d.act === 'pushOn') activarPush();
   else if (d.act === 'pushOff') desactivarPush();
   else if (d.act === 'nuevaNovedad') abrirNovedad(null);
