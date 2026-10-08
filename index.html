@@ -71,6 +71,9 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .tfila{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--bd)}.tfila:last-child{border:0}.tfila b{white-space:nowrap}
 .chips{display:flex;gap:8px;margin:8px 0;overflow-x:auto}
 .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.filtros{margin-top:8px;padding:8px;border:1px solid var(--bd);border-radius:12px;background:var(--card)}
+.fdiag{display:flex;gap:4px;min-width:0}.fdiag button{flex:none;width:34px;min-width:0;min-height:40px;padding:0;background:var(--bg)}.fdiag input{flex:1 1 0;min-width:0;min-height:40px;padding:4px 0;font-size:13px;background:var(--bg);text-align:center}
+@media (max-width:899px){.fdiag input::-webkit-calendar-picker-indicator{display:none}}
 .chips.dos{display:grid;grid-template-columns:1fr 1fr;overflow:visible}
 .chips.dos button{width:100%;border-radius:12px;padding:10px 8px}
 .chips button{flex:none;padding:8px 14px;border-radius:99px;border:1px solid var(--bd);background:var(--card);color:var(--tx);font-size:14px}
@@ -867,7 +870,7 @@ const esElegible = p => selTipo === 'cargados' ? p.estado === 'cargado' : p.esta
 const cargadosVisibles = () => visiblesPeds.filter(esElegible);
 function pintarSel() {
   const t = $('#selTools'), b = $('#selBar'); if (!t || !b) return;
-  if (!selMode) { t.innerHTML = '<button class="btn sec" data-act="selModo" data-tipo="pendientes" style="grid-column:1/-1">☑ Seleccionar sin cargar (para abrirlos)</button><button class="btn sec" data-act="selModo" data-tipo="cargados" style="grid-column:1/-1">☑ Seleccionar cargados (entrega)</button>'; b.innerHTML = ''; return; }
+  if (!selMode) { t.innerHTML = '<button class="btn sec" data-act="selModo" data-tipo="pendientes" style="padding:0 6px;font-size:15px">☑ Sin cargar</button><button class="btn sec" data-act="selModo" data-tipo="cargados" style="padding:0 6px;font-size:15px">☑ Cargados</button>'; b.innerHTML = ''; return; }
   const cv = cargadosVisibles(), pend = selTipo === 'pendientes';
   t.innerHTML = `<button class="btn sec" data-act="selTodos">${cv.length && cv.every(p => selPeds.has(p.id)) ? 'Quitar selección' : `Seleccionar todos (${cv.length})`}</button><button class="btn sec" data-act="selModo">Cancelar</button>`;
   const n = selPeds.size;
@@ -917,17 +920,15 @@ const sumaPeds = l => l.reduce((a, p) => a + p.total, 0);
 const cuentaPeds = l => `${l.length} ${l.length === 1 ? 'pedido' : 'pedidos'}`;
 function vPedidos() {
   if (!fdiaInit) { fdia = hoy(); fdiaInit = true; }
-  const est = 'width:100%;min-width:0;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)';
+  const est = 'width:100%;min-width:0;padding:6px 8px;min-height:40px;font:inherit;font-size:15px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx)';
   const selVend = esAdmin() ? `<select id="vend" style="${est}"><option value="">Vendedor: todos</option>${[...new Set(pedidos.map(p => p.vendedor))].filter(Boolean).sort().map(v => `<option ${v === vend ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>` : '';
   const selTurno = `<select id="fturno" style="${est}"><option value="">Turno: todos</option>${Object.entries(TURNOS).map(([k, v]) => `<option value="${k}" ${fturno === k ? 'selected' : ''}>${v}</option>`).join('')}</select>`;
-  const btnHoy = `<button class="btn sec" id="fhoy" style="min-height:46px;padding:0 10px">${fdia === hoy() ? 'Todos los días' : 'Hoy'}</button>`;
-  const fecha = `<div style="display:flex;gap:6px;min-width:0"><button class="btn sec" id="fprev" aria-label="Día anterior" style="flex:none;width:40px;min-width:0;padding:0">‹</button><input id="fdia" type="date" value="${esc(fdia)}" title="Filtrar por día" style="flex:1 1 0;min-width:0;padding-left:6px;padding-right:4px;font-size:15px"><button class="btn sec" id="fsig" aria-label="Día siguiente" style="flex:none;width:40px;min-width:0;padding:0">›</button></div>`;
+  const btnHoy = `<button class="btn sec" id="fhoy" style="min-height:40px;padding:0 10px;font-size:15px;background:var(--bg)">${fdia === hoy() ? 'Todos los días' : 'Hoy'}</button>`;
+  const fecha = `<div class="fdiag"><button class="btn sec" id="fprev" aria-label="Día anterior">‹</button><input id="fdia" type="date" value="${esc(fdia)}" title="Filtrar por día"><button class="btn sec" id="fsig" aria-label="Día siguiente">›</button></div>`;
   const opcEstado = [['', 'Estado: todos'], ['pendiente', 'Pendientes'], ['cargado', 'Cargados'], ...(esAdmin() ? [['agregados', '⚠ Agregar' + (pedidos.some(hayAgregados) ? ' (' + pedidos.filter(hayAgregados).length + ')' : '')]] : []), ['sinentregar', '🚚 Sin entregar'], ['entregado', 'Entregados'], ['devoluciones', 'Con devoluciones'], ['rechazado', 'Rechazados']];
   const selEstado = `<select id="festado" style="${est}">${opcEstado.map(([k, t]) => `<option value="${k}" ${festado === k ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
-  $('#main').innerHTML = `<button class="btn" data-go="pedido" data-nuevo="1" style="margin-bottom:10px">🛒 ${leerBorrador() ? 'Continuar pedido' : 'Cargar pedido'}</button>
-    <input id="q" type="search" placeholder="Buscar por cliente o número" value="${esc(q)}">
-    <div class="fgrid">${esAdmin() ? selVend + selEstado : selEstado + selTurno}</div>
-    ${esAdmin() ? `<div class="fgrid">${selTurno}${btnHoy}</div><div class="fgrid" style="grid-template-columns:1fr">${fecha}</div>` : `<div class="fgrid" style="grid-template-columns:1.9fr 1fr">${fecha}${btnHoy}</div>`}
+  $('#main').innerHTML = `<div style="display:flex;gap:8px"><input id="q" type="search" placeholder="Buscar pedido" value="${esc(q)}" style="flex:1 1 0;min-width:0"><button class="btn" data-go="pedido" data-nuevo="1" style="flex:none;width:auto;padding:0 14px;white-space:nowrap">🛒 ${leerBorrador() ? 'Continuar' : 'Cargar pedido'}</button></div>
+    <div class="filtros">${esAdmin() ? `<div class="fgrid" style="margin:0">${selVend}${selEstado}</div><div class="fgrid">${selTurno}${fecha}</div><div class="fgrid" style="grid-template-columns:1fr">${btnHoy}</div>` : `<div class="fgrid" style="margin:0">${selEstado}${selTurno}</div><div class="fgrid">${fecha}${btnHoy}</div>`}</div>
     ${esAdmin() ? '<div id="selTools" class="fgrid" style="margin-top:8px"></div>' : ''}<div id="lista" class="grid2" style="margin-top:10px"></div><div id="selBar"></div>`;
   const pintar = () => {
     const n = norm(q), l = pedidos.filter(p => (!n || norm(p.cliente).includes(n) || String(p.id) === n) && (!vend || p.vendedor === vend) && (!fdia || p.dia === fdia) && (!fturno || p.turno === fturno) && (!festado || (festado === 'sinentregar' ? p.estado === 'cargado' && !p.entrega : ['entregado', 'devoluciones', 'rechazado'].includes(festado) ? p.entrega && p.entrega.estado === festado : festado === 'agregados' ? hayAgregados(p) : festado === 'cargado' ? p.estado === 'cargado' : p.estado !== 'cargado')));
