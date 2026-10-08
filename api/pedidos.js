@@ -83,12 +83,29 @@ function repreciarPendientes() {
     Object.assign(o, totalesDe(o.items));
   }
 }
+// Copia de seguridad automática: una por día (la del último guardado del día), se conservan las últimas 14. Sirve para recuperar datos borrados por error.
+let ultimaCopia = '';
+async function copiaDiaria(pool, dia, json) {
+  try {
+    if (pool) {
+      await pool.query("INSERT INTO kv (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value=$2", ['copia-' + dia, json]);
+      if (ultimaCopia !== dia) await pool.query("DELETE FROM kv WHERE key LIKE 'copia-%' AND key NOT IN (SELECT key FROM kv WHERE key LIKE 'copia-%' ORDER BY key DESC LIMIT 14)");
+    } else {
+      const dir = path.join(path.dirname(FILE), 'copias'); fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, dia + '.json'), json);
+      if (ultimaCopia !== dia) for (const f of fs.readdirSync(dir).filter(x => /^\d{4}-\d{2}-\d{2}\.json$/.test(x)).sort().slice(0, -14)) fs.unlinkSync(path.join(dir, f));
+    }
+    ultimaCopia = dia;
+  } catch (e) { console.error('Copia diaria:', e.message); }
+}
 function save(pool) {
   repreciarPendientes();
   const json = JSON.stringify(state);
+  const dia = new Date().toISOString().slice(0, 10);
   queue = queue.then(async () => {
     if (pool) await pool.query("INSERT INTO kv (key, value) VALUES ('pedidos', $1) ON CONFLICT (key) DO UPDATE SET value=$1", [json]);
     else { fs.mkdirSync(path.dirname(FILE), { recursive: true }); fs.writeFileSync(FILE, json); }
+    await copiaDiaria(pool, dia, json);
   }).catch(e => console.error('Guardar:', e.message));
   return queue;
 }
@@ -596,6 +613,10 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       return send(res, 200, { ok: true, n: lista.length });
     }
 
+    if (rec === 'respaldo' && req.method === 'GET') {   // el administrador descarga todos los datos (sin contraseñas ni claves)
+      soloAdmin();
+      return send(res, 200, { fecha: new Date().toISOString(), version: 1, productos: s.productos, pedidos: s.pedidos, clientes: s.clientes, combos: s.combos, novedades: s.novedades, usuarios: s.usuarios.map(pub) });
+    }
     if (rec === 'pushkey' && req.method === 'GET') return send(res, 200, { key: webpush && s.vapid ? s.vapid.publica : null });
     if (rec === 'pushsub') {   // el dispositivo se suscribe / se da de baja para recibir notificaciones
       const b = await body(req, 1e4), sub = b.subscription || {}, ep = String(b.endpoint || sub.endpoint || '');
