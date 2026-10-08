@@ -12,8 +12,8 @@
 <meta name="apple-mobile-web-app-title" content="Distribuidora Don Luis">
 <title>Distribuidora Don Luis</title>
 <style>
-:root{--bg:#f3f4f6;--card:#fff;--tx:#111827;--mut:#6b7280;--pri:#1a8870;--acc:#e5c74f;--hd:#121212;--ok:#15803d;--warn:#b45309;--bad:#b91c1c;--bd:#d1d5db}
-@media (prefers-color-scheme:dark){:root{--bg:#121212;--card:#1c1c1c;--tx:#f3f4f6;--mut:#a3a3a3;--pri:#2ab397;--ok:#4ade80;--warn:#fbbf24;--bad:#f87171;--bd:#333}}
+:root{--info:#2563eb;--bg:#f3f4f6;--card:#fff;--tx:#111827;--mut:#6b7280;--pri:#1a8870;--acc:#e5c74f;--hd:#121212;--ok:#15803d;--warn:#b45309;--bad:#b91c1c;--bd:#d1d5db}
+@media (prefers-color-scheme:dark){:root{--info:#60a5fa;--bg:#121212;--card:#1c1c1c;--tx:#f3f4f6;--mut:#a3a3a3;--pri:#2ab397;--ok:#4ade80;--warn:#fbbf24;--bad:#f87171;--bd:#333}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.35 system-ui,sans-serif;padding-bottom:90px}
 header{position:sticky;top:0;z-index:5;background:var(--hd);border-bottom:3px solid var(--acc);color:#fff;padding:10px 12px;display:flex;align-items:center;gap:10px;min-height:52px}
@@ -37,7 +37,8 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .mut{color:var(--mut);font-size:13px}
 .tag{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;font-weight:700;border:1px solid var(--bd)}
 .tag.promo{background:#fef3c7;color:#92400e;border-color:#fcd34d}
-.tag.bad{color:var(--bad)}.tag.warn{color:var(--warn)}.tag.ok{color:var(--ok)}
+.bloq-ped .ped-izq{display:none}.bloq-ped #detalle{pointer-events:none;opacity:.8}.bloq-ped .bar .btn{display:none}
+.tag.info{color:var(--info);border-color:var(--info)}.tag.bad{color:var(--bad)}.tag.warn{color:var(--warn)}.tag.ok{color:var(--ok)}
 .off{opacity:.5}
 .qty{display:flex;align-items:center;gap:6px;flex:none}
 .qty button{width:42px;height:42px;border:0;border-radius:10px;background:var(--pri);color:#fff;font-size:22px;font-weight:700}
@@ -324,6 +325,7 @@ function render() {
   document.body.classList.remove('login-pg');
   if (!token) return login();
   if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc','hoja'].includes(view)) view = 'menu';
+  if (view !== 'pedido') document.body.classList.remove('bloq-ped');
   if (view !== 'pedidos' && view !== 'pedido') { fdiaInit = false; selMode = false; selPeds = new Set(); }   // al volver a Pedidos desde otra sección arranca en el día de hoy
   const tab = TABS.includes(view), desk = escritorio();
   document.body.classList.toggle('hay-tabs', desk || tab);
@@ -533,7 +535,7 @@ const TURNOS = { manana: 'Mañana', tarde: 'Tarde' };
 const diaTxt = d => d ? new Date(d + 'T00:00').toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit' }) : '';
 /* estado del pedido: pendiente → cargado (por el administrador). Cargado: el vendedor solo puede agregar, y lo agregado queda marcado. */
 const hayAgregados = p => p.estado === 'cargado' && !!p.agregar;   // el vendedor lo modificó después de que el admin lo cargó
-const ENTREGAS = { entregado: ['✓ Entregado', 'ok'], devoluciones: ['↩ Con devoluciones', 'warn'], rechazado: ['✕ Rechazado', 'bad'] };
+const ENTREGAS = { reparto: ['🚚 En reparto', 'info'], entregado: ['✓ Entregado', 'ok'], devoluciones: ['↩ Con devoluciones', 'warn'], rechazado: ['✕ Rechazado', 'bad'] };
 const entregaTag = p => (p.entrega && ENTREGAS[p.entrega.estado] ? ` <span class="tag ${ENTREGAS[p.entrega.estado][1]}">${ENTREGAS[p.entrega.estado][0]}</span>` : ' <span class="tag">🚚 Sin entregar</span>') + (p.notaCredito ? ` <span class="tag warn">📄 Nota de crédito ${esc(p.notaCredito.numero)}</span>` : '');
 const estadoTag = p => entregaTag(p) + ' ' + (hayAgregados(p) ? '<span class="tag bad">⚠ Agregar</span>' : p.estado === 'cargado' ? '<span class="tag ok">✓ Cargado</span>' : '<span class="tag warn">Pendiente</span>');
 const cargadoParaVendedor = () => !esAdmin() && !!draft.id && draft.estado === 'cargado';   // el vendedor no edita la nota ni elimina un pedido cargado
@@ -549,7 +551,7 @@ function cambiosDe(ped) {
 const snapDraft = () => JSON.stringify([Object.entries(draft.items).sort(), draft.nota, draft.dia, draft.turno, draft.clienteId, Object.entries(draft.promos).sort(), Object.entries(draft.combos).sort()]);
 const hayCambios = () => !!draft.id && draft.snap !== snapDraft();   // el que mira el pedido lo modificó en pantalla
 const etiquetaBoton = () => !draft.id ? 'Guardar pedido' : !esAdmin() ? 'Guardar cambios' : hayCambios() ? 'Guardar cambios' : (draft.estado !== 'cargado' || draft.agregar) ? 'Cargar' : '✓ Cargado';
-function actualizarBoton() { guardarNav(); guardarBorrador(); const b = $('#btnGuardar'); if (b) { b.textContent = etiquetaBoton(); b.disabled = esAdmin() && draft.id && !hayCambios() && draft.estado === 'cargado' && !draft.agregar; } }
+function actualizarBoton() { guardarNav(); guardarBorrador(); const b = $('#btnGuardar'); if (b) { b.textContent = etiquetaBoton(); b.disabled = (esAdmin() && draft.id && !hayCambios() && draft.estado === 'cargado' && !draft.agregar) || (!esAdmin() && !!draft.id && !!draft.entrega); } }
 function nuevoDraft(ped) {
   if (ped) for (const i of ped.items) if (!productos.some(p => p.id === i.pid)) productos.push({ id: i.pid, codigo: i.codigo, nombre: i.nombre, precio: i.precioLista ?? i.precio, activo: false, multiplo: 1, promo: false, borrado: true });   // producto que ya no está en la lista
   draft = ped ? { id: ped.id, entrega: ped.entrega, notaCredito: ped.notaCredito, orden: ped.items.map(i => i.pid), clienteCodigo: ped.clienteCodigo ?? (clientes.find(c => c.id === ped.clienteId) || {}).codigo, combos: Object.fromEntries(ped.items.filter(i => i.comboId).map(i => [i.comboId, 'si'])), avisadoC: {}, cargadoPor: ped.cargadoPor, agregar: !!ped.agregar, cambios: cambiosDe(ped), cargadoItems: ped.cargadoItems || [], estado: ped.estado || 'pendiente', cargada: Object.fromEntries(ped.items.map(i => [i.pid, i.cantCargada ?? i.cant])), promos: Object.fromEntries(ped.items.filter(i => i.promo).map(i => [i.pid, 'si'])), avisado: {}, dia: ped.dia || diaSesion(), turno: ped.turno || '', clienteId: ped.clienteId || null, legacy: !ped.clienteId, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])) }
@@ -624,7 +626,8 @@ document.addEventListener('touchend', e => {
   if (Math.abs(dx) > 80 && Math.abs(dy) < 50 && Math.abs(dx) > Math.abs(dy) * 2) (view === 'hoja' ? hojaMover : irAPedido)(dx < 0 ? 1 : -1);
 }, { passive: true });
 function vPedido() {
-  const cargadoBanner = !draft.id || draft.estado !== 'cargado' ? '' : draft.agregar
+  const bloqueado = !esAdmin() && !!draft.id && !!draft.entrega;   // en reparto / entregado / con devoluciones / rechazado: el vendedor ya no lo puede modificar
+  const cargadoBanner = bloqueado ? `<div class="hint" style="background:#dbeafe;color:#1e3a8a;padding:10px;border-radius:8px;margin-bottom:6px">🔒 Este pedido ya está <b>${esc((ENTREGAS[draft.entrega.estado] || [''])[0].replace(/^\S+\s/, '').toLowerCase())}</b>: no se puede modificar.</div>` : !draft.id || draft.estado !== 'cargado' ? '' : draft.agregar
     ? `<div class="hint" style="background:#fee2e2;color:#7f1d1d;padding:10px;border-radius:8px;margin-bottom:6px">⚠ <b>Agregar:</b> ${esAdmin() ? 'el vendedor modificó el pedido después de cargarlo.' : 'modificaste el pedido después de que lo cargaron. Administración lo ve marcado.'}<br>${draft.cambios.map(esc).join(' · ')}</div>`
     : esAdmin() ? `<div class="hint" style="background:#dcfce7;color:#166534;padding:10px;border-radius:8px;margin-bottom:6px">✓ Pedido <b>cargado</b>${draft.cargadoPor ? ' por ' + esc(draft.cargadoPor) : ''}.</div>`
     : `<div class="hint" style="background:#e0f2fe;color:#0c4a6e;padding:10px;border-radius:8px;margin-bottom:6px">✓ Este pedido ya fue <b>cargado</b> por administración. Si lo modificás, queda marcado como <b>Agregar</b> para que lo vean.</div>`;
@@ -639,7 +642,7 @@ function vPedido() {
     ${esAdmin() && draft.id && draft.estado === 'cargado' ? '<div style="margin-top:14px"><button class="btn sec" data-estado="pendiente">Volver a pendiente</button></div>' : ''}
     ${draft.id && !cargadoParaVendedor() ? '<div style="margin:24px 0 80px"><button class="btn bad" data-act="borrarPedido">Eliminar pedido</button></div>' : !draft.id ? '<div style="margin:24px 0 80px"><button class="btn sec" data-act="descartarPedido">Descartar este pedido</button></div>' : '<div style="height:80px"></div>'}
     <div class="bar"><div class="tot" id="tot"></div><button class="btn" id="btnGuardar" data-act="guardarPedido">${etiquetaBoton()}</button></div></div></div>`;
-  editNota = false; pintarNota(); pintarEntrega(); actualizarBoton();
+  editNota = false; document.body.classList.toggle('bloq-ped', bloqueado); pintarNota(); pintarEntrega(); actualizarBoton();
   const cambiarDia = v => { draft.dia = v; $('#dia').value = v; if (!draft.id && draft.dia) ss('pd_dia', draft.dia); actualizarBoton(); guardarBorrador(); };
   $('#dia').onchange = e => cambiarDia(e.target.value);
   const mDia = n => { const d = new Date((draft.dia || hoy()) + 'T12:00:00'); d.setDate(d.getDate() + n); cambiarDia(d.toISOString().slice(0, 10)); };
@@ -895,7 +898,7 @@ function abrirEntrega() {   // entrega y nota de crédito de los pedidos elegido
   const el = document.createElement('div'); el.id = 'modal'; el.className = 'modal';
   const b = (k, t) => `<button type="button" class="btn sec" data-entsel="${k}" style="flex:1 1 150px">${t}</button>`;
   el.innerHTML = `<div class="modal-card"><div class="row" style="border:0;padding:0 0 4px"><h2 style="flex:1;margin:0;font-size:19px">${n} ${n === 1 ? 'pedido' : 'pedidos'}: entrega</h2><button class="btn sec" data-modal="cerrar" aria-label="Cerrar" style="width:40px;min-height:40px;padding:0;flex:none">✕</button></div>
-    <div class="row" style="border:0;padding:6px 0 0;gap:8px;flex-wrap:wrap">${b('entregado', '✓ Entregado')}${b('devoluciones', '↩ Con devoluciones')}${b('rechazado', '✕ Rechazado')}${b('limpiar', 'Quitar etiqueta')}</div>
+    <div class="row" style="border:0;padding:6px 0 0;gap:8px;flex-wrap:wrap">${b('reparto', '🚚 En reparto')}${b('entregado', '✓ Entregado')}${b('devoluciones', '↩ Con devoluciones')}${b('rechazado', '✕ Rechazado')}${b('limpiar', 'Quitar etiqueta')}</div>
     <div id="entMotivoBox" hidden><label>Motivo</label><textarea id="entMotivo" placeholder="Ej: faltaron 2 cajas / el cliente no lo quiso" style="min-height:70px"></textarea></div>
     <div class="card" style="margin:12px 0 0"><b>Nota de crédito</b><div class="row" style="border:0;padding:8px 0 0;gap:8px"><input id="ncNum" placeholder="Número" style="flex:1 1 0;min-width:0"><input id="ncMonto" inputmode="decimal" placeholder="Monto (opcional)" style="flex:1 1 0;min-width:0"></div>
       <button type="button" class="btn sec" data-entsel="quitarCredito" style="margin-top:8px">Quitar la nota de crédito existente</button></div>
@@ -925,13 +928,13 @@ function vPedidos() {
   const selTurno = `<select id="fturno" style="${est}"><option value="">Turno: todos</option>${Object.entries(TURNOS).map(([k, v]) => `<option value="${k}" ${fturno === k ? 'selected' : ''}>${v}</option>`).join('')}</select>`;
   const btnHoy = `<button class="btn sec" id="fhoy" style="min-height:40px;padding:0 10px;font-size:15px;background:var(--bg)">${fdia === hoy() ? 'Todos los días' : 'Hoy'}</button>`;
   const fecha = `<div class="fdiag"><button class="btn sec" id="fprev" aria-label="Día anterior">‹</button><input id="fdia" type="date" value="${esc(fdia)}" title="Filtrar por día"><button class="btn sec" id="fsig" aria-label="Día siguiente">›</button></div>`;
-  const opcEstado = [['', 'Estado: todos'], ['pendiente', 'Pendientes'], ['cargado', 'Cargados'], ...(esAdmin() ? [['agregados', '⚠ Agregar' + (pedidos.some(hayAgregados) ? ' (' + pedidos.filter(hayAgregados).length + ')' : '')]] : []), ['sinentregar', '🚚 Sin entregar'], ['entregado', 'Entregados'], ['devoluciones', 'Con devoluciones'], ['rechazado', 'Rechazados']];
+  const opcEstado = [['', 'Estado: todos'], ['pendiente', 'Pendientes'], ['cargado', 'Cargados'], ...(esAdmin() ? [['agregados', '⚠ Agregar' + (pedidos.some(hayAgregados) ? ' (' + pedidos.filter(hayAgregados).length + ')' : '')]] : []), ['sinentregar', 'Sin entregar'], ['reparto', 'En reparto'], ['entregado', 'Entregados'], ['devoluciones', 'Con devoluciones'], ['rechazado', 'Rechazados']];
   const selEstado = `<select id="festado" style="${est}">${opcEstado.map(([k, t]) => `<option value="${k}" ${festado === k ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
   $('#main').innerHTML = `<div style="display:flex;gap:8px"><input id="q" type="search" placeholder="Buscar pedido" value="${esc(q)}" style="flex:1 1 0;min-width:0"><button class="btn" data-go="pedido" data-nuevo="1" style="flex:none;width:auto;padding:0 14px;white-space:nowrap">🛒 ${leerBorrador() ? 'Continuar' : 'Cargar pedido'}</button></div>
     <div class="filtros">${esAdmin() ? `<div class="fgrid" style="margin:0">${selVend}${selEstado}</div><div class="fgrid">${selTurno}${fecha}</div><div class="fgrid" style="grid-template-columns:1fr">${btnHoy}</div>` : `<div class="fgrid" style="margin:0">${selEstado}${selTurno}</div><div class="fgrid">${fecha}${btnHoy}</div>`}</div>
     ${esAdmin() ? '<div id="selTools" class="fgrid" style="margin-top:8px"></div>' : ''}<div id="lista" class="grid2" style="margin-top:10px"></div><div id="selBar"></div>`;
   const pintar = () => {
-    const n = norm(q), l = pedidos.filter(p => (!n || norm(p.cliente).includes(n) || String(p.id) === n) && (!vend || p.vendedor === vend) && (!fdia || p.dia === fdia) && (!fturno || p.turno === fturno) && (!festado || (festado === 'sinentregar' ? p.estado === 'cargado' && !p.entrega : ['entregado', 'devoluciones', 'rechazado'].includes(festado) ? p.entrega && p.entrega.estado === festado : festado === 'agregados' ? hayAgregados(p) : festado === 'cargado' ? p.estado === 'cargado' : p.estado !== 'cargado')));
+    const n = norm(q), l = pedidos.filter(p => (!n || norm(p.cliente).includes(n) || String(p.id) === n) && (!vend || p.vendedor === vend) && (!fdia || p.dia === fdia) && (!fturno || p.turno === fturno) && (!festado || (festado === 'sinentregar' ? p.estado === 'cargado' && !p.entrega : ['reparto', 'entregado', 'devoluciones', 'rechazado'].includes(festado) ? p.entrega && p.entrega.estado === festado : festado === 'agregados' ? hayAgregados(p) : festado === 'cargado' ? p.estado === 'cargado' : p.estado !== 'cargado')));
     visiblesPeds = l; const tot = l.reduce((a, p) => a + p.total, 0);
     const pend = colaMia().filter(x => !n || norm(x.body.cliente).includes(n)).map(x => `<div class="card" style="border-color:${x.error ? 'var(--bad)' : 'var(--warn)'}"><div class="row" style="border:0;padding:0"><div class="nm"><b>${esc(x.body.cliente)}</b>
       <span class="mut">${x.body.dia ? esc(diaTxt(x.body.dia)) + ' · ' + (TURNOS[x.body.turno] || '') + ' · ' : ''}${x.error ? 'Rechazado: ' + esc(x.error) : '⏳ Esperando señal para enviarse'} · ${x.body.items.length} prod. · ${x.body.items.reduce((s, i) => s + i.cant, 0)} u.</span></div><span class="price">${money(x.total)}</span></div>
