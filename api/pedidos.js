@@ -628,8 +628,8 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       const lista = s.pedidos.filter(o => ids.has(o.id));
       if (!lista.length) throw { code: 404, msg: 'No existen esos pedidos' };
       const numero = String(b.numero || '').trim().slice(0, 40), monto = num(b.monto, 0), ahora = new Date().toISOString();
-      if (!['entregado', 'devoluciones', 'rechazado', 'limpiar', 'credito', 'quitarCredito'].includes(accion)) throw { code: 400, msg: 'Acción inválida' };
-      if (['entregado', 'devoluciones', 'rechazado', 'credito'].includes(accion) && lista.some(o => o.estado !== 'cargado')) throw { code: 400, msg: 'Solo se pueden marcar pedidos ya cargados' };
+      if (!['reparto', 'entregado', 'devoluciones', 'rechazado', 'limpiar', 'credito', 'quitarCredito'].includes(accion)) throw { code: 400, msg: 'Acción inválida' };
+      if (['reparto', 'entregado', 'devoluciones', 'rechazado', 'credito'].includes(accion) && lista.some(o => o.estado !== 'cargado')) throw { code: 400, msg: 'Solo se pueden marcar pedidos ya cargados' };
       if ((accion === 'devoluciones' || accion === 'rechazado') && !m) throw { code: 400, msg: 'Indicá el motivo' };
       if (accion === 'credito' && !numero) throw { code: 400, msg: 'Indicá el número de la nota de crédito' };
       for (const o of lista) {
@@ -739,7 +739,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     const idx = list.findIndex(x => x.id === id && visible(x));
     if (idx < 0) return send(res, 404, { error: 'No existe' });
     if (req.method === 'GET') return send(res, 200, list[idx]);
-    if (rec === 'pedidos' && !admin && list[idx].entrega && req.method !== 'GET') throw { code: 403, msg: 'El pedido ya fue cerrado por administración (entregado, con devoluciones o rechazado)' };
+    if (rec === 'pedidos' && !admin && list[idx].entrega && req.method !== 'GET') throw { code: 403, msg: 'El pedido ya fue cerrado por administración (en reparto, entregado, con devoluciones o rechazado)' };
     if (req.method === 'PUT') {
       const b = await body(req);
       if (rec === 'productos') {
