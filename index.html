@@ -26,6 +26,7 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .btn.sec{background:var(--card);color:var(--tx);border:1px solid var(--bd)}
 .btn.bad{background:var(--bad)}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:10px}
+.man .manc{margin-top:8px;font-size:15px;line-height:1.5}.man .manc p,.man .manc ul,.man .manc ol{margin:8px 0}.man .manc li{margin:4px 0}
 .cnt{font-size:1.25em;font-weight:800;color:var(--tx)}
 .card.agr{background:color-mix(in srgb,var(--bad) 12%,var(--card));border-color:color-mix(in srgb,var(--bad) 45%,var(--bd))}
 .menu{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -321,20 +322,20 @@ window.addEventListener('popstate', e => {
 });
 
 /* ---------- vistas ---------- */
-const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', novedades: 'Novedades', hoja: 'Pedidos sin cargar' };
+const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', manual: 'Manual de uso', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', novedades: 'Novedades', hoja: 'Pedidos sin cargar' };
 const escritorio = () => window.matchMedia('(min-width:900px)').matches;
 const TABS = ['menu', 'pedidos', 'clientes', 'precios', 'faltantes', 'config'];   // pantallas con barra de botones abajo
 function render() {
   document.body.classList.remove('login-pg');
   if (!token) return login();
-  if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc','hoja'].includes(view)) view = 'menu';
+  if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc','hoja','manual'].includes(view)) view = 'menu';
   if (view !== 'pedido') document.body.classList.remove('bloq-ped');
   if (view !== 'pedidos' && view !== 'pedido' && view !== 'hoja') { fdiaInit = false; selMode = false; selPeds = new Set(); }   // al volver a Pedidos desde otra sección arranca en el día de hoy
   const tab = TABS.includes(view), desk = escritorio();
   document.body.classList.toggle('hay-tabs', desk || tab);
-  $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1>${campana()}<span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab || desk ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '📦', 'Listado'], ...(desk ? [['promos', '🏷️', 'Promociones'], ['novedades', '📣', 'Novedades' + (nNuevas() ? ' (' + nNuevas() + ')' : '')]] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo"><button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
+  $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1>${campana()}<span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab || desk ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '📦', 'Listado'], ...(desk ? [['promos', '🏷️', 'Promociones'], ['novedades', '📣', 'Novedades' + (nNuevas() ? ' (' + nNuevas() + ')' : '')]] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo">${esAdmin() ? `<button data-go="manual" class="${view === 'manual' ? 'on' : ''}"><span>📖</span>Manual de uso</button>` : ''}<button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
   estado();
-  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, novedades: vNovedades, hoja: vHoja })[view]();
+  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, manual: vManual, novedades: vNovedades, hoja: vHoja })[view]();
 }
 function login() {
   document.body.classList.remove('hay-tabs'); document.body.classList.add('login-pg');
@@ -410,6 +411,53 @@ async function hojaCargar() {
   } catch (e) { toast(e.message); }
 }
 
+/* ---------- manual de uso (admin) ---------- */
+const MANUAL = [
+  ['🚀', 'Primeros pasos', `<p>Entrás con tu <b>usuario</b> y <b>contraseña</b>. Abajo (en el celular) o a la izquierda (en la computadora) tenés el menú: <b>Inicio, Pedidos, Clientes, Listado, Faltantes</b>, y en la computadora también <b>Promociones</b> y <b>Novedades</b>. <b>Configuración</b> y <b>Cerrar sesión</b> están al final.</p>
+    <p>Podés <b>instalar la app</b> (Configuración → Instalar la app) para abrirla como un programa, sin escribir la dirección.</p>
+    <p>La <b>campanita 🔔</b> de arriba te avisa cuando un vendedor modificó un pedido que ya habías cargado.</p>`],
+  ['📋', 'Ver los pedidos', `<p>En <b>Pedidos</b> ves los del día de hoy. Con las flechas <b>‹ ›</b> cambiás de día, o tocás la fecha para elegir otra.</p>
+    <p>Los pedidos aparecen ordenados: primero <b>⏳ Por cargar</b> y después <b>✓ Cargados</b>. Dentro de cada uno, agrupados <b>por vendedor</b> y por <b>turno</b> (mañana o tarde), con el total en pesos.</p>
+    <p>Podés filtrar por <b>vendedor</b> y <b>turno</b>, o buscar escribiendo el nombre del cliente o el número de pedido. Tocá un pedido para abrirlo.</p>
+    <p>Al final de la lista está el <b>total por turno</b>, el <b>total de pedidos</b> y el <b>TOTAL NETO</b> (ya descontados los rechazados y las notas de crédito).</p>`],
+  ['🛒', 'Cargar un pedido nuevo', `<ol><li>Tocá <b>🛒 Cargar pedido</b>.</li><li>Elegí el <b>cliente</b>, el <b>día de entrega</b> y el <b>turno</b>.</li><li>Buscá los productos por nombre o código y tocá <b>+</b>. Si escribís un código y apretás <b>Enter</b>, se agrega el primero de la lista (el código exacto sale primero).</li><li>Cambiá las cantidades en el <b>Detalle del pedido</b>. Podés agregar una <b>nota</b>.</li><li>Tocá <b>Guardar pedido</b>.</li></ol>
+    <p>El total se redondea solo a múltiplos de $50. El redondeo se ve en el detalle.</p>
+    <p>Si salís sin guardar, el pedido queda como borrador y en Inicio aparece <b>Continuar</b>.</p>`],
+  ['✅', 'Cargar los pedidos al sistema', `<p>Cuando vos pasás los pedidos a tu sistema de facturación, los marcás como <b>cargados</b> para no perder la cuenta.</p>
+    <ol><li>En <b>Pedidos</b> tocá <b>☑ Sin cargar</b>.</li><li>Tildá los pedidos que querés (por ejemplo, solo los de la mañana) o tocá <b>Seleccionar todos</b>.</li><li>Tocá <b>📄 Abrir</b>: se ven de a uno, en limpio, con el código del cliente arriba, los artículos, el redondeo y el total.</li><li>Pasá de uno a otro <b>deslizando</b> o con <b>‹ Anterior / Siguiente ›</b>.</li><li>Cuando cargaste uno, tocá <b>✓ Marcar como cargado</b>: pasa al siguiente y vuelve arriba.</li></ol>
+    <p>Los precios de un pedido cargado <b>quedan fijos</b>: si después cambia el precio de un producto, ese pedido no cambia. Los pedidos sin cargar sí siguen los precios nuevos.</p>`],
+  ['⚠️', 'Cuando el vendedor agrega cosas a un pedido cargado', `<p>El vendedor puede <b>agregar</b> a un pedido ya cargado (no sacar). Cuando lo hace:</p>
+    <ul><li>El pedido se marca <b>⚠ Agregar</b> y la tarjeta se pinta de <b>rojo suave</b>.</li><li>Te llega una <b>notificación</b> al celular (si las activaste) y la campanita 🔔 cuenta el aviso.</li><li>Arriba de Pedidos aparece <b>⚠ A agregar</b> con un <b>Resumen de lo agregado</b>: por cada cliente, qué productos y cuántas unidades se sumaron. Es para que armes solo esa mercadería extra.</li></ul>
+    <p>Después de cargar lo agregado, abrí el pedido y tocá de nuevo <b>✓ Marcar como cargado</b>. El pedido sale del rojo, pero <b>el resumen se queda</b> hasta que toques <b>✓ Listo</b> (te pregunta si estás seguro). Con ese botón cerrás todo el resumen de una vez.</p>
+    <p>Si el pedido pasa a <b>En reparto</b>, sale solo del resumen.</p>`],
+  ['🚚', 'Entregas, devoluciones y notas de crédito', `<p>Una vez cargados, los pedidos se seguirán desde la lista:</p>
+    <ol><li>En Pedidos tocá <b>☑ Cargados</b> y elegí uno o varios pedidos.</li><li>Tocá <b>Opciones…</b> (o <b>✓ Entregados</b> si solo querés marcarlos como entregados de un golpe) y elegí el estado: <b>🚚 En reparto</b>, <b>✓ Entregado</b>, <b>↩ Con devoluciones</b> o <b>✕ Rechazado</b>. En devoluciones y rechazado tenés que escribir el <b>motivo</b>.</li><li>Si hay <b>nota de crédito</b>, escribí el <b>importe a descontar</b> (el número es opcional) y tocá <b>Guardar</b>.</li></ol>
+    <p>Un pedido cargado que todavía no salió dice <b>📦 En preparación</b>. Desde que pasa a reparto, el vendedor <b>ya no lo puede modificar ni borrar</b>.</p>
+    <p>Lo <b>rechazado</b> y las <b>notas de crédito</b> se restan del <b>TOTAL NETO</b> al final de la lista. El vendedor ve en su pedido si fue entregado, si tiene devoluciones o nota de crédito. Si te equivocás, elegí <b>Quitar etiqueta</b>.</p>
+    <p>Si activaste el <b>stock</b> de un producto, un pedido rechazado devuelve las unidades al stock.</p>`],
+  ['👤', 'Clientes', `<p>En <b>Clientes</b> ves todos. Cada cliente tiene su <b>código</b>, su dirección y su <b>vendedor asignado</b>: ese vendedor es el único (además de vos) que ve sus pedidos.</p>
+    <ul><li><b>+ Nuevo cliente</b>: completá los datos y elegí el vendedor.</li><li><b>📥 Importar clientes desde Excel</b>: para cargar muchos juntos (columnas: código, nombre, dirección, teléfono, y el ID del vendedor, que se ve en Usuarios).</li><li>Tocá un cliente para editarlo. Abajo se ve quién lo editó por última vez y cuándo.</li></ul>`],
+  ['📦', 'Productos, Listado y Faltantes', `<p><b>Listado</b> es la lista de productos con sus precios (en la lista se ve también la unidad de venta). <b>Faltantes</b> muestra los productos en $0, desactivados o con stock en 0: esos no se pueden pedir.</p>
+    <p>Para editar productos: <b>Configuración → Productos</b>. Ahí cambiás precio, nombre, <b>activo / desactivado</b>, la <b>unidad de venta</b> (por ejemplo, de a 6) y, si querés, el <b>stock</b>: con el botón de stock activado, el sistema va descontando lo que se pide y no deja pedir más de lo que hay.</p>
+    <p><b>Actualizar precios con la lista del proveedor:</b> Configuración → <b>Importar / exportar Excel</b>. Subí el <b>PDF</b> de la lista o un Excel. Antes de confirmar ves una vista previa.</p>
+    <ul><li>Los productos con <b>precio 0 quedan desactivados</b> (y sin precio guardado).</li><li>Los códigos <b>9999</b> (redondeo) y <b>7040</b> (servicio de reparto) se ignoran solos.</li><li>Te dice cuáles son los <b>productos nuevos</b>, con código, nombre y precio.</li><li>También podés <b>descargar</b> el listado en Excel, editarlo y volver a subirlo.</li></ul>`],
+  ['🏷️', 'Promociones', `<p>En <b>Promociones</b> hay dos tipos. En las dos, <b>la promo aplica a la cantidad exacta</b>: si la promo es de 10 y el cliente lleva 12, 10 van con el precio de la promo y las 2 restantes a precio normal (aparecen como un renglón aparte).</p>
+    <p><b>1) Promo de un producto:</b> tocá <b>+ Agregar promoción</b> y elegí el producto. Tiene un precio o un % de descuento y una cantidad (por ejemplo, llevando 10; si ponés 1, se aplica siempre y sola). Al vendedor se le ofrece cuando llega a esa cantidad y decide si la acepta.</p>
+    <p><b>2) Promo combinada (pack):</b> tocá <b>+ Nueva promo combinada</b> y armás grupos de productos con una cantidad cada uno. Ejemplo: <i>15 fideos</i>. Un grupo puede tener varios productos (las 4 variedades) y cuentan juntos. Si querés que cada pack use <b>como mucho 2 variedades</b>, poné <b>2</b> en <b>Máx. variedades</b>; si lo dejás vacío no hay límite. Elegís si el beneficio es un <b>% de descuento</b> o un <b>precio para cada producto</b>.</p>
+    <p>Tocá una promo para editarla, desactivarla (interruptor <b>Activa</b>) o eliminarla.</p>`],
+  ['📣', 'Novedades y notificaciones', `<p>En <b>Novedades</b> escribís un mensaje (un texto, sin título) para <b>todos los vendedores</b> o para <b>uno</b>. Podés marcarla como <b>fija</b>: el vendedor la ve siempre en su menú, aunque ya la haya leído. Ves quién la leyó y quién no.</p>
+    <p>Las <b>notificaciones</b> llegan al celular aunque la app esté cerrada. Cada persona tiene que activarlas en <b>Configuración → Notificaciones</b>, en su propio celular o computadora. Vos recibís avisos cuando un vendedor modifica un pedido cargado; los vendedores, cuando les mandás una novedad.</p>`],
+  ['👥', 'Usuarios y contraseñas', `<p>En <b>Configuración → Usuarios</b> creás y editás a los vendedores.</p>
+    <ul><li><b>+ Nuevo usuario</b>: nombre, usuario (para ingresar), contraseña y rol (<b>Vendedor</b> o <b>Administrador</b>).</li><li>Tocá un usuario para <b>cambiar su nombre o su usuario</b>, ponerle una contraseña nueva, o <b>desactivarlo</b> (no puede ingresar, pero conserva sus pedidos).</li><li>Si le cambiás el nombre, sus pedidos pasan a mostrar el nombre nuevo.</li><li>Para <b>eliminar</b> a un vendedor, primero reasigná sus clientes a otro.</li></ul>
+    <p>Tu propio nombre y usuario los cambiás en <b>Configuración → Mis datos</b>, y tu contraseña en <b>Cambiar contraseña</b>. Siempre tiene que quedar al menos un administrador activo.</p>`],
+  ['💾', 'Copias de seguridad', `<p>Los pedidos <b>nunca se borran</b>. Además, el sistema hace <b>una copia automática por día</b> y guarda las últimas 14.</p>
+    <p>En <b>Configuración → Copia de seguridad</b>:</p>
+    <ul><li><b>💾 Descargar copia completa</b>: te baja un archivo con todo. Conviene hacerlo de vez en cuando y guardarlo.</li><li><b>📊 Descargar pedidos en Excel</b>: el detalle de todos los pedidos.</li><li><b>♻️ Restaurar una copia</b>: volvés a una copia automática o a un archivo que descargaste. Antes de restaurar, el sistema guarda una copia de seguridad de cómo estaba. Los usuarios y contraseñas <b>no</b> se tocan.</li></ul>`],
+  ['❓', 'Si algo no anda', `<ul><li><b>No veo un cambio nuevo:</b> cerrá y volvé a abrir la app; si sigue igual, actualizá la página.</li><li><b>Un vendedor no ve a un cliente:</b> revisá que el cliente tenga asignado a ese vendedor.</li><li><b>No puedo pedir un producto:</b> mirá si está en Faltantes (precio 0, desactivado o sin stock).</li><li><b>El vendedor no puede editar un pedido:</b> ya está cargado (solo puede agregar) o ya está en reparto/entregado.</li><li><b>No me llegan avisos:</b> activá las notificaciones en Configuración → Notificaciones y permitilas en el navegador.</li><li><b>Aparece "Base de datos no conectada":</b> avisá enseguida; los datos se perderían al actualizar el sistema.</li></ul>`],
+];
+function vManual() {
+  $('#main').innerHTML = `<p class="mut" style="margin:0 0 10px">Guía simple para el administrador. Tocá cada tema para abrirlo.</p>` + MANUAL.map(([i, t, h], k) => `<details class="card man" ${k === 0 ? 'open' : ''}><summary style="cursor:pointer;font-weight:700;font-size:17px">${i} ${t}</summary><div class="manc">${h}</div></details>`).join('');
+}
 /* ---------- notificaciones push ---------- */
 const pushSoportado = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 const b64aBytes = b => { const p = '='.repeat((4 - b.length % 4) % 4), r = atob((b + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from([...r].map(c => c.charCodeAt(0))); };
@@ -492,7 +540,7 @@ function vConfig() {
   const a = esAdmin(), fila = (v, i, t) => `<div class="row" data-go="${v}" style="cursor:pointer"><span style="font-size:22px">${i}</span><div class="nm"><b>${t}</b></div><span class="mut">›</span></div>`;
   $('#main').innerHTML = `<div class="card"><b>${esc(user.nombre)}</b><br><span class="mut">usuario: ${esc(user.usuario)} · ${a ? 'Administrador' : 'Vendedor'}</span></div>
     ${a ? `<div class="card"><h2>Mis datos</h2><form id="fp"><label>Nombre</label><input name="nombre" value="${esc(user.nombre)}" required><label>Usuario (para ingresar)</label><input name="usuario" value="${esc(user.usuario)}" autocapitalize="none" required><div style="height:14px"></div><button class="btn">Guardar mis datos</button></form></div>` : ''}
-    ${a ? `<div class="card">${fila('productos', '🗂️', `Productos (${productos.length})`)}${fila('importar', '📥', 'Importar / exportar Excel')}${fila('usuarios', '👥', 'Usuarios')}${fila('promos', '🏷️', 'Promociones')}</div>` : ''}
+    ${a ? `<div class="card">${fila('productos', '🗂️', `Productos (${productos.length})`)}${fila('importar', '📥', 'Importar / exportar Excel')}${fila('usuarios', '👥', 'Usuarios')}${fila('manual', '📖', 'Manual de uso')}${fila('promos', '🏷️', 'Promociones')}</div>` : ''}
     ${a ? `<div class="card"><h2>Copia de seguridad</h2><p class="mut" style="margin:0 0 8px">Se guarda una copia automática por día (las últimas 14) dentro de la base de datos. Además podés bajar una copia a tu computadora o el detalle de los pedidos en Excel.</p>
       <button class="btn" data-act="respaldo">💾 Descargar copia completa</button><button class="btn sec" data-act="pedidosExcel" style="margin-top:8px">📊 Descargar pedidos en Excel</button><button class="btn sec" data-act="abrirRestaurar" style="margin-top:8px">♻️ Restaurar una copia</button></div>` : ''}
     <div class="card"><h2>Notificaciones</h2><div id="pushBox"></div></div>
