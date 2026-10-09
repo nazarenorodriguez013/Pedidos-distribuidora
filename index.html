@@ -524,7 +524,11 @@ function vConfig() {
 function buscador(extra = '') {
   return `<input id="q" type="search" placeholder="Buscar por nombre o código" value="${esc(q)}" autocomplete="off">${extra}<div id="lista"></div>`;
 }
-function filtrar(arr) { const n = norm(q); return n ? arr.filter(p => norm(p.nombre).includes(n) || norm(p.codigo).includes(n)) : arr; }
+function filtrar(arr) {   // al buscar, primero el código exacto (005 antes que 7005), después los que empiezan con lo escrito y al final los que lo contienen
+  const n = norm(q); if (!n) return arr;
+  const puntos = p => { const c = norm(p.codigo), nm = norm(p.nombre); return c === n ? 0 : c.startsWith(n) ? 1 : nm.startsWith(n) ? 2 : c.includes(n) ? 3 : nm.includes(n) ? 4 : 9; };
+  return arr.map(p => [puntos(p), p]).filter(x => x[0] < 9).sort((a, b) => a[0] - b[0]).map(x => x[1]);
+}
 function enlazarBuscador(pintar) { $('#q').oninput = e => { q = e.target.value; pintar(); }; pintar(); }
 const vacio = t => `<p class="mut" style="text-align:center;padding:24px 0">${t}</p>`;
 const sinPrecio = p => !(p.precio > 0);
