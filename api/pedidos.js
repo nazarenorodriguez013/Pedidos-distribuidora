@@ -655,9 +655,9 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       if (!['reparto', 'entregado', 'devoluciones', 'rechazado', 'limpiar', 'credito', 'quitarCredito'].includes(accion)) throw { code: 400, msg: 'Acción inválida' };
       if (['reparto', 'entregado', 'devoluciones', 'rechazado', 'credito'].includes(accion) && lista.some(o => o.estado !== 'cargado')) throw { code: 400, msg: 'Solo se pueden marcar pedidos ya cargados' };
       if ((accion === 'devoluciones' || accion === 'rechazado') && !m) throw { code: 400, msg: 'Indicá el motivo' };
-      if (accion === 'credito' && !numero) throw { code: 400, msg: 'Indicá el número de la nota de crédito' };
+      if (accion === 'credito' && !numero && !(monto > 0)) throw { code: 400, msg: 'Indicá el número o el importe de la nota de crédito' };
       for (const o of lista) {
-        if (accion === 'credito') o.notaCredito = { numero, monto: monto > 0 ? monto : undefined, por: yo.nombre, en: ahora };
+        if (accion === 'credito') o.notaCredito = { numero: numero || (o.notaCredito && o.notaCredito.numero) || '', monto: monto > 0 ? monto : undefined, por: yo.nombre, en: ahora };
         else if (accion === 'quitarCredito') delete o.notaCredito;
         else if (accion === 'limpiar') { delete o.entrega; reponerStock(o, false); }
         else { o.entrega = { estado: accion, motivo: accion === 'entregado' ? '' : m, por: yo.nombre, en: ahora }; reponerStock(o, accion === 'rechazado'); }

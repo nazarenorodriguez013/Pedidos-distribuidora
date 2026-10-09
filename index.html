@@ -635,7 +635,7 @@ document.addEventListener('touchend', e => {
 }, { passive: true });
 function vPedido() {
   const bloqueado = !esAdmin() && !!draft.id && !!draft.entrega;   // en reparto / entregado / con devoluciones / rechazado: el vendedor ya no lo puede modificar
-  const cargadoBanner = bloqueado ? `<div class="hint" style="background:#dbeafe;color:#1e3a8a;padding:10px;border-radius:8px;margin-bottom:6px">🔒 Este pedido ya está <b>${esc((ENTREGAS[draft.entrega.estado] || [''])[0].replace(/^\S+\s/, '').toLowerCase())}</b>: no se puede modificar.</div>` : !draft.id || draft.estado !== 'cargado' ? '' : draft.agregar
+  const cargadoBanner = bloqueado ? `<div class="hint" style="background:#dbeafe;color:#1e3a8a;padding:10px;border-radius:8px;margin-bottom:6px">🔒 Este pedido ya <b>${({ reparto: 'está en reparto', entregado: 'fue entregado', devoluciones: 'fue entregado con devoluciones', rechazado: 'fue rechazado' })[draft.entrega.estado] || 'está cerrado'}</b>, no se puede modificar.</div>` : !draft.id || draft.estado !== 'cargado' ? '' : draft.agregar
     ? `<div class="hint" style="background:#fee2e2;color:#7f1d1d;padding:10px;border-radius:8px;margin-bottom:6px">⚠ <b>Agregar:</b> ${esAdmin() ? 'el vendedor modificó el pedido después de cargarlo.' : 'modificaste el pedido después de que lo cargaron. Administración lo ve marcado.'}<br>${draft.cambios.map(esc).join(' · ')}</div>`
     : esAdmin() ? `<div class="hint" style="background:#dcfce7;color:#166534;padding:10px;border-radius:8px;margin-bottom:6px">✓ Pedido <b>cargado</b>${draft.cargadoPor ? ' por ' + esc(draft.cargadoPor) : ''}.</div>`
     : `<div class="hint" style="background:#e0f2fe;color:#0c4a6e;padding:10px;border-radius:8px;margin-bottom:6px">✓ Este pedido ya fue <b>cargado</b> por administración. Si lo modificás, queda marcado como <b>Agregar</b> para que lo vean.</div>`;
@@ -908,7 +908,7 @@ function abrirEntrega() {   // entrega y nota de crédito de los pedidos elegido
   el.innerHTML = `<div class="modal-card"><div class="row" style="border:0;padding:0 0 4px"><h2 style="flex:1;margin:0;font-size:19px">${n} ${n === 1 ? 'pedido' : 'pedidos'}: entrega</h2><button class="btn sec" data-modal="cerrar" aria-label="Cerrar" style="width:40px;min-height:40px;padding:0;flex:none">✕</button></div>
     <div class="row" style="border:0;padding:6px 0 0;gap:8px;flex-wrap:wrap">${b('reparto', '🚚 En reparto')}${b('entregado', '✓ Entregado')}${b('devoluciones', '↩ Con devoluciones')}${b('rechazado', '✕ Rechazado')}${b('limpiar', 'Quitar etiqueta')}</div>
     <div id="entMotivoBox" hidden><label>Motivo</label><textarea id="entMotivo" placeholder="Ej: faltaron 2 cajas / el cliente no lo quiso" style="min-height:70px"></textarea></div>
-    <div class="card" style="margin:12px 0 0"><b>Nota de crédito</b><div class="row" style="border:0;padding:8px 0 0;gap:8px"><input id="ncNum" placeholder="Número" style="flex:1 1 0;min-width:0"><input id="ncMonto" inputmode="decimal" placeholder="Monto (opcional)" style="flex:1 1 0;min-width:0"></div>
+    <div class="card" style="margin:12px 0 0"><b>Nota de crédito</b><div class="row" style="border:0;padding:8px 0 0;gap:8px"><input id="ncNum" placeholder="Número (opcional)" style="flex:1 1 0;min-width:0"><input id="ncMonto" inputmode="decimal" placeholder="Importe a descontar" style="flex:1 1 0;min-width:0"></div>
       <button type="button" class="btn sec" data-entsel="quitarCredito" style="margin-top:8px">Quitar la nota de crédito existente</button></div>
     <div style="height:12px"></div><button type="button" class="btn" data-act="guardarEntrega">Guardar</button></div>`;
   document.body.appendChild(el);
@@ -920,7 +920,7 @@ async function guardarEntrega() {
   const pasos = [];
   if (entSel === 'quitarCredito') pasos.push({ accion: 'quitarCredito' });
   else if (entSel) pasos.push({ accion: entSel, motivo });
-  if (numero && entSel !== 'quitarCredito') pasos.push({ accion: 'credito', numero, monto });
+  if ((numero || Number(String(monto).replace(',', '.')) > 0) && entSel !== 'quitarCredito') pasos.push({ accion: 'credito', numero, monto });
   if (!pasos.length) return toast('Elegí una opción de entrega o cargá la nota de crédito');
   if ((entSel === 'devoluciones' || entSel === 'rechazado') && !motivo.trim()) return toast('Indicá el motivo');
   if (await enviarEntrega(pasos)) { toast('Guardado ✓'); cerrarModal(); }
