@@ -765,18 +765,22 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     if (req.method === 'GET') return send(res, 200, list[idx]);
     if (rec === 'pedidos' && !admin && list[idx].entrega && req.method !== 'GET') throw { code: 403, msg: 'El pedido ya fue cerrado por administración (en reparto, entregado, con devoluciones o rechazado)' };
     if (req.method === 'PUT') {
-      const b = await body(req);
+      const b = await body(req); let antesAgregado;
       if (rec === 'productos') {
         const obj = cleanProducto(b, list[idx]);
         if (list.some(p => p.id !== id && p.codigo.toLowerCase() === obj.codigo.toLowerCase())) throw { code: 409, msg: 'Ya existe un producto con ese código' };
         list[idx] = { ...list[idx], ...obj };
       } else {
-        const antes = list[idx];
+        const antes = list[idx]; antesAgregado = antes.agregadoEn;
         list[idx] = { ...antes, ...armarPedido(b, antes, yo, admin), editado: new Date().toISOString() };
         ajustarStock(antes, list[idx]);
       }
       await save(pool);
-      return send(res, 200, list[idx]);
+      const n = list[idx];
+      if (rec === 'pedidos' && !admin && n.estado === 'cargado' && n.agregar && n.agregadoEn !== antesAgregado) {   // el vendedor modificó un pedido ya cargado: se avisa a los administradores
+        notificar(adminsActivos().map(u => u.id), { titulo: '⚠️ Pedido modificado · Distribuidora Don Luis', cuerpo: `${yo.nombre} modificó el pedido #${n.id} (${n.cliente}), que ya estaba cargado`, tag: 'agregar-' + n.id }, pool);
+      }
+      return send(res, 200, n);
     }
     if (req.method === 'DELETE') {
       if (rec === 'pedidos' && !admin && list[idx].estado === 'cargado') throw { code: 403, msg: 'El pedido ya fue cargado por administración' };
