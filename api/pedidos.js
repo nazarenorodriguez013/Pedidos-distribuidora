@@ -49,15 +49,39 @@ async function load(pool) {
 }
 // Los pedidos pendientes siguen los precios y promos vigentes; al cargarlos (estado 'cargado') quedan con el precio de ese momento.
 // Promo combinada = pack: solo las unidades que completan packs llevan el precio de la promo; el resto va a precio normal.
+/* Grupo con límite de variedades (g.maxVar): cada pack de g.cant unidades usa como mucho maxVar productos distintos del grupo.
+   Se arman los packs de a uno: arranca con la variedad que más hay y completa con la que mejor calza; devuelve cuántos packs salen y cuántas unidades de cada producto entran. */
+function repartoMax(g, cant, maxPacks) {
+  const q = new Map(g.pids.filter(pid => (cant.get(pid) || 0) > 0).map(pid => [pid, cant.get(pid)])), alloc = new Map();
+  let packs = 0;
+  while (packs < maxPacks) {
+    let need = g.cant; const usado = [];
+    while (need > 0 && usado.length < g.maxVar) {
+      const a = [...q.entries()].filter(([pid, v]) => v > 0 && !usado.some(x => x[0] === pid)); if (!a.length) break;
+      const ch = usado.length === 0 ? a.sort((x, y) => y[1] - x[1])[0] : a.filter(x => x[1] >= need).sort((x, y) => x[1] - y[1])[0] || a.sort((x, y) => y[1] - x[1])[0];
+      const use = Math.min(ch[1], need); usado.push([ch[0], use]); need -= use;
+    }
+    if (need > 0) break;
+    for (const [pid, use] of usado) { q.set(pid, q.get(pid) - use); alloc.set(pid, (alloc.get(pid) || 0) + use); }
+    packs++;
+  }
+  return { packs, alloc };
+}
+const packsGrupo = (g, cant) => g.maxVar ? repartoMax(g, cant, Infinity).packs : Math.floor(g.pids.reduce((t, pid) => t + (cant.get(pid) || 0), 0) / g.cant);
 function asignarPack(items) {
-  for (const i of items) if (i.comboId) i.cantPromo = 0; else delete i.cantPromo;
+  for (const i of items) {
+    if (i.comboId) i.cantPromo = 0;
+    else if (i.promoQty) { const p = state.productos.find(x => x.id === i.pid), m = p ? promoCantDe(p) : 0; if (m > 1) i.cantPromo = Math.floor(i.cant / m) * m; else delete i.cantPromo; }   // promo por cantidad exacta: solo los múltiplos de la cantidad llevan el precio de la promo
+    else delete i.cantPromo;
+  }
   for (const cid of new Set(items.filter(i => i.comboId).map(i => i.comboId))) {
     const c = state.combos.find(x => x.id === cid); if (!c) continue;
     const cant = new Map(items.map(i => [i.pid, i.cant]));
-    const packs = Math.min(...c.grupos.map(g => Math.floor(sumaGrupo(g, cant) / g.cant)));
+    const packs = Math.min(...c.grupos.map(g => packsGrupo(g, cant)));
     for (const g of c.grupos) {
+      const rep = g.maxVar ? repartoMax(g, cant, packs).alloc : null;
       let rest = packs * g.cant;
-      for (const i of items) if (i.comboId === cid && g.pids.includes(i.pid) && rest > 0) { const t = Math.min(i.cant, rest); i.cantPromo += t; rest -= t; }
+      for (const i of items) if (i.comboId === cid && g.pids.includes(i.pid) && rest > 0) { const t = rep ? rep.get(i.pid) || 0 : Math.min(i.cant, rest); i.cantPromo += t; rest -= t; }
     }
   }
 }
@@ -156,7 +180,7 @@ function hashPass(pass, salt = crypto.randomBytes(16).toString('hex')) {
 }
 const passOk = (u, pass) => { const h = Buffer.from(hashPass(pass, u.salt).hash), g = Buffer.from(u.hash); return h.length === g.length && crypto.timingSafeEqual(h, g); };
 const pub = u => ({ id: u.id, usuario: u.usuario, nombre: u.nombre, rol: u.rol, activo: u.activo });
-// Promos: precio fijo (precioPromo) o descuento % (promoPct). Con promoCant > 1 solo aplica comprando esa cantidad o más
+// Promos: precio fijo (precioPromo) o descuento % (promoPct). Con promoCant > 1 solo aplica a esa cantidad exacta (o a sus múltiplos); lo que sobra va a precio normal
 // y el vendedor la acepta; con promoCant 1 se aplica siempre, sola.
 const hayPromo = p => !!p.promo && (p.precioPromo > 0 || p.promoPct > 0);
 const promoCantDe = p => Math.max(1, p.promoCant || 1);
@@ -187,7 +211,7 @@ function cleanProducto(b, prev = {}) {
 // Promos combinadas: la promo pide una cantidad por grupo de productos (un grupo puede ser un solo producto o varios "de cualquier sabor").
 // Si el pedido cumple todos los grupos y el vendedor la acepta, cada unidad de los productos de la promo va con descuento % o con precio fijo.
 const sumaGrupo = (g, cant) => g.pids.reduce((t, pid) => t + (cant.get(pid) || 0), 0);
-const comboCumple = (c, cant) => c.activa && c.grupos.every(g => sumaGrupo(g, cant) >= g.cant);
+const comboCumple = (c, cant) => c.activa && c.grupos.every(g => packsGrupo(g, cant) >= 1);
 const comboIncluye = (c, pid) => c.grupos.some(g => g.pids.includes(pid));
 const precioComboDe = (c, p) => (c.tipo === 'precio' ? (c.precios || {})[p.id] || p.precio : Math.round(p.precio * (100 - c.pct)) / 100);   // 'precio': cada producto tiene el suyo
 // Las promos y la unidad de venta se guardan por CÓDIGO de producto: si un producto se borra (por ejemplo al reemplazar la lista)
@@ -224,7 +248,7 @@ function cleanCombo(b) {
   const grupos = (Array.isArray(b.grupos) ? b.grupos : []).map(g => {
     const pids = [...new Set((Array.isArray(g.pids) ? g.pids : []).map(Number))];
     const cods = pids.map(pid => (state.productos.find(p => p.id === pid) || {}).codigo).filter(Boolean);
-    return { cant: Math.floor(num(g.cant)), pids, codigos: [...new Set([...cods, ...(Array.isArray(g.perdidos) ? g.perdidos : [])])] };   // 'perdidos': códigos reservados de productos que hoy no están en la lista
+    const maxVar = Math.floor(num(g.maxVar)); return { cant: Math.floor(num(g.cant)), ...(maxVar >= 1 ? { maxVar } : {}), pids, codigos: [...new Set([...cods, ...(Array.isArray(g.perdidos) ? g.perdidos : [])])] };   // 'perdidos': códigos reservados de productos que hoy no están en la lista
   });
   if (!grupos.length) throw { code: 400, msg: 'Agregá al menos un grupo de productos' };
   for (const g of grupos) {
@@ -316,7 +340,7 @@ function armarPedido(b, viejo, quien, admin) {
     if (!old && !((hayPromo(p) && promoCantDe(p) <= 1 ? precioPromoDe(p) : p.precio) > 0)) throw { code: 409, msg: `"${p.nombre}" no tiene precio` };
     let aplica = hayPromo(p) && promoCantDe(p) <= 1;   // promo sin cantidad: automática
     if (quierePromo.get(pid)) {   // promo por cantidad aceptada por el vendedor
-      if (!hayPromo(p) || promoCantDe(p) <= 1 || cant < promoCantDe(p)) throw { code: 409, msg: `La promo de "${p.nombre}" no aplica (hay que llevar ${promoCantDe(p)} o más)` };
+      if (!hayPromo(p) || promoCantDe(p) <= 1 || cant < promoCantDe(p)) throw { code: 409, msg: `La promo de "${p.nombre}" no aplica (hay que llevar ${promoCantDe(p)})` };
       aplica = true;
     }
     let combo = null;
