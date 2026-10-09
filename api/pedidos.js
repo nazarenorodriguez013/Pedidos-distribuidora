@@ -343,7 +343,7 @@ function armarPedido(b, viejo, quien, admin) {
   let extra = {};
   if (viejo && viejo.estado === 'cargado') {
     for (const i of items) { const o = viejas.get(i.pid); i.cantCargada = admin ? i.cant : (o ? o.cantCargada ?? o.cant : 0); }
-    if (admin) extra = { agregar: false, agregadoEn: undefined, cargadoItems: items.map(i => ({ pid: i.pid, nombre: i.nombre, cant: i.cant })) };   // lo que edita el admin queda como cargado
+    if (admin) extra = { agregar: false, agregadoEn: undefined, sumar: sumarDe(viejo), cargadoItems: items.map(i => ({ pid: i.pid, nombre: i.nombre, cant: i.cant })) };   // lo que edita el admin queda como cargado
     else {
       const igual = items.length === viejo.items.length && items.every(i => { const o = viejas.get(i.pid); return o && o.cant === i.cant && !!o.promo === !!i.promo && o.comboId === i.comboId; })
         && (dia || '') === (viejo.dia || '') && (turno || '') === (viejo.turno || '') && nota === (viejo.nota || '') && (cli ? cli.id : viejo.clienteId) === viejo.clienteId;
@@ -390,6 +390,13 @@ function renombrar(u, nombre) {
   if (u.nombre === nombre) return;
   for (const p of state.pedidos) { if (p.vendedorId === u.id) p.vendedor = nombre; if (p.editadoPor === u.nombre) p.editadoPor = nombre; }
   for (const c of state.clientes) if (c.editadoPor === u.nombre) c.editadoPor = nombre;
+}
+// lo que el vendedor agregó a un pedido ya cargado (más lo que quedó pendiente de una vuelta anterior): se guarda para que el administrador lo arme aunque ya haya vuelto a cargar el pedido
+function sumarDe(o) {
+  if (!o.agregar) return o.sumar;
+  const m = new Map((o.sumar || []).map(x => [x.pid, { ...x }]));
+  for (const i of o.items) { const d = i.cant - (i.cantCargada || 0); if (d > 0) { const x = m.get(i.pid) || { pid: i.pid, nombre: i.nombre, cant: 0 }; x.cant += d; m.set(i.pid, x); } }
+  return m.size ? [...m.values()] : undefined;
 }
 const adminsActivos = () => state.usuarios.filter(u => u.rol === 'admin' && u.activo);
 
@@ -633,14 +640,16 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       const { accion } = await body(req, 1e4), ahora = new Date().toISOString();
       if (accion === 'cargado') {
         if (o.estado !== 'cargado') o.cargadoEn = ahora;
+        const sum = sumarDe(o); if (sum) o.sumar = sum;
         o.estado = 'cargado'; o.cargadoPor = yo.nombre; o.agregar = false;
         for (const i of o.items) i.cantCargada = i.cant;
         o.cargadoItems = o.items.map(i => ({ pid: i.pid, nombre: i.nombre, cant: i.cant }));
         delete o.agregadoEn;
       } else if (accion === 'pendiente') {
-        o.estado = 'pendiente'; delete o.cargadoEn; delete o.cargadoPor; delete o.agregadoEn; delete o.cargadoItems; o.agregar = false;
+        o.estado = 'pendiente'; delete o.cargadoEn; delete o.cargadoPor; delete o.agregadoEn; delete o.cargadoItems; delete o.sumar; o.agregar = false;
         for (const i of o.items) delete i.cantCargada;
-      } else throw { code: 400, msg: 'Acción inválida' };
+      } else if (accion === 'sumarListo') delete o.sumar;
+      else throw { code: 400, msg: 'Acción inválida' };
       await save(pool);
       return send(res, 200, o);
     }
@@ -660,7 +669,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         if (accion === 'credito') o.notaCredito = { numero: numero || (o.notaCredito && o.notaCredito.numero) || '', monto: monto > 0 ? monto : undefined, por: yo.nombre, en: ahora };
         else if (accion === 'quitarCredito') delete o.notaCredito;
         else if (accion === 'limpiar') { delete o.entrega; reponerStock(o, false); }
-        else { o.entrega = { estado: accion, motivo: accion === 'entregado' ? '' : m, por: yo.nombre, en: ahora }; reponerStock(o, accion === 'rechazado'); }
+        else { delete o.sumar; o.entrega = { estado: accion, motivo: accion === 'entregado' ? '' : m, por: yo.nombre, en: ahora }; reponerStock(o, accion === 'rechazado'); }
       }
       await save(pool);
       return send(res, 200, { ok: true, n: lista.length });
