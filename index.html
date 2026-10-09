@@ -928,6 +928,12 @@ async function guardarEntrega() {
 let vend = '', fdia = '', fturno = '', festado = '', fdiaInit = false;   // al entrar a Pedidos se muestran los de hoy
 const badgeTurno = p => TURNOS[p.turno] ? `<span class="t ${p.turno === 'manana' ? 'm' : 'a'}">${TURNOS[p.turno].toUpperCase()}</span>` : '';
 const sumaPeds = l => l.reduce((a, p) => a + p.total, 0);
+/* resumen de lo que el vendedor agregó a pedidos ya cargados: cantidad, producto y cliente */
+function resumenAg(ag) {
+  const bloques = ag.map(p => ({ p, l: p.items.map(i => ({ d: i.cant - (i.cantCargada || 0), n: i.nombre })).filter(x => x.d > 0).sort((x, y) => norm(x.n).localeCompare(norm(y.n))) })).filter(x => x.l.length);
+  if (!bloques.length) return '';
+  return `<div class="card" style="grid-column:1/-1;border-color:var(--bad)"><b>Resumen de lo agregado</b>${bloques.map(({ p, l }) => `<div style="padding:8px 0 2px;border-top:1px solid var(--bd);margin-top:8px"><div style="font-size:17px;font-weight:800">${p.clienteCodigo ? esc(p.clienteCodigo) + ' · ' : ''}${esc(p.cliente)} <span class="mut" style="font-weight:400;font-size:13px">#${p.id}</span></div>${l.map(f => `<div style="font-size:16px;padding:2px 0 0 10px"><b style="font-size:18px">${f.d}</b> ${esc(f.n)}</div>`).join('')}</div>`).join('')}</div>`;
+}
 const cuentaPeds = l => `<b class="cnt">${l.length}</b> ${l.length === 1 ? 'pedido' : 'pedidos'}`;
 function vPedidos() {
   if (!fdiaInit) { fdia = hoy(); fdiaInit = true; }
@@ -955,7 +961,7 @@ function vPedidos() {
           <div class="tfila" style="border-top:2px solid var(--bd);margin-top:6px;padding-top:10px"><span>Total de pedidos<br><small class="mut">${cuentaPeds(l)}</small></span><b>${money(tot)}</b></div>
           ${mr ? `<div class="tfila"><span>− Rechazados<br><small class="mut">${cuentaPeds(pr)}</small></span><b style="color:var(--bad)">− ${money(mr)}</b></div>` : ''}${mn ? `<div class="tfila"><span>− Notas de crédito<br><small class="mut">${pn.length === 1 ? '1 nota' : pn.length + ' notas'}${sinMonto ? ' · ' + sinMonto + ' sin monto cargado' : ''}</small></span><b style="color:var(--bad)">− ${money(mn)}</b></div>` : ''}
           <div class="tfila" style="border-top:2px solid var(--acc);margin-top:4px;padding-top:10px"><b>TOTAL NETO</b><b>${money(neto)}</b></div></div>`; }; const ag = esAdmin() ? pedidos.filter(hayAgregados) : [];   // los que el vendedor modificó después de cargarlos van arriba de todo, de cualquier día
-        const top = ag.length ? `<div style="grid-column:1/-1;margin-top:4px;padding:8px 2px;border-bottom:2px solid var(--bad)"><b style="color:var(--bad)">⚠ Para agregar</b> <span class="mut">· <b class="cnt">${ag.length}</b> ${ag.length === 1 ? 'pedido' : 'pedidos'}</span></div>` + ag.map(tarj).join('') : '';
+        const top = ag.length ? `<div style="grid-column:1/-1;margin-top:4px;padding:8px 2px;border-bottom:2px solid var(--bad)"><b style="color:var(--bad)">⚠ Para agregar</b> <span class="mut">· <b class="cnt">${ag.length}</b> ${ag.length === 1 ? 'pedido' : 'pedidos'}</span></div>` + resumenAg(ag) + ag.map(tarj).join('') : '';
         const sinAg = x => x.filter(p => !hayAgregados(p) || !esAdmin());
         return top + bloque('⏳ Por cargar', sinAg(l.filter(p => p.estado !== 'cargado'))) + bloque('✓ Cargados', sinAg(l.filter(p => p.estado === 'cargado'))) + (l.length ? totales() : ''); })() : (pend ? '' : vacio('No hay pedidos')));
     pintarSel();
