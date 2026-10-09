@@ -204,7 +204,7 @@ const precioPromoDe = p => Math.round((p.precioPromo > 0 ? p.precioPromo : p.pre
 const efectivo = p => (hayPromo(p) && promoCantDe(p) <= 1 ? precioPromoDe(p) : p.precio);   // precio de la promo automática
 const promoQue = p => p.precioPromo > 0 ? money(precioPromoDe(p)) + ' c/u' : (p.promoPct || 0) + '% de descuento';
 const promoTxt = p => promoPorCant(p) ? `${promoCantDe(p)}+ · ${promoQue(p)}` : promoQue(p);
-const promoDesc = p => promoPorCant(p) ? `${promoQue(p)} llevando ${promoCantDe(p)} o más` : promoQue(p);
+const promoDesc = p => promoPorCant(p) ? `${promoQue(p)} llevando ${promoCantDe(p)}` : promoQue(p);
 
 // En la PC la sesión dura mientras la ventana de la app esté abierta (al cerrarla se cierra la sesión; recargar la mantiene); en el celular dura 30 días
 const esPC = window.matchMedia('(min-width:900px)').matches;
@@ -572,12 +572,32 @@ function nuevoDraft(ped) {
 }
 // promos combinadas (ver servidor): grupos de productos con una cantidad cada uno; si se cumple todo y el vendedor acepta, baja el precio
 const sumaGrupo = g => g.pids.reduce((t, pid) => t + (draft.items[pid] || 0), 0);
-const comboCumple = c => c.activa && c.grupos.every(g => sumaGrupo(g) >= g.cant);
+/* Grupo con límite de variedades (g.maxVar): cada pack de g.cant unidades usa como mucho maxVar productos distintos del grupo.
+   Igual que en el servidor. Se arman los packs de a uno: arranca con la variedad que más hay y completa con la que mejor calza; devuelve cuántos packs salen y cuántas unidades de cada producto entran. */
+function repartoMax(g, cant, maxPacks) {
+  const q = new Map(g.pids.filter(pid => (cant.get(pid) || 0) > 0).map(pid => [pid, cant.get(pid)])), alloc = new Map();
+  let packs = 0;
+  while (packs < maxPacks) {
+    let need = g.cant; const usado = [];
+    while (need > 0 && usado.length < g.maxVar) {
+      const a = [...q.entries()].filter(([pid, v]) => v > 0 && !usado.some(x => x[0] === pid)); if (!a.length) break;
+      const ch = usado.length === 0 ? a.sort((x, y) => y[1] - x[1])[0] : a.filter(x => x[1] >= need).sort((x, y) => x[1] - y[1])[0] || a.sort((x, y) => y[1] - x[1])[0];
+      const use = Math.min(ch[1], need); usado.push([ch[0], use]); need -= use;
+    }
+    if (need > 0) break;
+    for (const [pid, use] of usado) { q.set(pid, q.get(pid) - use); alloc.set(pid, (alloc.get(pid) || 0) + use); }
+    packs++;
+  }
+  return { packs, alloc };
+}
+const packsGrupo = (g, cant) => g.maxVar ? repartoMax(g, cant, Infinity).packs : Math.floor(g.pids.reduce((t, pid) => t + (cant.get(pid) || 0), 0) / g.cant);
+const cantMapa = () => new Map(Object.entries(draft.items).map(([k, v]) => [+k, v]));
+const comboCumple = c => c.activa && c.grupos.every(g => packsGrupo(g, cantMapa()) >= 1);
 const comboIncluye = (c, pid) => c.grupos.some(g => g.pids.includes(pid));
 const precioComboDe = (c, p) => (c.tipo === 'precio' ? (c.precios || {})[p.id] || p.precio : Math.round(p.precio * (100 - c.pct)) / 100);   // 'precio': cada producto con el suyo
 const nombresGrupo = (g, c) => { const n = g.pids.map(pid => { const p = productos.find(x => x.id === pid) || {}; return (p.nombre || '?') + (c && c.tipo === 'precio' && c.precios && c.precios[pid] ? ' ' + money(c.precios[pid]) : ''); }); return n.slice(0, 3).join(' / ') + (n.length > 3 ? ` y ${n.length - 3} más` : ''); };
 const comboBeneficio = c => (c.tipo === 'precio' ? 'precio especial' : c.pct + '% de descuento');
-const comboTxt = c => c.grupos.map(g => `${g.cant} ${nombresGrupo(g, c) || ((g.perdidos || []).length ? 'productos fuera de la lista (' + g.perdidos.join(', ') + ')' : '')}`).join(' + ') + (c.tipo === 'precio' ? '' : ' → ' + comboBeneficio(c));
+const comboTxt = c => c.grupos.map(g => `${g.cant} ${g.maxVar ? '(de hasta ' + g.maxVar + (g.maxVar === 1 ? ' variedad' : ' variedades') + ') ' : ''}${nombresGrupo(g, c) || ((g.perdidos || []).length ? 'productos fuera de la lista (' + g.perdidos.join(', ') + ')' : '')}`).join(' + ') + (c.tipo === 'precio' ? '' : ' → ' + comboBeneficio(c));
 function comboDeLinea(p) {   // promo combinada aceptada y cumplida que alcanza a este producto (la de menor precio)
   let best = null;
   for (const c of combos) if (draft.combos[c.id] === 'si' && comboCumple(c) && comboIncluye(c, p.id) && (!best || precioComboDe(c, p) < precioComboDe(best, p))) best = c;
@@ -594,9 +614,11 @@ const precioLinea = p => {
   return cb ? precioComboDe(cb, p) : ap ? precioPromoDe(p) : p.precio;
 };
 // Promo combinada = pack: solo las unidades que completan packs llevan el precio de la promo; el resto va a precio normal
+const qtyAplicada = p => promoPorCant(p) && promoAplicada(p);   // promo de un producto por cantidad exacta, aceptada
 function unidadesPromo(p) {
-  const cb = comboDeLinea(p); if (!cb) return draft.items[p.id] || 0;
-  const packs = Math.min(...cb.grupos.map(g => Math.floor(sumaGrupo(g) / g.cant))), g = cb.grupos.find(x => x.pids.includes(p.id));
+  const cb = comboDeLinea(p); if (!cb) return qtyAplicada(p) ? Math.floor((draft.items[p.id] || 0) / promoCantDe(p)) * promoCantDe(p) : draft.items[p.id] || 0;
+  const packs = Math.min(...cb.grupos.map(g => packsGrupo(g, cantMapa()))), g = cb.grupos.find(x => x.pids.includes(p.id));
+  if (g.maxVar) return repartoMax(g, cantMapa(), packs).alloc.get(p.id) || 0;
   let resto = packs * g.cant;
   for (const pid of draft.orden || []) {
     if (!(draft.items[pid] > 0) || !g.pids.includes(pid)) continue;
@@ -608,7 +630,7 @@ function unidadesPromo(p) {
 const precioNormal = p => { const o = draft.orig[p.id]; return draft.estado === 'cargado' && o && o.precioLista !== undefined ? o.precioLista : p.precio; };
 function totalLinea(p) {
   const ex = draft.items[p.id] || 0, cb = comboDeLinea(p), pl = precioLinea(p);
-  if (!cb) return ex * pl;
+  if (!cb && !qtyAplicada(p)) return ex * pl;
   const up = unidadesPromo(p); return up * pl + (ex - up) * precioNormal(p);
 }
 const REDONDEO = 50;   // el total de cada pedido se redondea hacia arriba a múltiplo de 50
@@ -682,7 +704,7 @@ function bloqueCombos() {   // ofertas y avance de las promos combinadas
   const out = [];
   for (const c of combos) {
     if (!c.activa || !c.grupos.every(g => sumaGrupo(g) > 0)) continue;   // la promo solo aparece cuando ya cargó algo de cada grupo de la promo
-    const st = draft.combos[c.id], avance = c.grupos.map(g => `${Math.min(sumaGrupo(g), g.cant)}/${g.cant} ${esc(nombresGrupo(g, c))}`).join(' · ');
+    const st = draft.combos[c.id], avance = c.grupos.map(g => `${Math.min(sumaGrupo(g), g.cant)}/${g.cant}${g.maxVar ? ' (de hasta ' + g.maxVar + (g.maxVar === 1 ? ' variedad' : ' variedades') + ')' : ''} ${esc(nombresGrupo(g, c))}`).join(' · ');
     if (!comboCumple(c)) out.push(`<div class="promo-hint" style="padding:4px 0">🏷️ <b>${esc(c.nombre)}</b>: ${avance} → ${esc(comboBeneficio(c))}</div>`);
     else if (st === 'si') out.push(`<div class="promo-ok" style="margin:6px 0" data-cid="${c.id}"><span>✓ Promo aplicada: <b>${esc(c.nombre)}</b> (${esc(comboBeneficio(c))})</span><button class="btn sec" data-combo="no">Quitar</button></div>`);
     else if (st === 'no') out.push(`<div class="promo-hint" style="padding:4px 0" data-cid="${c.id}">Promo ${esc(c.nombre)} no aplicada <button class="btn sec" data-combo="ask">Aplicar</button></div>`);
@@ -707,7 +729,7 @@ function sincronizarOrden() {   // los productos van en el orden en que se carga
   for (const pid of Object.keys(draft.items).map(Number)) if (draft.items[pid] > 0 && !draft.orden.includes(pid)) draft.orden.push(pid);
 }
 // Promo combinada con unidades de más que no completan otro pack: se muestran como un producto aparte, a precio normal
-const packPartido = p => { const cb = comboDeLinea(p), ex = draft.items[p.id] || 0, up = cb ? unidadesPromo(p) : ex; return !!cb && up > 0 && up < ex; };
+const packPartido = p => { const cb = comboDeLinea(p), ex = draft.items[p.id] || 0, up = cb || qtyAplicada(p) ? unidadesPromo(p) : ex; return !!(cb || qtyAplicada(p)) && up > 0 && up < ex; };
 function filasPack(p) {
   const pl = precioLinea(p), ex = draft.items[p.id], up = unidadesPromo(p), cc = cargadaDe(p.id), pn = precioNormal(p);
   const tags = draft.estado === 'cargado' && ex > cc ? ` <span class="tag bad">Agregar${cc ? ' +' + (ex - cc) : ''}</span>` : draft.estado === 'cargado' && ex < cc ? ` <span class="tag warn">−${cc - ex}</span>` : '';
@@ -1018,7 +1040,7 @@ function formProducto(p) {
     <div class="row" style="border:0"><div class="nm"><b>En promoción</b></div><label class="sw" style="margin:0"><input type="checkbox" name="promo" ${p.promo ? 'checked' : ''}><i></i></label></div>
     <div class="card" style="margin:6px 0 0;background:var(--bg)"><b>Promoción</b>
       <label>Cantidad mínima</label><input name="promoCant" inputmode="numeric" value="${p.promoCant || 1}" placeholder="1">
-      <p class="mut" style="margin:4px 0 0">1 = se aplica siempre y sola. Con 10, se le ofrece al vendedor cuando carga 10 o más y decide si la acepta.</p>
+      <p class="mut" style="margin:4px 0 0">1 = se aplica siempre y sola. Con 10, se le ofrece al vendedor cuando carga 10 y decide si la acepta. Aplica a esas 10 unidades; si lleva 12, 10 van con el precio de la promo y 2 a precio normal.</p>
       <label>Descuento %</label><input name="promoPct" inputmode="decimal" value="${p.promoPct || ''}" placeholder="Ej: 5">
       <label>O precio promo por unidad</label><input name="precioPromo" inputmode="decimal" value="${p.precioPromo || ''}"></div>
     <div style="height:14px"></div><button class="btn">Guardar</button>
@@ -1061,7 +1083,7 @@ function pintarCombo() {
     <div class="row" style="border:0"><div class="nm"><b>Activa</b></div><label class="sw" style="margin:0"><input type="checkbox" id="ca" ${c.activa ? 'checked' : ''}><i></i></label></div>
     <h3 style="margin:10px 0 2px;font-size:16px">¿Qué tiene que llevar?</h3>
     <p class="mut" style="margin:0 0 6px">Cada grupo pide una cantidad. Un grupo puede ser <b>un producto</b> (10 harina común) o <b>varios</b> "de cualquier sabor" (6 gelatinas surtidas: cuentan juntas). Tiene que cumplir todos los grupos.</p>
-    ${c.grupos.map((g, i) => `<div class="card" style="background:var(--bg)"><div class="row" style="border:0;padding:0;align-items:flex-end"><div style="flex:none;width:96px"><label>Cantidad</label><input class="gc" data-gi="${i}" inputmode="numeric" value="${g.cant}"></div>
+    ${c.grupos.map((g, i) => `<div class="card" style="background:var(--bg)"><div class="row" style="border:0;padding:0;align-items:flex-end"><div style="flex:none;width:96px"><label>Cantidad</label><input class="gc" data-gi="${i}" inputmode="numeric" value="${g.cant}"></div><div style="flex:none;width:96px"><label>Máx. variedades</label><input class="gv" data-gi="${i}" inputmode="numeric" placeholder="sin límite" value="${g.maxVar || ''}"></div>
       <div class="nm"><label>Grupo ${i + 1}</label><input class="gb" data-gi="${i}" placeholder="Buscar producto…" autocomplete="off"></div>${c.grupos.length > 1 ? `<button type="button" class="btn sec" data-gdelg="${i}" style="width:40px;min-height:46px;padding:0;flex:none;color:var(--bad)">✕</button>` : ''}</div>
       <div id="gres${i}"></div>
       ${(g.perdidos || []).length ? `<div class="mut" style="margin-top:6px">Productos que hoy no están en la lista (la promo vuelve a funcionar cuando el código reaparezca): ${g.perdidos.map(cod => `<span class="tag" style="margin:2px 4px 2px 0;padding:4px 8px">${esc(cod)} <button type="button" data-gdelp="${i}:${esc(cod)}" style="border:0;background:none;color:var(--bad);font-size:16px">×</button></span>`).join('')}</div>` : ''}
@@ -1086,6 +1108,7 @@ function pintarCombo() {
       f.querySelectorAll(`.pp[data-gi="${i}"]`).forEach(x => { x.value = e.target.value; });
     };
   });
+  f.querySelectorAll('.gv').forEach(inp => { inp.oninput = e => { c.grupos[+e.target.dataset.gi].maxVar = e.target.value; }; });
   f.querySelectorAll('.gc').forEach(inp => { inp.oninput = e => { c.grupos[+e.target.dataset.gi].cant = e.target.value; }; });
   f.querySelectorAll('.gb').forEach(inp => {
     inp.oninput = e => {
@@ -1096,7 +1119,7 @@ function pintarCombo() {
   });
 }
 async function guardarCombo() {
-  const c = comboEd, d = { nombre: c.nombre, activa: c.activa, tipo: c.tipo, pct: c.pct, precios: c.precios, grupos: c.grupos.map(g => ({ cant: g.cant, pids: g.pids, perdidos: g.perdidos || [] })), preciosCod: c.preciosCod };
+  const c = comboEd, d = { nombre: c.nombre, activa: c.activa, tipo: c.tipo, pct: c.pct, precios: c.precios, grupos: c.grupos.map(g => ({ cant: g.cant, maxVar: g.maxVar, pids: g.pids, perdidos: g.perdidos || [] })), preciosCod: c.preciosCod };
   try {
     if (c.id) await api('PUT', 'p/combos/' + c.id, d); else await api('POST', 'p/combos', d);
     await cargar(); toast('Promo guardada'); cerrarModal();
