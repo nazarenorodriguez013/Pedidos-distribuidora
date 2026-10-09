@@ -404,7 +404,7 @@ async function hojaCargar() {
     await api('PUT', 'p/cargar/' + id, { accion: 'cargado' });
     const f = await api('GET', 'p/pedidos/' + id); const k = pedidos.findIndex(x => x.id === id); if (k >= 0) pedidos[k] = f; cacheDatos();
     hojaIds.splice(hojaI, 1); if (hojaI >= hojaIds.length) hojaI = Math.max(0, hojaIds.length - 1);
-    toast('Pedido cargado ✓'); render();
+    toast('Pedido cargado ✓'); render(); window.scrollTo(0, 0);
     if (!hojaIds.length) { toast('No quedan pedidos sin cargar'); volverA('pedidos'); }
   } catch (e) { toast(e.message); }
 }
