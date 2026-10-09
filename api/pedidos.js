@@ -385,6 +385,12 @@ function cleanUsuario(b, prev) {
   } else if (!prev) throw { code: 400, msg: 'Falta la contraseña' };
   return o;
 }
+// al cambiar el nombre de un usuario, los pedidos y clientes que lo guardan como texto pasan al nombre nuevo
+function renombrar(u, nombre) {
+  if (u.nombre === nombre) return;
+  for (const p of state.pedidos) { if (p.vendedorId === u.id) p.vendedor = nombre; if (p.editadoPor === u.nombre) p.editadoPor = nombre; }
+  for (const c of state.clientes) if (c.editadoPor === u.nombre) c.editadoPor = nombre;
+}
 const adminsActivos = () => state.usuarios.filter(u => u.rol === 'admin' && u.activo);
 
 const CODIGOS_IGNORADOS = { '9999': 'redondeo', '7040': 'servicio de reparto' };
@@ -528,6 +534,14 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       return send(res, 200, { ok: true, token: makeToken(yo, secret) });   // la sesión actual sigue valiendo con la clave nueva
     }
 
+    if (rec === 'perfil' && req.method === 'PUT') {   // el administrador cambia su propio nombre y usuario
+      soloAdmin();
+      const b = await body(req, 1e4), nuevo = cleanUsuario({ nombre: b.nombre, usuario: b.usuario }, yo);
+      renombrar(yo, nuevo.nombre);
+      Object.assign(yo, nuevo); await save(pool);
+      return send(res, 200, { user: pub(yo) });
+    }
+
     if (rec === 'importar' && req.method === 'POST') {
       soloAdmin();
       const r = importar(await body(req, 30e6));
@@ -556,6 +570,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       if (req.method === 'PUT') {
         const nuevo = cleanUsuario(await body(req, 1e4), u);
         if ((nuevo.rol !== 'admin' || !nuevo.activo) && u.rol === 'admin' && u.activo && adminsActivos().length === 1) throw { code: 409, msg: 'Tiene que quedar al menos un administrador activo' };
+        renombrar(u, nuevo.nombre);
         Object.assign(u, nuevo); await save(pool);
         return send(res, 200, pub(u));
       }
