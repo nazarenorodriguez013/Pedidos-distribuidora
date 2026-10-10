@@ -28,9 +28,9 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:10px}
 .man .manc{margin-top:8px;font-size:15px;line-height:1.5}.man .manc p,.man .manc ul,.man .manc ol{margin:8px 0}.man .manc li{margin:4px 0}
 .cnt{font-size:1.25em;font-weight:800;color:var(--tx)}
-.card.z-concordia{background:color-mix(in srgb,var(--info) 13%,var(--card));border-color:color-mix(in srgb,var(--info) 35%,var(--bd))}
-.card.z-afuera{background:color-mix(in srgb,#8b5cf6 13%,var(--card));border-color:color-mix(in srgb,#8b5cf6 35%,var(--bd))}
-.card.agr{background:color-mix(in srgb,var(--bad) 12%,var(--card));border-color:color-mix(in srgb,var(--bad) 45%,var(--bd))}
+.card.z-concordia{background-image:linear-gradient(rgba(59,130,246,.14),rgba(59,130,246,.14));border-color:rgba(59,130,246,.45)}   /* tinte con rgba: funciona en cualquier navegador */
+.card.z-afuera{background-image:linear-gradient(rgba(139,92,246,.14),rgba(139,92,246,.14));border-color:rgba(139,92,246,.45)}
+.card.agr{background-image:linear-gradient(rgba(220,38,38,.12),rgba(220,38,38,.12));border-color:rgba(220,38,38,.5)}
 .menu{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .menu button{min-height:110px;border:1px solid var(--bd);border-radius:16px;background:var(--card);color:var(--tx);font-size:16px;font-weight:700;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
 .menu button span{font-size:32px}
@@ -119,7 +119,7 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .card h2{font-size:17px;margin:0 0 4px}
 .promo-offer{flex-basis:100%;background:#fef3c7;color:#78350f;border:1px solid #fcd34d;border-radius:10px;padding:10px}
 .promo-offer .row{gap:8px}.promo-offer .btn{width:auto;flex:1;min-height:42px;padding:8px}
-.promo-ok{flex-basis:100%;background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok);border-radius:10px;padding:8px 10px;font-weight:600;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.promo-ok{flex-basis:100%;background:rgba(34,160,80,.15);color:var(--ok);border-radius:10px;padding:8px 10px;font-weight:600;display:flex;align-items:center;justify-content:space-between;gap:8px}
 .promo-ok .btn,.promo-hint .btn{width:auto;min-height:32px;padding:2px 10px;font-size:13px}
 .promo-hint{flex-basis:100%;font-size:13px;color:var(--warn)}
 .modal{position:fixed;inset:0;z-index:50;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.55)}
@@ -159,10 +159,10 @@ body.login-pg .btn:not(.sec){color:#04231c}
   .tabs button{flex:none;flex-direction:row;justify-content:flex-start;gap:12px;font-size:15px;padding:12px 20px;min-height:0;border-left:4px solid transparent;cursor:pointer}
   .tabs button span{font-size:20px;flex:none}
   .tabs button{text-align:left}
-  .tabs button.on{border-top:0;border-left:4px solid var(--pri);padding-top:12px;background:color-mix(in srgb,var(--pri) 10%,transparent)}
+  .tabs button.on{border-top:0;border-left:4px solid var(--pri);padding-top:12px;background:rgba(26,136,112,.1)}
   .tabs .abajo{margin-top:auto;border-top:1px solid var(--bd);padding-top:6px;display:flex;flex-direction:column}
   .tabs .abajo button{width:100%;background:none}
-  .tabs button:hover{background:color-mix(in srgb,var(--pri) 8%,transparent)}
+  .tabs button:hover{background:rgba(26,136,112,.08)}
   .menu{grid-template-columns:repeat(3,1fr)}
   .menu button{min-height:130px;cursor:pointer}
   .menu button.main{grid-column:1/-1;min-height:110px}
@@ -175,7 +175,8 @@ body.login-pg .btn:not(.sec){color:#04231c}
   .grid2>p{grid-column:1/-1;margin:0}
   .grid2>.card{margin:0}
   [data-sel],[data-ped],[data-edit],[data-editcli],[data-edituser],[data-cli],[data-precio],[data-promoprecio],[data-editcombo],[data-go]{cursor:pointer}
-  .row[data-sel]:hover,.row[data-edit]:hover,.row[data-editcli]:hover,.row[data-edituser]:hover,.row[data-cli]:hover,.row[data-precio]:hover,.row[data-promoprecio]:hover,.row[data-editcombo]:hover,.card[data-ped]:hover{background:color-mix(in srgb,var(--pri) 8%,transparent)}
+  .row[data-sel]:hover,.row[data-edit]:hover,.row[data-editcli]:hover,.row[data-edituser]:hover,.row[data-cli]:hover,.row[data-precio]:hover,.row[data-promoprecio]:hover,.row[data-editcombo]:hover{background:rgba(26,136,112,.08)}
+  .card[data-ped]:hover{filter:brightness(.96)}   /* solo oscurece un poco: no le saca el tinte de reparto ni el rojo de Agregar */
   .btn:hover{filter:brightness(1.07)}
   .modal-card{max-width:640px}
   #toast{bottom:30px}
@@ -743,7 +744,7 @@ function pintarLista() {
   const todos = filtrar(base), lista = todos.slice(0, 30);   // orden fijo: lo elegido no sube, queda en el detalle
   $('#lista').innerHTML = lista.length ? `<div class="card">${lista.map(p => {
     const c = draft.items[p.id] || 0, bloq = (!p.activo || (agotado(p) && !stockDisp(p))) && !c;   // sin precio / desactivado: se ve pero no se puede pedir
-    return `<div class="row ${bloq ? 'off' : ''}" ${bloq ? '' : `data-sel="${p.id}"`} style="${c ? 'background:color-mix(in srgb,var(--pri) 10%,transparent)' : ''}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · </span>${p.usaStock ? `<span class="tag ${p.stock > 0 ? '' : 'bad'}">Stock ${p.stock || 0}</span> ` : ''}${hayPromo(p) ? `<span class="tag promo">PROMO ${esc(promoTxt(p))}</span> ` : ''}${precioHtml({ ...p, promo: !draft.orig[p.id] && p.promo })}</div>
+    return `<div class="row ${bloq ? 'off' : ''}" ${bloq ? '' : `data-sel="${p.id}"`} style="${c ? 'background:rgba(26,136,112,.1)' : ''}"><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)} · </span>${p.usaStock ? `<span class="tag ${p.stock > 0 ? '' : 'bad'}">Stock ${p.stock || 0}</span> ` : ''}${hayPromo(p) ? `<span class="tag promo">PROMO ${esc(promoTxt(p))}</span> ` : ''}${precioHtml({ ...p, promo: !draft.orig[p.id] && p.promo })}</div>
       ${bloq ? `<span class="tag">${agotado(p) ? 'Sin stock' : 'No disponible'}</span>` : c ? `<span class="tag ok">✓ ${c}</span>` : '<span class="mut">+</span>'}</div>`;
   }).join('')}</div>${todos.length > lista.length ? `<p class="mut" style="text-align:center">Mostrando ${lista.length} de ${todos.length}: seguí escribiendo para afinar</p>` : ''}` : vacio('Sin resultados');
 }
@@ -1046,7 +1047,7 @@ function vPedidos() {
     const pend = colaMia().filter(x => !n || norm(x.body.cliente).includes(n)).map(x => `<div class="card" style="border-color:${x.error ? 'var(--bad)' : 'var(--warn)'}"><div class="row" style="border:0;padding:0"><div class="nm"><b>${esc(x.body.cliente)}</b>
       <span class="mut">${x.body.dia ? esc(diaTxt(x.body.dia)) + ' · ' + (TURNOS[x.body.turno] || '') + ' · ' : ''}${x.error ? 'Rechazado: ' + esc(x.error) : '⏳ Esperando señal para enviarse'} · ${x.body.items.length} prod. · ${x.body.items.reduce((s, i) => s + i.cant, 0)} u.</span></div><span class="price">${money(x.total)}</span></div>
       <div class="row" style="border:0;padding:8px 0 0">${x.error ? `<button class="btn sec" data-reint="${esc(x.uid)}">Reintentar</button>` : ''}<button class="btn sec" data-delcola="${esc(x.uid)}">Eliminar</button></div></div>`).join('');
-    $('#lista').innerHTML = pend + (l.length || (esAdmin() && pedidos.some(conSumar)) ? `` + (() => { const tarj = p => `<div class="card${esAdmin() && ZONAS[p.zona] ? ' z-' + p.zona : ''}${hayAgregados(p) ? ' agr' : ''}" data-ped="${p.id}" style="${selMode && esElegible(p) && selPeds.has(p.id) ? 'border-color:var(--pri);background:color-mix(in srgb,var(--pri) 10%,var(--card))' : ''}"><div class="row" style="border:0;padding:0">${selMode && esElegible(p) ? `<input type="checkbox" ${selPeds.has(p.id) ? 'checked' : ''} tabindex="-1" style="width:22px;min-height:22px;flex:none;pointer-events:none">` : ''}<div class="nm"><b>#${p.id} · ${p.clienteCodigo ? esc(p.clienteCodigo) + ' · ' : ''}${esc(p.cliente)}</b> ${badgeTurno(p)}${estadoTag(p)}
+    $('#lista').innerHTML = pend + (l.length || (esAdmin() && pedidos.some(conSumar)) ? `` + (() => { const tarj = p => `<div class="card${esAdmin() && ZONAS[p.zona] ? ' z-' + p.zona : ''}${hayAgregados(p) ? ' agr' : ''}" data-ped="${p.id}" style="${selMode && esElegible(p) && selPeds.has(p.id) ? 'border-color:var(--pri);background-image:linear-gradient(rgba(26,136,112,.1),rgba(26,136,112,.1))' : ''}"><div class="row" style="border:0;padding:0">${selMode && esElegible(p) ? `<input type="checkbox" ${selPeds.has(p.id) ? 'checked' : ''} tabindex="-1" style="width:22px;min-height:22px;flex:none;pointer-events:none">` : ''}<div class="nm"><b>#${p.id} · ${p.clienteCodigo ? esc(p.clienteCodigo) + ' · ' : ''}${esc(p.cliente)}</b> ${badgeTurno(p)}${estadoTag(p)}
       <span class="mut">${p.dia ? `<b>${esc(diaTxt(p.dia))}</b> · ` : ''}${esAdmin() ? esc(p.vendedor || '—') + ' · ' : ''}${p.items.length} prod. · ${p.items.reduce((s, i) => s + i.cant, 0)} u.${p.estado === 'cargado' && p.cargadoEn && p.editado > p.cargadoEn ? ' · <b>✎ editado ' + new Date(p.editado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) + '</b>' : ''}</span></div><div style="flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:6px">${esAdmin() && p.zona && ZONAS[p.zona] ? `<span class="tag info" style="margin:0">📍 ${ZONAS[p.zona]}</span>` : ''}<span class="price">${money(p.total)}</span></div></div></div>`; const cab = (t, lst, sub) => `<div style="grid-column:1/-1;margin-top:${sub ? 4 : 10}px;padding:${sub === 'turno' ? '4px 2px 4px 10px' : sub ? '6px 8px' : '8px 2px'};border-bottom:${sub ? '1px solid' : '2px solid'} var(--bd);${sub === true ? 'background:var(--card);border-radius:8px' : ''}"><b${sub === 'turno' ? ' class="mut"' : ''}>${t}</b> <span class="mut">· <b class="cnt">${lst.length}</b> ${lst.length === 1 ? 'pedido' : 'pedidos'} · ${money(lst.reduce((a, p) => a + p.total, 0))}</span></div>`; const porTurno = lst => ['manana', 'tarde', ''].map(k => [k, lst.filter(p => (p.turno || '') === k)]).filter(([, x]) => x.length).map(([k, x]) => (lst.length === x.length && !k ? '' : cab(k ? TURNOS[k] : 'Sin turno', x, 'turno')) + (esAdmin() ? x.slice().sort(porReparto) : x).map(tarj).join('')).join('');
       const bloque = (t, lst) => { if (!lst.length) return ''; if (!esAdmin()) return cab(t, lst) + porTurno(lst); const g = {}; lst.forEach(p => (g[p.vendedor || '—'] = g[p.vendedor || '—'] || []).push(p)); return cab(t, lst) + Object.keys(g).sort().map(v => cab('👤 ' + esc(v), g[v], true) + porTurno(g[v])).join(''); }; const totales = () => { const rech = x => !!(x.entrega && x.entrega.estado === 'rechazado'), ncDe = x => (!rech(x) && x.notaCredito && x.notaCredito.monto) || 0, netoDe = x => rech(x) ? 0 : x.total - ncDe(x);
         const pr = l.filter(rech), pn = l.filter(x => ncDe(x) > 0), sinMonto = l.filter(x => !rech(x) && x.notaCredito && !x.notaCredito.monto).length;
