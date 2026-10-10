@@ -678,6 +678,17 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       return send(res, 200, o);
     }
 
+    if (rec === 'reparto' && req.method === 'PUT') {   // el administrador etiqueta pedidos con la zona del reparto: Concordia / Afuera (vacío = quitar la etiqueta)
+      soloAdmin();
+      const b = await body(req, 1e5), zona = String(b.zona || '');
+      if (!['', 'concordia', 'afuera'].includes(zona)) throw { code: 400, msg: 'Zona inválida' };
+      const ids = new Set((Array.isArray(b.ids) ? b.ids : []).map(Number)), lista = s.pedidos.filter(o => ids.has(o.id));
+      if (!lista.length) throw { code: 404, msg: 'No existen esos pedidos' };
+      for (const o of lista) { if (zona) o.zona = zona; else delete o.zona; }
+      await save(pool);
+      return send(res, 200, { ok: true, n: lista.length });
+    }
+
     if (rec === 'entrega' && req.method === 'PUT') {   // el administrador marca varios pedidos cargados: entregado / con devoluciones / rechazado (con motivo) / nota de crédito
       soloAdmin();
       const b = await body(req, 1e5), accion = b.accion, m = String(b.motivo || '').trim().slice(0, 300);

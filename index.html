@@ -597,7 +597,7 @@ const diaTxt = d => d ? new Date(d + 'T00:00').toLocaleDateString('es-AR', { wee
 const hayAgregados = p => p.estado === 'cargado' && !!p.agregar;   // el vendedor lo modificó después de que el admin lo cargó
 const ENTREGAS = { reparto: ['🚚 En reparto', 'info'], entregado: ['✓ Entregado', 'ok'], devoluciones: ['↩ Con devoluciones', 'warn'], rechazado: ['✕ Rechazado', 'bad'] };
 const entregaTag = p => (p.entrega && ENTREGAS[p.entrega.estado] ? ` <span class="tag ${ENTREGAS[p.entrega.estado][1]}">${ENTREGAS[p.entrega.estado][0]}</span>` : p.estado === 'cargado' ? ' <span class="tag">📦 En preparación</span>' : '') + (p.notaCredito ? ` <span class="tag warn">📄 Nota de crédito ${esc(p.notaCredito.numero)}</span>` : '');
-const estadoTag = p => entregaTag(p) + ' ' + (hayAgregados(p) ? '<span class="tag bad">⚠ Agregar</span>' : p.estado === 'cargado' ? '<span class="tag ok">✓ Cargado</span>' : '<span class="tag warn">Pendiente de cargar</span>');
+const estadoTag = p => (esAdmin() && p.zona && ZONAS[p.zona] ? `<span class="tag info">📍 ${ZONAS[p.zona]}</span> ` : '') + entregaTag(p) + ' ' + (hayAgregados(p) ? '<span class="tag bad">⚠ Agregar</span>' : p.estado === 'cargado' ? '<span class="tag ok">✓ Cargado</span>' : '<span class="tag warn">Pendiente de cargar</span>');
 const cargadoParaVendedor = () => !esAdmin() && !!draft.id && draft.estado === 'cargado';   // el vendedor no edita la nota ni elimina un pedido cargado
 const cargadaDe = pid => (draft.estado === 'cargado' && draft.cargada[pid]) || 0;
 // qué cambió respecto de lo que el administrador cargó
@@ -951,15 +951,16 @@ function vCliente() {
 
 /* ---------- pedidos cargados ---------- */
 let selMode = false, selTipo = 'cargados', selPeds = new Set(), repintarPeds = null, visiblesPeds = [];   // selTipo: 'cargados' (marcar entrega) o 'pendientes' (abrirlos en la hoja)
-const esElegible = p => selTipo === 'cargados' ? p.estado === 'cargado' : p.estado !== 'cargado';
+const ZONAS = { concordia: 'Concordia', afuera: 'Afuera' };
+const esElegible = p => selTipo === 'reparto' ? true : selTipo === 'cargados' ? p.estado === 'cargado' : p.estado !== 'cargado';
 const cargadosVisibles = () => visiblesPeds.filter(esElegible);
 function pintarSel() {
   const t = $('#selTools'), b = $('#selBar'); if (!t || !b) return;
-  if (!selMode) { t.innerHTML = '<button class="btn sec" data-act="selModo" data-tipo="pendientes" style="padding:0 6px;font-size:15px">☑ Sin cargar</button><button class="btn sec" data-act="selModo" data-tipo="cargados" style="padding:0 6px;font-size:15px">☑ Cargados</button>'; b.innerHTML = ''; return; }
-  const cv = cargadosVisibles(), pend = selTipo === 'pendientes';
+  if (!selMode) { t.innerHTML = '<button class="btn sec" data-act="selModo" data-tipo="pendientes" style="padding:0 6px;font-size:15px">☑ Sin cargar</button><button class="btn sec" data-act="selModo" data-tipo="cargados" style="padding:0 6px;font-size:15px">☑ Cargados</button><button class="btn sec" data-act="selModo" data-tipo="reparto" style="padding:0 6px;font-size:15px;grid-column:1/-1">🚚 Crear reparto</button>'; b.innerHTML = ''; return; }
+  const cv = cargadosVisibles(), pend = selTipo === 'pendientes', rep = selTipo === 'reparto';
   t.innerHTML = `<button class="btn sec" data-act="selTodos">${cv.length && cv.every(p => selPeds.has(p.id)) ? 'Quitar selección' : `Seleccionar todos (${cv.length})`}</button><button class="btn sec" data-act="selModo">Cancelar</button>`;
   const n = selPeds.size;
-  b.innerHTML = `<div class="bar sel"><div class="tot" style="font-size:15px;white-space:nowrap">${n} elegidos</div>${pend ? `<button class="btn" data-act="abrirElegidos" ${n ? '' : 'disabled'} style="padding:12px 18px">📄 Abrir</button>` : `<button class="btn sec" data-act="selEntrega" ${n ? '' : 'disabled'} style="padding:12px 12px">Opciones…</button><button class="btn" data-act="selEntregado" ${n ? '' : 'disabled'} style="padding:12px 14px">✓ Entregados</button>`}</div>`;
+  b.innerHTML = `<div class="bar sel"><div class="tot" style="font-size:15px;white-space:nowrap">${n} elegidos</div>${rep ? `<button class="btn" data-act="selZona" data-zona="concordia" ${n ? '' : 'disabled'} style="padding:12px 14px">Concordia</button><button class="btn" data-act="selZona" data-zona="afuera" ${n ? '' : 'disabled'} style="padding:12px 14px">Afuera</button><button class="btn sec" data-act="selZona" data-zona="" ${n ? '' : 'disabled'} style="padding:12px 10px">Quitar</button>` : pend ? `<button class="btn" data-act="abrirElegidos" ${n ? '' : 'disabled'} style="padding:12px 18px">📄 Abrir</button>` : `<button class="btn sec" data-act="selEntrega" ${n ? '' : 'disabled'} style="padding:12px 12px">Opciones…</button><button class="btn" data-act="selEntregado" ${n ? '' : 'disabled'} style="padding:12px 14px">✓ Entregados</button>`}</div>`;
 }
 async function enviarEntrega(pasos) {   // pasos: [{accion, motivo?, numero?, monto?}] sobre los pedidos elegidos
   const ids = [...selPeds]; if (!ids.length) return false;
@@ -968,6 +969,14 @@ async function enviarEntrega(pasos) {   // pasos: [{accion, motivo?, numero?, mo
     const r = await api('GET', 'p/pedidos'); pedidos = r.pedidos; cacheDatos();
     selPeds = new Set(); selMode = false; return true;
   } catch (e) { toast(e.message); return false; }
+}
+async function aplicarZona(zona) {   // etiqueta los pedidos elegidos con la zona del reparto
+  const ids = [...selPeds]; if (!ids.length) return;
+  try {
+    await api('PUT', 'p/reparto', { ids, zona });
+    const r = await api('GET', 'p/pedidos'); pedidos = r.pedidos; cacheDatos();
+    selPeds = new Set(); selMode = false; toast(zona ? `Marcados como ${ZONAS[zona]} ✓` : 'Etiqueta quitada ✓'); if (repintarPeds) repintarPeds();
+  } catch (e) { toast(e.message); }
 }
 async function aplicarSel(accion) {
   const n = selPeds.size; if (!n) return;
@@ -1498,6 +1507,7 @@ document.addEventListener('click', async e => {
   else if (d.act === 'hojaCargar') hojaCargar();
   else if (d.hnav) hojaMover(+d.hnav);
   else if (d.pnav) irAPedido(+d.pnav);
+  else if (d.act === 'selZona') aplicarZona(d.zona);
   else if (d.act === 'selModo') { selMode = d.tipo ? true : false; if (d.tipo) selTipo = d.tipo; selPeds = new Set(); if (repintarPeds) repintarPeds(); }
   else if (d.act === 'abrirElegidos') abrirHoja([...selPeds]);
   else if (d.act === 'selTodos') { const cv = cargadosVisibles(), todos = cv.length && cv.every(p => selPeds.has(p.id)); selPeds = todos ? new Set() : new Set(cv.map(p => p.id)); if (repintarPeds) repintarPeds(); }
