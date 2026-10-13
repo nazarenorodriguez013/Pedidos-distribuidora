@@ -67,6 +67,8 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .hoja table{width:100%;border-collapse:collapse;margin-top:12px;font-size:16px}
 .hoja th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;border-bottom:1px solid #d1d5db;padding:4px 4px}
 .hoja td{padding:9px 4px;border-bottom:1px solid #e5e7eb;vertical-align:top}
+.hoja{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.hoja tr.promo td{background:#fef3c7}.hoja tr.promo td.n:last-child{color:#dc2626;font-weight:700}.hoja .hoja-pr{display:block;font-size:9px;line-height:1;font-weight:400;text-transform:uppercase;letter-spacing:.04em;color:#dc2626}
 .hoja .n{text-align:right;white-space:nowrap}.hoja td.c{font-weight:700;white-space:nowrap}
 .hoja td.q{font-weight:800;font-size:19px}
 .hoja-nota{margin-top:10px;padding:8px;background:#fef3c7;border-radius:8px;font-size:14px}
@@ -385,10 +387,10 @@ function abrirHoja(ids) {   // los pedidos elegidos (sin cargar), en el orden en
   if (!l.length) return toast('Elegí al menos un pedido sin cargar');
   hojaIds = l.map(p => p.id); hojaI = 0; selMode = false; selPeds = new Set(); go('hoja');
 }
-function filasHoja(p) {   // una fila por artículo; si parte de las unidades van con promo de pack, se separan en dos filas
+function filasHoja(p) {   // una fila por artículo; si parte de las unidades van con promo de pack, se separan en dos filas ('promo' marca las que llevan precio de promoción)
   return p.items.flatMap(i => i.cantPromo !== undefined && i.cantPromo > 0 && i.cantPromo < i.cant
-    ? [{ ...i, cant: i.cantPromo }, { ...i, cant: i.cant - i.cantPromo, precio: i.precioLista ?? i.precio }]
-    : i.cantPromo === 0 ? [{ ...i, precio: i.precioLista ?? i.precio }] : [i]);
+    ? [{ ...i, cant: i.cantPromo, promo: true }, { ...i, cant: i.cant - i.cantPromo, precio: i.precioLista ?? i.precio, promo: false }]
+    : i.cantPromo === 0 ? [{ ...i, precio: i.precioLista ?? i.precio, promo: false }] : [{ ...i, promo: !!(i.promo || i.comboId) }]);
 }
 function vHoja() {
   const p = pedidos.find(x => x.id === hojaIds[hojaI]);
@@ -398,10 +400,34 @@ function vHoja() {
   $('#main').innerHTML = `<div class="row" style="border:0;padding:0 0 8px;gap:8px;align-items:center">${b(-1, '‹ Anterior', hojaI === 0)}<div class="nm" style="text-align:center"><b>${hojaI + 1} de ${n}</b> <span class="mut">· #${p.id}</span></div>${b(1, 'Siguiente ›', hojaI === n - 1)}</div>
     <div class="hoja">
       <div class="hoja-cab"><div class="hoja-cod">${p.clienteCodigo ? esc(p.clienteCodigo) : '—'}</div><div class="hoja-cli"><b>${esc(p.cliente)}</b><span>${esc(cli.direccion || '')}</span></div></div>
-      <table><thead><tr><th>Código</th><th class="n">Cant.</th><th>Descripción</th><th class="n">Precio</th></tr></thead><tbody>${filasHoja(p).map(i => `<tr><td class="c">${esc(i.codigo)}</td><td class="n q">${i.cant}</td><td>${esc(i.nombre)}</td><td class="n">${money(i.precio)}</td></tr>`).join('')}</tbody></table>
+      <table><thead><tr><th>Código</th><th class="n">Cant.</th><th>Descripción</th><th class="n">Precio</th></tr></thead><tbody>${filasHoja(p).map(i => `<tr${i.promo ? ' class="promo"' : ''}><td class="c">${esc(i.codigo)}</td><td class="n q">${i.cant}</td><td>${esc(i.nombre)}</td><td class="n">${money(i.precio)}${i.promo ? '<small class="hoja-pr">promoción</small>' : ''}</td></tr>`).join('')}</tbody></table>
       ${p.redondeo ? `<div class="hoja-sub">Subtotal ${money(p.subtotal)}<br>Redondeo <b>+ ${money(p.redondeo)}</b></div>` : ''}<div class="hoja-total">Total <b>${money(p.total)}</b></div></div>
     <button class="btn" data-act="hojaCargar" style="margin-top:12px">✓ Marcar como cargado</button>`;
 }
+/* editar el pedido desde la hoja: en el celular, mantener apretada la hoja un segundo; en la computadora, clic derecho (un toque o deslizar no hacen nada, así no se abre por error) */
+let lpTimer = null, lpX = 0, lpY = 0, lpToque = 0;
+async function editarDesdeHoja() {
+  const id = hojaIds[hojaI]; if (!id) return;
+  if (!confirm('¿Querés editar este pedido?')) return;
+  navPeds = [id];
+  try { const f = await api('GET', 'p/pedidos/' + id); const i = pedidos.findIndex(x => x.id === f.id); if (i >= 0) pedidos[i] = f; } catch {}
+  nuevoDraft(pedidos.find(p => p.id === id)); go('pedido');
+}
+function lpCancelar() { clearTimeout(lpTimer); lpTimer = null; }
+function lpIniciar(e) {
+  if (view !== 'hoja' || !e.target.closest('.hoja')) return;
+  lpToque = Date.now(); lpX = e.touches[0].clientX; lpY = e.touches[0].clientY; lpCancelar();
+  lpTimer = setTimeout(() => { lpTimer = null; try { navigator.vibrate && navigator.vibrate(30); } catch {} editarDesdeHoja(); }, 900);
+}
+function lpMover(e) { if (lpTimer && (Math.abs(e.touches[0].clientX - lpX) > 10 || Math.abs(e.touches[0].clientY - lpY) > 10)) lpCancelar(); }
+document.addEventListener('touchstart', lpIniciar, { passive: true });
+document.addEventListener('touchmove', lpMover, { passive: true });
+['touchend', 'touchcancel'].forEach(ev => document.addEventListener(ev, lpCancelar));
+document.addEventListener('contextmenu', e => {
+  if (view !== 'hoja' || !e.target.closest('.hoja')) return;
+  e.preventDefault();
+  if (Date.now() - lpToque > 2000) editarDesdeHoja();   // clic derecho con el mouse; con el dedo ya lo maneja el toque largo
+});
 function hojaMover(d) { const i = hojaI + d; if (i < 0 || i >= hojaIds.length) return; hojaI = i; render(); window.scrollTo(0, 0); }
 async function hojaCargar() {
   const id = hojaIds[hojaI]; if (!id) return;
