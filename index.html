@@ -71,6 +71,12 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .hoja tr.promo td{background:#fef3c7}.hoja tr.promo td.n:last-child{color:#dc2626;font-weight:700}.hoja .hoja-pr{display:block;font-size:9px;line-height:1;font-weight:400;text-transform:uppercase;letter-spacing:.04em;color:#dc2626}
 .hoja .n{text-align:right;white-space:nowrap}.hoja td.c{font-weight:700;white-space:nowrap}
 .hoja td.q{font-weight:800;font-size:19px}
+.hoja-edit-top{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#dbeafe;color:#1e3a8a;border-radius:8px;padding:6px 6px 6px 12px;margin-bottom:8px;font-weight:700}.hed-ok{width:46px;height:42px;flex:none;border:0;border-radius:10px;background:#16a34a;color:#fff;font-size:26px;line-height:1;font-weight:800;padding:0}
+.hed-fila{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #e5e7eb}.hed-n{flex:1 1 0;min-width:0;font-size:15px;overflow-wrap:anywhere}.hed-n small{display:block;color:#6b7280;font-size:12px}
+.hed-c{display:flex;align-items:center;gap:4px;flex:none}.hed-c button{width:36px;height:40px;border:1px solid #d1d5db;border-radius:8px;background:#f3f4f6;color:#111827;font-size:20px;line-height:1;padding:0}.hed-c button.hed-x{color:#b91c1c;margin-left:4px}
+.hed-c input{width:54px;height:40px;text-align:center;font:inherit;font-weight:800;font-size:18px;border:1px solid #d1d5db;border-radius:8px;background:#fff;color:#111827;padding:0}
+.hed-b{width:100%;margin-top:12px;min-height:44px;padding:8px 10px;font:inherit;border:1px solid #d1d5db;border-radius:8px;background:#fff;color:#111827}
+.hed-r{display:flex;width:100%;gap:8px;align-items:center;text-align:left;padding:10px 6px;border:0;border-bottom:1px solid #e5e7eb;background:#fff;color:#111827;font:inherit;font-size:14px}.hed-r span{margin-left:auto;white-space:nowrap;color:#6b7280}
 .hoja-nota{margin-top:10px;padding:8px;background:#fef3c7;border-radius:8px;font-size:14px}
 .hoja-sub{margin-top:14px;text-align:right;font-size:16px;color:#374151;line-height:1.5}.hoja-sub b{color:#111827}
 .hoja-total{margin-top:6px;text-align:right;font-size:16px}.hoja-total b{font-size:28px;margin-left:6px}
@@ -310,12 +316,21 @@ function restaurarNav() {
   render(); guardarNav();
   return true;
 }
+/* aviso con botones propios (el confirm() del navegador muestra la dirección del sitio) */
+function confirmar(texto, si = 'Aceptar') {
+  return new Promise(res => {
+    const el = document.createElement('div'); el.id = 'dlgConfirm'; el.className = 'modal'; el.style.cssText = 'z-index:90;align-items:center;padding:0 16px';
+    el.innerHTML = `<div class="modal-card" data-stop style="max-width:420px;border-radius:18px;padding:20px"><p style="font-size:18px;line-height:1.35;margin:0 0 18px">${esc(texto)}</p><div style="display:flex;gap:10px"><button class="btn sec" data-r="0" style="flex:1">Cancelar</button><button class="btn" data-r="1" style="flex:1">${esc(si)}</button></div></div>`;
+    el.addEventListener('click', e => { const b = e.target.closest('[data-r]'); if (!b && e.target !== el) return; el.remove(); res(!!b && b.dataset.r === '1'); });
+    document.body.appendChild(el);
+  });
+}
 const volverA = v => { if (pila.length > 1 && pila[pila.length - 2] === v) history.back(); else go(v, true); };
-window.addEventListener('popstate', e => {
+window.addEventListener('popstate', async e => {
   const st = e.state;
   if (!st || !(st.d >= 0)) {   // se llegó a la base del historial: el siguiente "atrás" cierra la app
     if (!token) return;
-    if (confirm('¿Seguro que querés salir de la app?')) { history.back(); setTimeout(() => { try { window.close(); } catch {} }, 150); }
+    if (await confirmar('¿Seguro que querés salir de la app?')) { history.back(); setTimeout(() => { try { window.close(); } catch {} }, 150); }
     else { pila = []; go('menu'); }
     return;
   }
@@ -335,6 +350,7 @@ function render() {
   if (!token) return login();
   if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc','hoja','manual'].includes(view)) view = 'menu';
   if (view !== 'pedido') document.body.classList.remove('bloq-ped');
+  if (view !== 'hoja') hojaEd = null;
   if (view !== 'pedidos' && view !== 'pedido' && view !== 'hoja') { fdiaInit = false; selMode = false; selPeds = new Set(); }   // al volver a Pedidos desde otra sección arranca en el día de hoy
   const tab = TABS.includes(view), desk = escritorio();
   document.body.classList.toggle('hay-tabs', desk || tab);
@@ -396,6 +412,7 @@ function vHoja() {
   const p = pedidos.find(x => x.id === hojaIds[hojaI]);
   if (!p) { $('#main').innerHTML = vacio('Ya no quedan pedidos sin cargar') + '<button class="btn" data-act="atras">Volver a Pedidos</button>'; return; }
   const cli = clientes.find(c => c.id === p.clienteId) || {}, n = hojaIds.length;
+  if (hojaEd && hojaEd.id === p.id) return vHojaEd(p, cli);
   const b = (d, t, off) => `<button class="btn sec" data-hnav="${d}" ${off ? 'disabled' : ''} style="width:auto;min-width:0;padding:0 14px;min-height:40px">${t}</button>`;
   $('#main').innerHTML = `<div class="row" style="border:0;padding:0 0 8px;gap:8px;align-items:center">${b(-1, '‹ Anterior', hojaI === 0)}<div class="nm" style="text-align:center"><b>${hojaI + 1} de ${n}</b> <span class="mut">· #${p.id}</span></div>${b(1, 'Siguiente ›', hojaI === n - 1)}</div>
     <div class="hoja">
@@ -404,14 +421,53 @@ function vHoja() {
       ${p.redondeo ? `<div class="hoja-sub">Subtotal ${money(p.subtotal)}<br>Redondeo <b>+ ${money(p.redondeo)}</b></div>` : ''}<div class="hoja-total">Total <b>${money(p.total)}</b></div></div>
     <button class="btn" data-act="hojaCargar" style="margin-top:12px">✓ Marcar como cargado</button>`;
 }
+/* editar el pedido en la misma hoja: tras aceptar aparecen los botones para cambiar cantidades, quitar o agregar productos */
+let hojaEd = null;   // { id, items: [{ pid, codigo, nombre, precio, cant }], q }
+function hojaEditar(p) {
+  hojaEd = { id: p.id, q: '', items: p.items.map(i => ({ pid: i.pid, codigo: i.codigo, nombre: i.nombre, precio: i.precioLista ?? i.precio, cant: i.cant })) };
+  render(); window.scrollTo(0, 0);
+}
+function hojaEdResultados() {
+  const box = $('#hedRes'); if (!box || !hojaEd) return;
+  const n = norm(hojaEd.q); if (!n) { box.innerHTML = ''; return; }
+  const old = q; q = hojaEd.q; const l = filtrar(productos.filter(x => x.activo)).slice(0, 6); q = old;
+  box.innerHTML = l.length ? l.map(x => `<button type="button" class="hed-r" data-hedadd="${x.id}"><b>${esc(x.codigo)}</b> ${esc(x.nombre)} <span>${money(x.precio)}</span></button>`).join('') : '<div class="hoja-meta" style="margin:6px 0 0">No hay productos con ese nombre o código</div>';
+}
+function vHojaEd(p, cli) {
+  $('#main').innerHTML = `<div class="hoja-edit-top"><span>✏️ Editando el pedido #${p.id}</span><button type="button" class="hed-ok" data-hed="guardar" aria-label="Guardar cambios">✓</button></div>
+    <div class="hoja">
+      <div class="hoja-cab"><div class="hoja-cod">${p.clienteCodigo ? esc(p.clienteCodigo) : '—'}</div><div class="hoja-cli"><b>${esc(p.cliente)}</b><span>${esc(cli.direccion || '')}</span></div></div>
+      <div id="hedLista">${hojaEd.items.map(i => `<div class="hed-fila"><div class="hed-n"><b>${esc(i.codigo)}</b> ${esc(i.nombre)}<small>${money(i.precio)} c/u</small></div>
+        <div class="hed-c"><button type="button" data-hed="dec:${i.pid}" aria-label="Menos">−</button><input type="number" inputmode="numeric" min="0" value="${i.cant}" data-hedq="${i.pid}"><button type="button" data-hed="inc:${i.pid}" aria-label="Más">+</button><button type="button" class="hed-x" data-hed="del:${i.pid}" aria-label="Quitar">✕</button></div></div>`).join('') || '<div class="hoja-meta">El pedido no tiene productos</div>'}</div>
+      <input id="hedBuscar" class="hed-b" type="search" autocomplete="off" placeholder="Agregar producto: nombre o código" value="${esc(hojaEd.q)}"><div id="hedRes"></div>
+      <div class="hoja-meta" style="margin:10px 0 0">El total se vuelve a calcular al guardar.</div></div>
+    <div style="display:flex;gap:10px;margin-top:12px"><button class="btn sec" data-hed="cancelar" style="flex:1">Cancelar</button><button class="btn" data-hed="guardar" style="flex:1">✓ Guardar cambios</button></div>`;
+  $('#hedBuscar').oninput = e => { hojaEd.q = e.target.value; hojaEdResultados(); };
+  hojaEdResultados();
+}
+async function hojaEdGuardar() {
+  const p = pedidos.find(x => x.id === hojaEd.id); if (!p) { hojaEd = null; return render(); }
+  const items = hojaEd.items.filter(i => i.cant > 0);
+  if (!items.length) return toast('El pedido no puede quedar sin productos (si no va, eliminalo)');
+  const arma = conPromos => ({ clienteId: p.clienteId, dia: p.dia, turno: p.turno, nota: p.nota || '', vendedorId: p.vendedorId, items: items.map(i => {
+    const o = p.items.find(x => x.pid === i.pid) || {}, pr = productos.find(x => x.id === i.pid), it = { pid: i.pid, cant: i.cant };
+    if (conPromos) { if (o.promoQty && pr && i.cant >= promoCantDe(pr)) it.promo = true; if (o.comboId) it.combo = o.comboId; }
+    return it; }) });
+  try {
+    let r, avisoPromo = false;
+    try { r = await api('PUT', 'p/pedidos/' + p.id, arma(true)); }
+    catch (e) { if (!/promo/i.test(e.message || '')) throw e; r = await api('PUT', 'p/pedidos/' + p.id, arma(false)); avisoPromo = true; }   // con las cantidades nuevas la promo ya no aplica: queda a precio normal
+    const k = pedidos.findIndex(x => x.id === r.id); if (k >= 0) pedidos[k] = r; cacheDatos();
+    hojaEd = null; render(); toast(avisoPromo ? 'Guardado ✓ (una promo ya no aplica y quedó a precio normal)' : 'Pedido guardado ✓');
+  } catch (e) { toast(e.message); }
+}
 /* editar el pedido desde la hoja: en el celular, mantener apretada la hoja un segundo; en la computadora, clic derecho (un toque o deslizar no hacen nada, así no se abre por error) */
 let lpTimer = null, lpX = 0, lpY = 0, lpToque = 0;
 async function editarDesdeHoja() {
-  const id = hojaIds[hojaI]; if (!id) return;
-  if (!confirm('¿Querés editar este pedido?')) return;
-  navPeds = [id];
-  try { const f = await api('GET', 'p/pedidos/' + id); const i = pedidos.findIndex(x => x.id === f.id); if (i >= 0) pedidos[i] = f; } catch {}
-  nuevoDraft(pedidos.find(p => p.id === id)); go('pedido');
+  if (hojaEd) return;
+  const p = pedidos.find(x => x.id === hojaIds[hojaI]); if (!p) return;
+  if (!await confirmar('¿Querés editar este pedido?')) return;
+  hojaEditar(p);
 }
 function lpCancelar() { clearTimeout(lpTimer); lpTimer = null; }
 function lpIniciar(e) {
@@ -428,7 +484,7 @@ document.addEventListener('contextmenu', e => {
   e.preventDefault();
   if (Date.now() - lpToque > 2000) editarDesdeHoja();   // clic derecho con el mouse; con el dedo ya lo maneja el toque largo
 });
-function hojaMover(d) { const i = hojaI + d; if (i < 0 || i >= hojaIds.length) return; hojaI = i; render(); window.scrollTo(0, 0); }
+function hojaMover(d) { if (hojaEd) return; const i = hojaI + d; if (i < 0 || i >= hojaIds.length) return; hojaI = i; render(); window.scrollTo(0, 0); }
 async function hojaCargar() {
   const id = hojaIds[hojaI]; if (!id) return;
   try {
@@ -725,7 +781,7 @@ function navPedidos() {
 async function irAPedido(n) {
   const i = navPeds.indexOf(draft.id), id = navPeds[i + n];
   if (i < 0 || id === undefined) return;
-  if (hayCambios() && !confirm('Hay cambios sin guardar en este pedido. ¿Descartarlos?')) return;
+  if (hayCambios() && !await confirmar('Hay cambios sin guardar en este pedido. ¿Descartarlos?')) return;
   try { const f = await api('GET', 'p/pedidos/' + id); const k = pedidos.findIndex(x => x.id === f.id); if (k >= 0) pedidos[k] = f; } catch {}
   const p = pedidos.find(x => x.id === id); if (!p) return;
   nuevoDraft(p); render(); window.scrollTo(0, 0); guardarNav();
@@ -1012,7 +1068,7 @@ async function aplicarZona(zona) {   // etiqueta los pedidos elegidos con la zon
 }
 async function aplicarSel(accion) {
   const n = selPeds.size; if (!n) return;
-  if (!confirm(`¿Marcar ${n} ${n === 1 ? 'pedido' : 'pedidos'} como entregados?`)) return;
+  if (!await confirmar(`¿Marcar ${n} ${n === 1 ? 'pedido' : 'pedidos'} como entregados?`)) return;
   if (await enviarEntrega([{ accion }])) { toast('Marcados como entregados ✓'); if (repintarPeds) repintarPeds(); }
 }
 let entSel = null;
@@ -1101,7 +1157,7 @@ function vPedidos() {
 }
 function vPedidosChips() {}
 async function borrarPedido() {
-  if (!confirm('¿Eliminar el pedido?')) return;
+  if (!await confirmar('¿Eliminar el pedido?')) return;
   try { await api('DELETE', 'p/pedidos/' + draft.id); await cargar(); toast('Pedido eliminado'); volverA('pedidos'); } catch (e) { toast(e.message); }
 }
 
@@ -1412,7 +1468,7 @@ async function abrirRestaurar() {
 }
 async function restaurar(cuerpo) {
   if ((($('#restConf') || {}).value || '').trim().toUpperCase() !== 'RESTAURAR') return toast('Escribí RESTAURAR para confirmar');
-  if (!confirm('¿Seguro? Se reemplazan los pedidos, clientes y productos actuales por los de la copia.')) return;
+  if (!await confirmar('¿Seguro? Se reemplazan los pedidos, clientes y productos actuales por los de la copia.')) return;
   try {
     const r = await api('POST', 'p/restaurar', cuerpo);
     await cargar(); toast(`Restaurado ✓ ${r.ahora.pedidos} pedidos, ${r.ahora.clientes} clientes, ${r.ahora.productos} productos`);
@@ -1456,7 +1512,16 @@ document.addEventListener('click', async e => {
   else if (d.estado) {   // el administrador marca el pedido (cargado / pendiente / agregados revisados)
     try { await api('PUT', 'p/cargar/' + draft.id, { accion: d.estado }); await cargar(); nuevoDraft(pedidos.find(x => x.id === draft.id)); render(); toast('Pedido vuelto a pendiente'); } catch (er) { toast(er.message); }
   }
-  else if (d.act === 'sumarListo') { if (!confirm('¿Estás seguro que querés cerrar el resumen de lo agregado?')) return; try { for (const p of pedidos.filter(x => x.sumar && x.sumar.length)) await api('PUT', 'p/cargar/' + p.id, { accion: 'sumarListo' }); await cargar(); render(); } catch (er) { toast(er.message); } }
+  else if (d.hed && hojaEd) {
+    const [acc, pid] = d.hed.split(':'), it = hojaEd.items.find(x => x.pid === +pid), pr = it && productos.find(x => x.id === it.pid), m = (pr && pr.multiplo) || 1;
+    if (acc === 'cancelar') { hojaEd = null; render(); }
+    else if (acc === 'guardar') hojaEdGuardar();
+    else if (it) { if (acc === 'inc') it.cant += m; else if (acc === 'dec') it.cant = Math.max(0, it.cant - m); else if (acc === 'del') hojaEd.items = hojaEd.items.filter(x => x !== it); const y = window.scrollY; vHojaEd(pedidos.find(x => x.id === hojaEd.id), clientes.find(c => c.id === (pedidos.find(x => x.id === hojaEd.id) || {}).clienteId) || {}); window.scrollTo(0, y); }
+  }
+  else if (d.hedadd && hojaEd) {
+    const pr = productos.find(x => x.id === +d.hedadd); if (pr) { const m = pr.multiplo || 1, ex = hojaEd.items.find(x => x.pid === pr.id); if (ex) ex.cant += m; else hojaEd.items.push({ pid: pr.id, codigo: pr.codigo, nombre: pr.nombre, precio: pr.precio, cant: m }); hojaEd.q = ''; const p0 = pedidos.find(x => x.id === hojaEd.id); vHojaEd(p0, clientes.find(c => c.id === p0.clienteId) || {}); }
+  }
+  else if (d.act === 'sumarListo') { if (!await confirmar('¿Estás seguro que querés cerrar el resumen de lo agregado?')) return; try { for (const p of pedidos.filter(x => x.sumar && x.sumar.length)) await api('PUT', 'p/cargar/' + p.id, { accion: 'sumarListo' }); await cargar(); render(); } catch (er) { toast(er.message); } }
   else if (d.festado !== undefined && !d.tab) { festado = d.festado; render(); }
   else if (d.quitar) { delete draft.items[d.quitar]; const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); }
   else if (d.combo) { const cid = t.closest('[data-cid]').dataset.cid; if (d.combo === 'ask') delete draft.combos[cid]; else draft.combos[cid] = d.combo; const y = window.scrollY; pintarPedido(); window.scrollTo(0, y); }
@@ -1482,7 +1547,7 @@ document.addEventListener('click', async e => {
   else if (d.act === 'pushOff') desactivarPush();
   else if (d.act === 'nuevaNovedad') abrirNovedad(null);
   else if (d.ned) abrirNovedad(novedades.find(n => n.id == d.ned));
-  else if (d.ndel) { if (confirm('¿Eliminar la novedad? Los vendedores dejan de verla.')) { try { await api('DELETE', 'p/novedades/' + d.ndel); novedades = novedades.filter(n => n.id != d.ndel); cacheDatos(); toast('Novedad eliminada'); render(); } catch (er) { toast(er.message); } } }
+  else if (d.ndel) { if (await confirmar('¿Eliminar la novedad? Los vendedores dejan de verla.')) { try { await api('DELETE', 'p/novedades/' + d.ndel); novedades = novedades.filter(n => n.id != d.ndel); cacheDatos(); toast('Novedad eliminada'); render(); } catch (er) { toast(er.message); } } }
   else if (d.nleer) { try { await api('PUT', 'p/novedadleida/' + d.nleer); const n = novedades.find(x => x.id == d.nleer); if (n) n.leida = true; cacheDatos(); render(); } catch (er) { toast(er.message); } }
   else if (d.editcombo) abrirCombo(combos.find(c => c.id == d.editcombo));
   else if (d.gnuevo !== undefined) { comboEd.grupos.push({ cant: 6, pids: [] }); pintarCombo(); }
@@ -1516,20 +1581,20 @@ document.addEventListener('click', async e => {
   else if (d.act === 'importarClientes') importarClientes();
   else if (d.act === 'plantillaClientes') plantillaClientes();
   else if (d.act === 'borrarCliente') {
-    if (!confirm('¿Eliminar el cliente? Sus pedidos se conservan.')) return;
+    if (!await confirmar('¿Eliminar el cliente? Sus pedidos se conservan.')) return;
     try { await api('DELETE', 'p/clientes/' + editC.id); await cargar(); volverA('clientes'); } catch (er) { toast(er.message); }
   }
   else if (d.editcli) { clienteVolver = 'clientes'; editC = { ...clientes.find(c => c.id == d.editcli) }; go('cliente'); }
   else if (d.cli) { const c = clientes.find(x => x.id == d.cli); draft.clienteId = c.id; draft.cliente = nombreC(c); draft.clienteCodigo = c.codigo; history.back(); }
   else if (d.act === 'nuevoUsuario') { editU = { rol: 'vendedor', activo: true }; go('usuario'); }
   else if (d.act === 'borrarUsuario') {
-    if (!confirm('¿Eliminar el usuario? Sus pedidos se conservan.')) return;
+    if (!await confirmar('¿Eliminar el usuario? Sus pedidos se conservan.')) return;
     try { await api('DELETE', 'p/usuarios/' + editU.id); await cargar(); volverA('usuarios'); } catch (er) { toast(er.message); }
   }
   else if (d.edituser) { editU = { ...usuarios.find(u => u.id == d.edituser) }; go('usuario'); }
   else if (d.reint) { lsSet('pd_cola', leerCola().map(x => x.uid === d.reint ? { uid: x.uid, u: x.u, body: x.body, total: x.total, t: x.t } : x)); render(); sincronizar(); }
   else if (d.delcola) {
-    if (!confirm('¿Eliminar este pedido pendiente? No se va a enviar.')) return;
+    if (!await confirmar('¿Eliminar este pedido pendiente? No se va a enviar.')) return;
     const it = leerCola().find(x => x.uid === d.delcola);
     lsSet('pd_cola', leerCola().filter(x => x.uid !== d.delcola)); cacheDatos(); render();
   }
@@ -1574,6 +1639,7 @@ document.addEventListener('input', e => {
   pintarLista(); pintarTotal();
 });
 document.addEventListener('change', e => {
+  if (e.target.dataset && e.target.dataset.hedq && hojaEd) { const it = hojaEd.items.find(x => x.pid === +e.target.dataset.hedq); if (it) it.cant = Math.max(0, parseInt(e.target.value) || 0); return; }
   if (e.target.dataset && e.target.dataset.qex) {   // unidades de más (fuera del pack): el total es lo del pack más lo escrito
     const pid = +e.target.dataset.qex, p = productos.find(x => x.id === pid); if (!p) return;
     const t = Math.max(0, parseInt(e.target.value) || 0), y = window.scrollY;
