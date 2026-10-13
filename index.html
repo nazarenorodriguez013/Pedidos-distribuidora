@@ -1418,7 +1418,7 @@ function vImportar() {
       $('#prev').innerHTML = `<p><b>${importFilas.length}</b> filas leídas${importFilas.some(r => r.activo === 'no') ? ` (${importFilas.filter(r => r.activo === 'no').length} sin precio, quedan desactivadas)` : ''}. Ejemplo: ${esc(Object.values(importFilas[0] || {}).join(' | '))}</p>
         <p id="resumenImp"></p>
         <div class="row" style="border:0"><div class="nm"><b>Reemplazar toda la lista</b><span class="mut">Borra los productos que no figuren en el archivo y carga la lista nueva. Las promos y la unidad de venta quedan guardadas por código: se conservan en los que figuran y se recuperan solas si un producto borrado vuelve a aparecer.</span></div><label class="sw" style="margin:0"><input type="checkbox" id="cat" checked><i></i></label></div>
-        <button class="btn" id="btnImp" data-act="importarConfirmar">Importar</button>`;
+        <button class="btn" id="btnImp" data-act="importarConfirmar">Importar</button><div id="listaImp"></div>`;
       resumenImportacion(); $('#cat').onchange = resumenImportacion;
     } catch { toast('No se pudo leer el archivo'); }
   };
@@ -1432,6 +1432,18 @@ function resumenImportacion() {
   const c = conteoImportacion(), btn = $('#btnImp'); delete btn.dataset.seguro;
   $('#resumenImp').innerHTML = `Se crean <b>${c.nuevos}</b> productos nuevos y se actualizan <b>${c.actualizar}</b>.${c.borrar ? ` <b style="color:var(--bad)">Se borran ${c.borrar} productos</b> que hoy están cargados y no figuran en el archivo.` : ''}`;
   btn.textContent = c.borrar ? `Reemplazar la lista (borra ${c.borrar})` : 'Importar';
+  listaImportacion();
+}
+/* detalle de lo que va a pasar: productos que se crean y productos que se borran, con descripción y precio */
+function listaImportacion() {
+  const box = $('#listaImp'); if (!box) return;
+  const pn = v => typeof v === 'number' ? v : (/,/.test(String(v)) ? parseFloat(String(v).replace(/\./g, '').replace(',', '.')) : parseFloat(v)) || 0;
+  const archivo = new Set(importFilas.map(codImp)), existentes = new Set(productos.map(p => p.codigo.toLowerCase())), vistos = new Set();
+  const crear = importFilas.filter(r => { const c = codImp(r); if (!c || existentes.has(c) || vistos.has(c)) return false; vistos.add(c); return true; });
+  const borrar = $('#cat').checked ? productos.filter(p => !archivo.has(p.codigo.toLowerCase())) : [];
+  const fila = (cod, nom, precio, sinPrecio) => `<div class="tfila"><span><b>${esc(cod)}</b> · ${esc(nom)}</span><b style="white-space:nowrap">${sinPrecio ? 'sin precio' : money(precio)}</b></div>`;
+  const bloque = (titulo, color, l, f) => l.length ? `<div class="card" style="margin:10px 0 0;border-color:${color}"><b style="color:${color}">${titulo} (${l.length})</b>${l.slice(0, 300).map(f).join('')}${l.length > 300 ? `<p class="mut">y ${l.length - 300} más</p>` : ''}</div>` : '';
+  box.innerHTML = bloque('🆕 Se crean', 'var(--ok)', crear, r => fila(r.codigo, r.nombre, pn(r.precio), !(pn(r.precio) > 0))) + bloque('🗑️ Se borran', 'var(--bad)', borrar, p => fila(p.codigo, p.nombre, p.precio, !(p.precio > 0)));
 }
 async function importarConfirmar(btn) {
   const c = conteoImportacion();
