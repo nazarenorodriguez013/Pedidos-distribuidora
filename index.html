@@ -71,7 +71,7 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .hoja tr.promo td{background:#fef3c7}.hoja tr.promo td.n:last-child{color:#dc2626;font-weight:700}.hoja .hoja-pr{display:block;font-size:9px;line-height:1;font-weight:400;text-transform:uppercase;letter-spacing:.04em;color:#dc2626}
 .hoja .n{text-align:right;white-space:nowrap}.hoja td.c{font-weight:700;white-space:nowrap}
 .hoja td.q{font-weight:800;font-size:19px}
-.hoja-edit-top{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#dbeafe;color:#1e3a8a;border-radius:8px;padding:6px 6px 6px 12px;margin-bottom:8px;font-weight:700}.hed-ok{width:46px;height:42px;flex:none;border:0;border-radius:10px;background:#16a34a;color:#fff;font-size:26px;line-height:1;font-weight:800;padding:0}
+.hoja-edit-top{background:#dbeafe;color:#1e3a8a;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-weight:700}
 .hed-fila{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #e5e7eb}.hed-n{flex:1 1 0;min-width:0;font-size:15px;overflow-wrap:anywhere}.hed-n small{display:block;color:#6b7280;font-size:12px}
 .hed-c{display:flex;align-items:center;gap:4px;flex:none}.hed-c button{width:36px;height:40px;border:1px solid #d1d5db;border-radius:8px;background:#f3f4f6;color:#111827;font-size:20px;line-height:1;padding:0}.hed-c button.hed-x{color:#b91c1c;margin-left:4px}
 .hed-c input{width:54px;height:40px;text-align:center;font:inherit;font-weight:800;font-size:18px;border:1px solid #d1d5db;border-radius:8px;background:#fff;color:#111827;padding:0}
@@ -434,7 +434,7 @@ function hojaEdResultados() {
   box.innerHTML = l.length ? l.map(x => `<button type="button" class="hed-r" data-hedadd="${x.id}"><b>${esc(x.codigo)}</b> ${esc(x.nombre)} <span>${money(x.precio)}</span></button>`).join('') : '<div class="hoja-meta" style="margin:6px 0 0">No hay productos con ese nombre o código</div>';
 }
 function vHojaEd(p, cli) {
-  $('#main').innerHTML = `<div class="hoja-edit-top"><span>✏️ Editando el pedido #${p.id}</span><button type="button" class="hed-ok" data-hed="guardar" aria-label="Guardar cambios">✓</button></div>
+  $('#main').innerHTML = `<div class="hoja-edit-top">✏️ Editando el pedido #${p.id}</div>
     <div class="hoja">
       <div class="hoja-cab"><div class="hoja-cod">${p.clienteCodigo ? esc(p.clienteCodigo) : '—'}</div><div class="hoja-cli"><b>${esc(p.cliente)}</b><span>${esc(cli.direccion || '')}</span></div></div>
       <div id="hedLista">${hojaEd.items.map(i => `<div class="hed-fila"><div class="hed-n"><b>${esc(i.codigo)}</b> ${esc(i.nombre)}<small>${money(i.precio)} c/u</small></div>
