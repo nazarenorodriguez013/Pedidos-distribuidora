@@ -1464,7 +1464,18 @@ function listaImportacion() {
   const borrar = $('#cat').checked ? productos.filter(p => !archivo.has(p.codigo.toLowerCase())) : [];
   const fila = (cod, nom, precio, sinPrecio) => `<div class="tfila"><span><b>${esc(cod)}</b> · ${esc(nom)}</span><b style="white-space:nowrap">${sinPrecio ? 'sin precio' : money(precio)}</b></div>`;
   const bloque = (titulo, color, l, f) => l.length ? `<div class="card" style="margin:10px 0 0;border-color:${color}"><b style="color:${color}">${titulo} (${l.length})</b>${l.slice(0, 300).map(f).join('')}${l.length > 300 ? `<p class="mut">y ${l.length - 300} más</p>` : ''}</div>` : '';
-  box.innerHTML = bloque('🆕 Se crean', 'var(--ok)', crear, r => fila(r.codigo, r.nombre, pn(r.precio), !(pn(r.precio) > 0))) + bloque('🗑️ Se borran', 'var(--bad)', borrar, p => fila(p.codigo, p.nombre, p.precio, !(p.precio > 0)));
+  // cambios de precio de los productos que ya existen: precio anterior y precio nuevo
+  const nuevoDe = new Map(); importFilas.forEach(r => { if (r.precio !== undefined && r.precio !== '' && codImp(r)) nuevoDe.set(codImp(r), pn(r.precio)); });   // si el código se repite, vale el último (igual que al importar)
+  const orden = { sube: 0, baja: 1, de0: 2, a0: 3 }, cambios = [];
+  for (const [cod, nueva] of nuevoDe) { const pr = productos.find(x => x.codigo.toLowerCase() === cod); if (!pr) continue; const vieja = pr.precio || 0; if (Math.abs(nueva - vieja) < 0.005) continue;
+    cambios.push({ pr, vieja, nueva, tipo: vieja > 0 && nueva === 0 ? 'a0' : vieja === 0 && nueva > 0 ? 'de0' : nueva > vieja ? 'sube' : 'baja' }); }
+  cambios.sort((a, b) => orden[a.tipo] - orden[b.tipo] || a.pr.codigo.localeCompare(b.pr.codigo, undefined, { numeric: true }));
+  const pct = c => (c.nueva / c.vieja - 1) * 100, fmtPct = c => (pct(c) > 0 ? '+' : '') + pct(c).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + '%';
+  const eti = c => c.tipo === 'sube' ? `<span style="color:var(--bad)">▲ aumento ${fmtPct(c)}</span>` : c.tipo === 'baja' ? `<span style="color:var(--ok)">▼ baja ${fmtPct(c)}</span>` : c.tipo === 'de0' ? '<span style="color:var(--info)">de $0 a precio (se activa)</span>' : '<span style="color:var(--warn)">pasa a $0 (queda desactivado)</span>';
+  const cuenta = k => cambios.filter(c => c.tipo === k).length;
+  const resumenCambios = cambios.length ? `<p class="mut" style="margin:6px 0 0">${[['sube', 'aumentos'], ['baja', 'bajas'], ['de0', 'de $0 a precio'], ['a0', 'pasan a $0']].filter(([k]) => cuenta(k)).map(([k, n]) => `<b>${cuenta(k)}</b> ${n}`).join(' · ')}</p>` : '';
+  const bloqueCambios = cambios.length ? `<div class="card" style="margin:10px 0 0;border-color:var(--info)"><b style="color:var(--info)">💲 Cambios de precio (${cambios.length})</b>${resumenCambios}${cambios.slice(0, 300).map(c => `<div class="tfila"><span><b>${esc(c.pr.codigo)}</b> · ${esc(c.pr.nombre)}<br><small>${eti(c)}</small></span><b style="white-space:nowrap;text-align:right">${money(c.vieja)}<br>→ ${money(c.nueva)}</b></div>`).join('')}${cambios.length > 300 ? `<p class="mut">y ${cambios.length - 300} más</p>` : ''}</div>` : '';
+  box.innerHTML = bloque('🆕 Se crean', 'var(--ok)', crear, r => fila(r.codigo, r.nombre, pn(r.precio), !(pn(r.precio) > 0))) + bloque('🗑️ Se borran', 'var(--bad)', borrar, p => fila(p.codigo, p.nombre, p.precio, !(p.precio > 0))) + bloqueCambios;
 }
 async function importarConfirmar(btn) {
   const c = conteoImportacion();
