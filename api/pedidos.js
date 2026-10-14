@@ -94,6 +94,7 @@ function repreciarPendientes() {
     if (o.estado === 'cargado') continue;
     const cant = new Map(o.items.map(i => [i.pid, i.cant]));
     for (const i of o.items) {
+      if (i.manual) continue;   // precio puesto a mano por el administrador
       const p = state.productos.find(x => x.id === i.pid); if (!p) continue;
       let combo = null;
       if (i.comboId) { const c = state.combos.find(x => x.id === i.comboId); if (c && comboIncluye(c, i.pid) && comboCumple(c, cant)) combo = c; }
@@ -328,6 +329,8 @@ function armarPedido(b, viejo, quien, admin) {
   }
   if (!nuevas.size) throw { code: 400, msg: 'El pedido no tiene productos' };
   const quierePromo = new Map(), quiereCombo = new Map();
+  const manualDe = new Map();   // precio puesto a mano por el administrador en esta edición (manual: true) o quitado (manual: false)
+  if (admin) for (const it of Array.isArray(b.items) ? b.items : []) { if (it.manual === true && num(it.precio) > 0) manualDe.set(Number(it.pid), num(it.precio)); else if (it.manual === false) manualDe.set(Number(it.pid), null); }
   for (const it of Array.isArray(b.items) ? b.items : []) { if (it.promo) quierePromo.set(Number(it.pid), true); if (it.combo) quiereCombo.set(Number(it.pid), Number(it.combo)); }
   const items = [];
   for (const [pid, cant] of nuevas) {
@@ -335,8 +338,10 @@ function armarPedido(b, viejo, quien, admin) {
     const old = viejas.get(pid);
     if (!p) { if (old) { items.push({ ...old, cant }); continue; } throw { code: 400, msg: 'Producto inexistente' }; }   // producto borrado de la lista: la línea del pedido queda como estaba
     if (!old && !p.activo) throw { code: 409, msg: `"${p.nombre}" está desactivado` };
+    const manual = manualDe.has(pid) ? manualDe.get(pid) : (old && old.manual ? old.precio : null);   // precio a mano: se conserva hasta que el administrador lo quite
     const m = p.multiplo || 1;
     if (cant % m && !(old && old.cant === cant)) throw { code: 400, msg: `"${p.nombre}" tiene unidad de venta ${m}: la cantidad tiene que ser múltiplo de ${m}` };
+    if (manual) { items.push({ pid, codigo: p.codigo, nombre: p.nombre, precio: manual, precioLista: old ? old.precioLista ?? p.precio : p.precio, manual: true, cant }); continue; }   // sin promo: lleva el precio puesto
     if (!old && !((hayPromo(p) && promoCantDe(p) <= 1 ? precioPromoDe(p) : p.precio) > 0)) throw { code: 409, msg: `"${p.nombre}" no tiene precio` };
     let aplica = hayPromo(p) && promoCantDe(p) <= 1;   // promo sin cantidad: automática
     if (quierePromo.get(pid)) {   // promo por cantidad aceptada por el vendedor
