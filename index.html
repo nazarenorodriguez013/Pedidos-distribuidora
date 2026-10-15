@@ -1717,7 +1717,18 @@ document.addEventListener('change', async e => {
 });
 try { window.matchMedia('(min-width:900px)').addEventListener('change', () => { if (token && !document.getElementById('modal')) render(); }); } catch {}
 (async () => { if (token) { try { await cargar(); } catch (e) { if (e.offline) usarCache(); else token = null; } } try { history.replaceState({ d: -1 }, ''); if (!restaurarNav()) go('menu'); sincronizar(); } catch (e) { $('#app').innerHTML = '<p style="padding:24px;color:#b91c1c">Error: ' + esc(e.message) + '</p>'; } })();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+  // si la app se abrió con una versión guardada (señal lenta) y ya bajó una nueva, se avisa para actualizar con un toque
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (!e.data || e.data.tipo !== 'nueva-version' || document.getElementById('nuevaVersion')) return;
+    const d = document.createElement('div'); d.id = 'nuevaVersion';
+    d.style.cssText = 'position:fixed;left:12px;right:12px;top:70px;z-index:95;background:#1e3a8a;color:#fff;border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:center;box-shadow:0 6px 20px rgba(0,0,0,.35)';
+    d.innerHTML = '<span style="flex:1">Hay una versión nueva de la app.</span><button style="border:0;border-radius:8px;background:#fff;color:#1e3a8a;font-weight:700;padding:8px 14px;font:inherit">Actualizar</button>';
+    d.querySelector('button').onclick = () => location.reload();
+    document.body.appendChild(d);
+  });
+}
 </script>
 </body>
 </html>

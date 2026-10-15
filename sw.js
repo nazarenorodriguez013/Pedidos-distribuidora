@@ -1,22 +1,27 @@
 // Service worker: la app (y las librerías de Excel/PDF) se abren sin señal; se actualizan en segundo plano.
-const CACHE = 'pedidos-v5';
+const CACHE = 'pedidos-v6';
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(['/', '/manifest.json', '/icon-192.png', '/logo.png', '/logo-marca.png'])).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
+const avisarNueva = () => self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => cs.forEach(c => c.postMessage({ tipo: 'nueva-version' })));
 self.addEventListener('fetch', e => {
   const r = e.request;
   if (r.method !== 'GET' || new URL(r.url).pathname.startsWith('/api/')) return;
   const u = new URL(r.url);
   if (r.mode === 'navigate' || u.pathname === '/' || u.pathname === '/index.html') {   // la app: con señal siempre la versión nueva; sin señal (o muy lenta), la guardada
     e.respondWith(caches.open(CACHE).then(async c => {
-      try {
-        const res = await Promise.race([fetch(r), new Promise((_, no) => setTimeout(() => no(new Error('lento')), 5000))]);
-        if (res && res.ok) c.put(r.mode === 'navigate' ? '/' : r, res.clone());
-        return res;
-      } catch { return (await c.match(r, { ignoreSearch: true })) || (await c.match('/')) || Response.error(); }
+      const guardada = () => c.match(r, { ignoreSearch: true }).then(x => x || c.match('/'));
+      // la descarga sigue aunque tarde más de 5 s: queda guardada para la próxima vez y, si es distinta de la que se mostró, se avisa a la app
+      const red = fetch(r).then(res => { if (res && res.ok) c.put(r.mode === 'navigate' ? '/' : r, res.clone()); return res; });
+      try { return await Promise.race([red, new Promise((_, no) => setTimeout(() => no(new Error('lento')), 5000))]); }
+      catch {
+        const vieja = await guardada(), textoViejo = vieja ? await vieja.clone().text() : null;   // se lee ya: cuando termine la descarga, la guardada se reemplaza
+        e.waitUntil(red.then(async res => { if (res && res.ok && textoViejo !== null && (await res.clone().text()) !== textoViejo) avisarNueva(); }).catch(() => {}));   // el service worker sigue vivo hasta terminar de bajar la versión nueva
+        return vieja || Response.error();
+      }
     }));
     return;
   }
