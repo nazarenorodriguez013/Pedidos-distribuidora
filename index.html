@@ -50,7 +50,8 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .qty button:disabled{background:var(--bd)}
 .qty b{min-width:34px;text-align:center;font-size:18px;cursor:pointer}
 .bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--bd);padding:10px 12px;display:flex;gap:10px;align-items:center;z-index:6}
-.bar.sel{bottom:calc(57px + env(safe-area-inset-bottom));box-shadow:0 -4px 12px rgba(0,0,0,.15)}
+.bar.sel{bottom:calc(57px + env(safe-area-inset-bottom));box-shadow:0 -4px 12px rgba(0,0,0,.15);flex-wrap:wrap;row-gap:8px}
+.bar .selfila{flex:1 1 100%;display:grid;grid-template-columns:1fr 1fr;gap:8px}.bar .selfila .btn{width:100%;padding:0 10px;min-height:42px;font-size:15px}
 .bar .tot{flex:1;font-size:20px;font-weight:800}
 .bar .btn{width:auto;flex:none;padding:12px 22px}
 .sw{position:relative;width:48px;height:28px;flex:none}
@@ -857,7 +858,7 @@ function bloqueCombos() {   // ofertas y avance de las promos combinadas
   for (const c of combos) {
     if (!c.activa || !c.grupos.every(g => sumaGrupo(g) > 0)) continue;   // la promo solo aparece cuando ya cargó algo de cada grupo de la promo
     const st = draft.combos[c.id], avance = c.grupos.map(g => `${Math.min(sumaGrupo(g), g.cant)}/${g.cant}${g.maxVar ? ' (de hasta ' + g.maxVar + (g.maxVar === 1 ? ' variedad' : ' variedades') + ')' : ''} ${esc(nombresGrupo(g, c))}`).join(' · ');
-    if (!comboCumple(c)) out.push(`<div class="promo-hint" style="padding:4px 0">🏷️ <b>${esc(c.nombre)}</b>: ${avance} → ${esc(comboBeneficio(c))}</div>`);
+    if (!comboCumple(c)) { /* hasta que estén las cantidades de la promo no se muestra nada */ }
     else if (st === 'si') out.push(`<div class="promo-ok" style="margin:6px 0" data-cid="${c.id}"><span>✓ Promo aplicada: <b>${esc(c.nombre)}</b> (${esc(comboBeneficio(c))})</span><button class="btn sec" data-combo="no">Quitar</button></div>`);
     else if (st === 'no') out.push(`<div class="promo-hint" style="padding:4px 0" data-cid="${c.id}">Promo ${esc(c.nombre)} no aplicada <button class="btn sec" data-combo="ask">Aplicar</button></div>`);
     else out.push(`<div class="promo-offer" style="margin:6px 0" data-cid="${c.id}"><b>🏷️ ¡Hay una promo!</b> ${esc(c.nombre)}: ${esc(comboBeneficio(c))} en ${esc(c.grupos.map(g => nombresGrupo(g, c)).join(' + '))}. ¿La aplicás?<div class="row" style="border:0;padding:8px 0 0"><button class="btn" data-combo="si">Aceptar</button><button class="btn sec" data-combo="no">No, gracias</button></div></div>`);
@@ -871,7 +872,7 @@ function limpiarPromos() {   // si la cantidad baja del mínimo, la decisión so
 function bloquePromo(p) {
   if (!promoPorCant(p) || comboDeLinea(p)) return '';
   const c = draft.items[p.id], min = promoCantDe(p), st = draft.promos[p.id];
-  if (c < min) return `<div class="promo-hint">🏷️ Promo: ${esc(promoDesc(p))}</div>`;
+  if (c < min) return '';   // la promo se ofrece solo cuando ya está la cantidad que la aplica
   if (st === 'si') return `<div class="promo-ok"><span>✓ Promo aplicada: ${esc(promoQue(p))}</span><button class="btn sec" data-promo="no">Quitar</button></div>`;
   if (st === 'no') return `<div class="promo-hint">Promo no aplicada <button class="btn sec" data-promo="ask">Aplicar</button></div>`;
   return `<div class="promo-offer"><b>🏷️ ¡Hay una promo!</b> ${esc(promoDesc(p))}. ¿La aplicás?<div class="row" style="border:0;padding:8px 0 0"><button class="btn" data-promo="si">Aceptar</button><button class="btn sec" data-promo="no">No, gracias</button></div></div>`;
@@ -1067,9 +1068,10 @@ function pintarSel() {
   const t = $('#selTools'), b = $('#selBar'); if (!t || !b) return;
   if (!selMode) { t.innerHTML = '<button class="btn sec" data-act="selModo" data-tipo="pendientes" style="padding:0 6px;font-size:15px">☑ Sin cargar</button><button class="btn sec" data-act="selModo" data-tipo="cargados" style="padding:0 6px;font-size:15px">☑ Cargados</button><button class="btn sec" data-act="selModo" data-tipo="reparto" style="padding:0 6px;font-size:15px;grid-column:1/-1">🚚 Crear reparto</button>'; b.innerHTML = ''; return; }
   const cv = cargadosVisibles(), pend = selTipo === 'pendientes', rep = selTipo === 'reparto';
-  t.innerHTML = `<button class="btn sec" data-act="selTodos">${cv.length && cv.every(p => selPeds.has(p.id)) ? 'Quitar selección' : `Seleccionar todos (${cv.length})`}</button><button class="btn sec" data-act="selModo">Cancelar</button>`;
+  t.innerHTML = '';   // las opciones van fijas abajo, en la barra, para no tener que subir y bajar
+  const filaSel = `<div class="selfila"><button class="btn sec" data-act="selTodos">${cv.length && cv.every(p => selPeds.has(p.id)) ? 'Quitar selección' : `Seleccionar todos (${cv.length})`}</button><button class="btn sec" data-act="selModo">Cancelar</button></div>`;
   const n = selPeds.size;
-  b.innerHTML = `<div class="bar sel"><div class="tot" style="font-size:15px;white-space:nowrap">${n} elegidos</div>${rep ? `<button class="btn" data-act="selZona" data-zona="concordia" ${n ? '' : 'disabled'} style="padding:12px 14px">Concordia</button><button class="btn" data-act="selZona" data-zona="afuera" ${n ? '' : 'disabled'} style="padding:12px 14px">Afuera</button><button class="btn sec" data-act="selZona" data-zona="" ${n ? '' : 'disabled'} style="padding:12px 10px">Quitar</button>` : pend ? `<button class="btn" data-act="abrirElegidos" ${n ? '' : 'disabled'} style="padding:12px 18px">📄 Abrir</button>` : `<button class="btn sec" data-act="selEntrega" ${n ? '' : 'disabled'} style="padding:12px 12px">Opciones…</button><button class="btn" data-act="selEntregado" ${n ? '' : 'disabled'} style="padding:12px 14px">✓ Entregados</button>`}</div>`;
+  b.innerHTML = `<div style="height:150px"></div><div class="bar sel">${filaSel}<div class="tot" style="font-size:15px;white-space:nowrap">${n} elegidos</div>${rep ? `<button class="btn" data-act="selZona" data-zona="concordia" ${n ? '' : 'disabled'} style="padding:12px 14px">Concordia</button><button class="btn" data-act="selZona" data-zona="afuera" ${n ? '' : 'disabled'} style="padding:12px 14px">Afuera</button><button class="btn sec" data-act="selZona" data-zona="" ${n ? '' : 'disabled'} style="padding:12px 10px">Quitar</button>` : pend ? `<button class="btn" data-act="abrirElegidos" ${n ? '' : 'disabled'} style="padding:12px 18px">📄 Abrir</button>` : `<button class="btn sec" data-act="selEntrega" ${n ? '' : 'disabled'} style="padding:12px 12px">Opciones…</button><button class="btn" data-act="selEntregado" ${n ? '' : 'disabled'} style="padding:12px 14px">✓ Entregados</button>`}</div>`;
 }
 async function enviarEntrega(pasos) {   // pasos: [{accion, motivo?, numero?, monto?}] sobre los pedidos elegidos
   const ids = [...selPeds]; if (!ids.length) return false;
