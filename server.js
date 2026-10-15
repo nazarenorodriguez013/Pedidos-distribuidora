@@ -32,6 +32,8 @@ function body(req, limit = 1e6) {
 
 // cabeceras de seguridad (OWASP A05): CSP, sin iframes, sin sniffing, HTTPS forzado
 const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://cdnjs.cloudflare.com; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'";
+// versión de lo publicado: la app la compara con la que cargó para avisar cuando hay una nueva
+const VERSION = (E.RAILWAY_GIT_COMMIT_SHA || '').slice(0, 7) || String(Date.now());
 http.createServer(async (req, res) => {
   const url = req.url.split('?')[0];
   res.setHeader('Content-Security-Policy', CSP);
@@ -42,11 +44,13 @@ http.createServer(async (req, res) => {
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   if (url.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
   try {
+    if (url === '/api/version') return send(res, 200, { v: VERSION });
     if (url.startsWith('/api/p/')) return await pedidos(req, res, url, body, send, pool, SECRET);
     const name = url === '/' ? 'index.html' : url.slice(1);
     if (!FILES.includes(name)) { res.statusCode = 404; return res.end('No encontrado'); }
     res.setHeader('content-type', TYPES[path.extname(name)]);
     if (name === 'sw.js' || name === 'index.html') res.setHeader('cache-control', 'no-cache');
+    if (name === 'index.html') return res.end((await fs.promises.readFile(path.join(__dirname, name), 'utf8')).replace('__VERSION__', VERSION));
     fs.createReadStream(path.join(__dirname, name)).pipe(res);
   } catch (e) {
     console.error(e);

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#121212">
+<meta name="app-version" content="__VERSION__">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="icon" href="/icon-192.png">
@@ -674,7 +675,8 @@ function vConfig() {
     <div class="card"><h2>Cambiar contraseña</h2><form id="f"><label>Contraseña actual</label><input name="actual" type="password" autocomplete="current-password" required>
       <label>Nueva contraseña</label><input name="nueva" type="password" minlength="4" autocomplete="new-password" required>
       <label>Repetir nueva contraseña</label><input name="rep" type="password" autocomplete="new-password" required><div style="height:14px"></div><button class="btn">Cambiar contraseña</button></form></div>
-    <button class="btn bad" data-act="salir">Cerrar sesión</button>`;
+    <button class="btn bad" data-act="salir">Cerrar sesión</button>
+    <p class="mut" style="text-align:center;margin:14px 0 0">Versión de la app: ${esc(VERSION_APP && VERSION_APP !== '__VERSION__' ? VERSION_APP : '—')}</p>`;
   pintarPush();
   if ($('#fp')) $('#fp').onsubmit = async e => {
     e.preventDefault();
@@ -1734,18 +1736,26 @@ document.addEventListener('change', async e => {
 });
 try { window.matchMedia('(min-width:900px)').addEventListener('change', () => { if (token && !document.getElementById('modal')) render(); }); } catch {}
 (async () => { if (token) { try { await cargar(); } catch (e) { if (e.offline) usarCache(); else token = null; } } try { history.replaceState({ d: -1 }, ''); if (!restaurarNav()) go('menu'); sincronizar(); } catch (e) { $('#app').innerHTML = '<p style="padding:24px;color:#b91c1c">Error: ' + esc(e.message) + '</p>'; } })();
+/* aviso de versión nueva: aparece cuando lo publicado es distinto de lo que cargó la app (se revisa al abrir, cada 5 minutos y al volver a la ventana) */
+const VERSION_APP = (document.querySelector('meta[name=app-version]') || {}).content || '';
+function avisoVersionNueva() {
+  if (document.getElementById('nuevaVersion')) return;
+  const d = document.createElement('div'); d.id = 'nuevaVersion';
+  d.style.cssText = 'position:fixed;left:12px;right:12px;top:70px;z-index:95;background:#1e3a8a;color:#fff;border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:center;box-shadow:0 6px 20px rgba(0,0,0,.35);max-width:560px;margin:0 auto';
+  d.innerHTML = '<span style="flex:1">Hay una versión nueva de la app.</span><button style="border:0;border-radius:8px;background:#fff;color:#1e3a8a;font-weight:700;padding:8px 14px;font:inherit">Actualizar</button>';
+  d.querySelector('button').onclick = () => { (window.caches ? caches.keys().then(ks => Promise.all(ks.map(k => caches.delete(k)))) : Promise.resolve()).catch(() => {}).then(() => location.reload()); };   // se borra lo guardado para que la recarga traiga lo nuevo
+  document.body.appendChild(d);
+}
+async function revisarVersion() {
+  if (!VERSION_APP || VERSION_APP === '__VERSION__') return;
+  try { const r = await fetch('/api/version', { cache: 'no-store' }); if (!r.ok) return; const j = await r.json(); if (j.v && j.v !== VERSION_APP) avisoVersionNueva(); } catch {}
+}
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
-  // si la app se abrió con una versión guardada (señal lenta) y ya bajó una nueva, se avisa para actualizar con un toque
-  navigator.serviceWorker.addEventListener('message', e => {
-    if (!e.data || e.data.tipo !== 'nueva-version' || document.getElementById('nuevaVersion')) return;
-    const d = document.createElement('div'); d.id = 'nuevaVersion';
-    d.style.cssText = 'position:fixed;left:12px;right:12px;top:70px;z-index:95;background:#1e3a8a;color:#fff;border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:center;box-shadow:0 6px 20px rgba(0,0,0,.35)';
-    d.innerHTML = '<span style="flex:1">Hay una versión nueva de la app.</span><button style="border:0;border-radius:8px;background:#fff;color:#1e3a8a;font-weight:700;padding:8px 14px;font:inherit">Actualizar</button>';
-    d.querySelector('button').onclick = () => location.reload();
-    document.body.appendChild(d);
-  });
+  navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.tipo === 'nueva-version') avisoVersionNueva(); });
 }
+setTimeout(revisarVersion, 4000); setInterval(revisarVersion, 5 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') revisarVersion(); });
 </script>
 </body>
 </html>
