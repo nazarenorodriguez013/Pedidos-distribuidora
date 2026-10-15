@@ -72,7 +72,6 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .hoja tr.promo td{background:#fef3c7}.hoja tr.promo td.n:last-child{color:#dc2626;font-weight:700}.hoja .hoja-pr{display:block;font-size:9px;line-height:1;font-weight:400;text-transform:uppercase;letter-spacing:.04em;color:#dc2626}
 .hoja .n{text-align:right;white-space:nowrap}.hoja td.c{font-weight:700;white-space:nowrap}
 .hoja td.q{font-weight:800;font-size:19px}
-.hoja-turno{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:10px;padding:10px 12px;margin-bottom:8px;font-weight:700;line-height:1.3}
 .hoja-edit-top{background:#dbeafe;color:#1e3a8a;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-weight:700}
 .hed-fila{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #e5e7eb}.hed-n{flex:1 1 0;min-width:0;font-size:15px;overflow-wrap:anywhere}
 .hed-p{display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-top:4px;font-size:13px;color:#6b7280;white-space:nowrap}.hed-p input{width:92px;min-height:34px;height:34px;font:inherit;font-size:15px;font-weight:700;text-align:right;border:1px solid #d1d5db;border-radius:6px;background:#fff;color:#111827;padding:0 8px}.hed-p em{font-style:normal;font-size:11px;color:#b45309;font-weight:700;flex-basis:100%}
@@ -414,13 +413,13 @@ function vMenu() {
 }
 
 /* ---------- hoja de pedido (admin): los pedidos sin cargar, uno por uno, para pasarlos deslizando ---------- */
-let hojaIds = [], hojaI = 0, hojaUlt = null;   // hojaUlt: turno del último pedido que se cargó
+let hojaIds = [], hojaI = 0, hojaUlt = null, hojaAvisos = [];   // hojaUlt: turno del último pedido que se cargó
 function abrirHoja(ids) {   // los pedidos elegidos (sin cargar), en el orden en que se ven en la lista
   const l = visiblesPeds.filter(p => ids.includes(p.id) && p.estado !== 'cargado');
   if (!l.length) return toast('Elegí al menos un pedido sin cargar');
   const tn = p => ({ manana: 0, tarde: 1 })[p.turno] ?? 2;   // primero los de la mañana, después los de la tarde; dentro de cada turno, por vendedor y en el orden de la lista
   l.sort((a, b) => tn(a) - tn(b) || String(a.vendedor || '—').localeCompare(String(b.vendedor || '—')) || porReparto(a, b));
-  hojaIds = l.map(p => p.id); hojaI = 0; hojaUlt = null; selMode = false; selPeds = new Set(); go('hoja');
+  hojaIds = l.map(p => p.id); hojaI = 0; hojaUlt = null; hojaAvisos = []; selMode = false; selPeds = new Set(); go('hoja');
 }
 function filasHoja(p) {   // una fila por artículo; si parte de las unidades van con promo de pack, se separan en dos filas ('promo' marca las que llevan precio de promoción)
   return p.items.flatMap(i => i.cantPromo !== undefined && i.cantPromo > 0 && i.cantPromo < i.cant
@@ -434,14 +433,13 @@ function vHoja() {
   if (hojaEd && hojaEd.id === p.id) return vHojaEd(p, cli);
   const b = (d, t, off) => `<button class="btn sec" data-hnav="${d}" ${off ? 'disabled' : ''} style="width:auto;min-width:0;padding:0 14px;min-height:40px">${t}</button>`;
   const prevP = hojaI > 0 ? pedidos.find(x => x.id === hojaIds[hojaI - 1]) : null, turnoPrev = prevP ? prevP.turno || '' : hojaUlt;
-  const nomTurno = k => k ? TURNOS[k].toLowerCase() : 'sin turno';
-  const avisoTurno = turnoPrev !== null && turnoPrev !== undefined && turnoPrev !== (p.turno || '') ? `<div class="hoja-turno">⚠ Terminaste los pedidos de ${turnoPrev ? 'la ' + nomTurno(turnoPrev) : 'sin turno'}. Los que siguen son de ${p.turno ? 'la ' + nomTurno(p.turno) : 'sin turno'}: cargalos como pedidos de ${p.turno ? 'la ' + nomTurno(p.turno) : 'sin turno'}.</div>` : '';
-  $('#main').innerHTML = `${avisoTurno}<div class="row" style="border:0;padding:0 0 8px;gap:8px;align-items:center">${b(-1, '‹ Anterior', hojaI === 0)}<div class="nm" style="text-align:center"><b>${hojaI + 1} de ${n}</b> <span class="mut">· #${p.id}</span> ${badgeTurno(p)}</div>${b(1, 'Siguiente ›', hojaI === n - 1)}</div>
+  $('#main').innerHTML = `<div class="row" style="border:0;padding:0 0 8px;gap:8px;align-items:center">${b(-1, '‹ Anterior', hojaI === 0)}<div class="nm" style="text-align:center"><b>${hojaI + 1} de ${n}</b> <span class="mut">· #${p.id}</span> ${badgeTurno(p)}</div>${b(1, 'Siguiente ›', hojaI === n - 1)}</div>
     <div class="hoja">
       <div class="hoja-cab"><div class="hoja-cod">${p.clienteCodigo ? esc(p.clienteCodigo) : '—'}</div><div class="hoja-cli"><b>${esc(p.cliente)}</b><span>${esc(cli.direccion || '')}</span></div></div>
       <table><thead><tr><th>Código</th><th class="n">Cant.</th><th>Descripción</th><th class="n">Precio</th></tr></thead><tbody>${filasHoja(p).map(i => `<tr${i.promo ? ' class="promo"' : ''}><td class="c">${esc(i.codigo)}</td><td class="n q">${i.cant}</td><td>${esc(i.nombre)}</td><td class="n">${money(i.precio)}${i.promo ? '<small class="hoja-pr">promoción</small>' : ''}</td></tr>`).join('')}</tbody></table>
       ${p.redondeo ? `<div class="hoja-sub">Subtotal ${money(p.subtotal)}<br>Redondeo <b>${p.redondeo > 0 ? '+' : '−'} ${money(Math.abs(p.redondeo))}</b></div>` : ''}<div class="hoja-total">Total <b>${money(p.total)}</b></div></div>
     <button class="btn" data-act="hojaCargar" style="margin-top:12px">✓ Marcar como cargado</button>`;
+  if (turnoPrev !== null && turnoPrev !== undefined) avisarTurno(turnoPrev, p.turno || '');
 }
 /* editar el pedido en la misma hoja: tras aceptar aparecen los botones para cambiar cantidades, quitar o agregar productos */
 let hojaEd = null;   // { id, items: [{ pid, codigo, nombre, precio, cant }], q }
@@ -508,6 +506,19 @@ document.addEventListener('contextmenu', e => {
   e.preventDefault();
   if (Date.now() - lpToque > 2000) editarDesdeHoja();   // clic derecho con el mouse; con el dedo ya lo maneja el toque largo
 });
+/* al pasar de los pedidos de la mañana a los de la tarde se avisa una sola vez, en el medio de la pantalla y con una ✕ para cerrar */
+const ordenTurno = k => ({ manana: 0, tarde: 1 })[k] ?? 2, nomTurno = k => k ? 'la ' + TURNOS[k].toLowerCase() : 'sin turno';
+function avisarTurno(prev, act) {
+  if (ordenTurno(act) <= ordenTurno(prev)) return;   // solo cuando se pasa a un turno posterior
+  const key = prev + '>' + act; if (hojaAvisos.includes(key)) return; hojaAvisos.push(key);
+  const el = document.createElement('div'); el.id = 'dlgTurno'; el.className = 'modal'; el.style.cssText = 'z-index:90;align-items:center;padding:0 16px';
+  el.innerHTML = `<div class="modal-card" data-stop style="max-width:420px;border-radius:18px;padding:22px 20px 20px;border:2px solid #dc2626;position:relative"><button type="button" data-r="x" aria-label="Cerrar" style="position:absolute;top:8px;right:10px;width:38px;height:38px;border:0;background:none;color:#991b1b;font-size:26px;line-height:1;cursor:pointer">✕</button>
+    <p style="font-size:20px;line-height:1.35;margin:6px 24px 16px 0;color:#dc2626;font-weight:800">⚠ Terminaste los pedidos de ${esc(nomTurno(prev))}.</p>
+    <p style="font-size:18px;line-height:1.35;margin:0 0 18px;color:#dc2626;font-weight:700">Los que siguen son de ${esc(nomTurno(act))}: cargalos como pedidos de ${esc(nomTurno(act))}.</p>
+    <button type="button" class="btn" data-r="x" style="background:#dc2626">Entendido</button></div>`;
+  el.addEventListener('click', e => { if (e.target === el || e.target.closest('[data-r]')) el.remove(); });
+  document.body.appendChild(el);
+}
 function hojaMover(d) { if (hojaEd) return; const i = hojaI + d; if (i < 0 || i >= hojaIds.length) return; hojaI = i; render(); window.scrollTo(0, 0); }
 async function hojaCargar() {
   const id = hojaIds[hojaI]; if (!id) return;
