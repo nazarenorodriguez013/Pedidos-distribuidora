@@ -359,13 +359,13 @@ window.addEventListener('popstate', async e => {
 });
 
 /* ---------- vistas ---------- */
-const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', manual: 'Manual de uso', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', novedades: 'Novedades', hoja: 'Pedidos sin cargar' };
+const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', manual: 'Manual de uso', cambios: 'Registro de cambios', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', novedades: 'Novedades', hoja: 'Pedidos sin cargar' };
 const escritorio = () => window.matchMedia('(min-width:900px)').matches;
 const TABS = ['menu', 'pedidos', 'clientes', 'precios', 'faltantes', 'config'];   // pantallas con barra de botones abajo
 function render() {
   document.body.classList.remove('login-pg');
   if (!token) return login();
-  if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc','hoja','manual'].includes(view)) view = 'menu';
+  if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc','hoja','manual','cambios'].includes(view)) view = 'menu';
   if (view !== 'pedido') document.body.classList.remove('bloq-ped');
   if (view !== 'hoja') hojaEd = null;
   if (view !== 'pedidos' && view !== 'pedido' && view !== 'hoja') { fdiaInit = false; selMode = false; selPeds = new Set(); }   // al volver a Pedidos desde otra sección arranca en el día de hoy
@@ -373,7 +373,7 @@ function render() {
   document.body.classList.toggle('hay-tabs', desk || tab);
   $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1>${campana()}<span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab || desk ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '📦', 'Listado'], ...(desk ? [['promos', '🏷️', 'Promociones'], ['novedades', '📣', 'Novedades' + (nNuevas() ? ' (' + nNuevas() + ')' : '')]] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo">${esAdmin() ? `<button data-go="manual" class="${view === 'manual' ? 'on' : ''}"><span>📖</span>Manual de uso</button>` : ''}<button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
   estado();
-  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, manual: vManual, novedades: vNovedades, hoja: vHoja })[view]();
+  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, manual: vManual, cambios: vCambios, novedades: vNovedades, hoja: vHoja })[view]();
 }
 function login() {
   document.body.classList.remove('hay-tabs'); document.body.classList.add('login-pg');
@@ -532,6 +532,34 @@ async function hojaCargar() {
   } catch (e) { toast(e.message); }
 }
 
+/* ---------- registro de cambios que el administrador hace en los pedidos ---------- */
+let cambiosReg = null, cFiltro = 'faltantes', cQ = '', cVerRes = false;
+function vCambios() {
+  $('#main').innerHTML = `<p class="mut" style="margin:0 0 8px">Acá queda anotado todo lo que sacás, bajás, agregás o cambiás de precio cuando editás un pedido: qué producto, a quién, cuánto y cuándo. Así, cuando llega la mercadería, sabés a quién le faltó.</p>
+    <input id="cq" type="search" placeholder="Buscar producto, cliente o número de pedido" value="${esc(cQ)}" autocomplete="off">
+    <div class="fgrid" style="margin-top:8px">${[['faltantes', 'Lo que faltó'], ['precios', 'Precios'], ['agregados', 'Agregados'], ['todos', 'Todo']].map(([k, n]) => `<button class="btn ${cFiltro === k ? '' : 'sec'}" data-cfil="${k}" style="min-height:40px;padding:0 6px;font-size:15px">${n}</button>`).join('')}</div>
+    <label class="row" style="border:0;padding:8px 0 0;gap:8px;cursor:pointer"><input type="checkbox" id="cres" ${cVerRes ? 'checked' : ''} style="width:20px;min-height:20px;flex:none"><span class="mut">Mostrar también los ya resueltos</span></label>
+    <div id="clista" style="margin-top:8px"><p class="mut">Cargando…</p></div>`;
+  $('#cq').oninput = e => { cQ = e.target.value; pintarCambios(); };
+  $('#cres').onchange = e => { cVerRes = e.target.checked; pintarCambios(); };
+  api('GET', 'p/cambios').then(r => { cambiosReg = r.cambios; pintarCambios(); }).catch(er => { const b = $('#clista'); if (b) b.innerHTML = `<p class="mut">${esc(er.message)}</p>`; });
+}
+function pintarCambios() {
+  const box = $('#clista'); if (!box || !cambiosReg) return;
+  const n = norm(cQ), filas = [];
+  for (const e of cambiosReg) e.items.forEach((it, k) => {
+    const ok = cFiltro === 'faltantes' ? ['saco', 'baja'].includes(it.tipo) : cFiltro === 'precios' ? it.tipo === 'precio' : cFiltro === 'agregados' ? ['agrego', 'sube'].includes(it.tipo) : true;
+    if (!ok || (!cVerRes && it.ok && ['saco', 'baja'].includes(it.tipo))) return;
+    if (n && !(norm(it.nombre).includes(n) || norm(it.codigo).includes(n) || norm(e.cliente).includes(n) || String(e.clienteCodigo || '') === cQ.trim() || String(e.pedidoId) === cQ.trim().replace('#', ''))) return;
+    filas.push({ e, k, it });
+  });
+  if (!filas.length) { box.innerHTML = vacio(cFiltro === 'faltantes' ? 'No hay faltantes pendientes' : 'No hay cambios para mostrar'); return; }
+  const txt = it => it.tipo === 'saco' ? `Se sacó (eran <strong>${it.antes}</strong>)` : it.tipo === 'baja' ? `Se bajó de ${it.antes} a <strong>${it.ahora}</strong> (−${it.antes - it.ahora})` : it.tipo === 'agrego' ? `Se agregó <strong>${it.ahora}</strong>` : it.tipo === 'sube' ? `Subió de ${it.antes} a <strong>${it.ahora}</strong> (+${it.ahora - it.antes})` : `Precio ${money(it.precioAntes)} → <strong>${money(it.precioAhora)}</strong>`;
+  const fila = ({ e, k, it }) => `<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--bd)"><div style="flex:1 1 0;min-width:0"><div style="font-weight:700">${e.clienteCodigo ? esc(e.clienteCodigo) + ' · ' : ''}${esc(e.cliente)}</div><div class="mut">#${e.pedidoId}${e.turno ? ' · ' + esc(TURNOS[e.turno] || '') : ''}${e.dia ? ' · ' + esc(diaTxt(e.dia)) : ''} · ${esc(fechaHora(e.en))}${e.estado === 'cargado' ? ' · ya cargado' : ''}</div><div style="margin-top:3px">${cFiltro === 'faltantes' ? '' : `<strong>${esc(it.nombre)}</strong>: `}${txt(it)}</div></div>${['saco', 'baja'].includes(it.tipo) ? `<label class="mut" style="display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;font-size:11px;flex:none"><input type="checkbox" data-cres="${e.id}:${k}" ${it.ok ? 'checked' : ''} style="width:26px;min-height:26px;height:26px">Resuelto</label>` : ''}</div>`;
+  if (cFiltro !== 'faltantes') { box.innerHTML = `<div class="card">${filas.slice(0, 300).map(fila).join('')}${filas.length > 300 ? `<p class="mut">y ${filas.length - 300} más (usá el buscador)</p>` : ''}</div>`; return; }
+  const g = new Map(); for (const f of filas) { const k = f.it.pid; if (!g.has(k)) g.set(k, []); g.get(k).push(f); }
+  box.innerHTML = [...g.values()].sort((a, b) => norm(a[0].it.nombre).localeCompare(norm(b[0].it.nombre))).map(l => { const u = l.reduce((s, f) => s + (f.it.antes - f.it.ahora), 0); return `<div class="card"><div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline"><b style="font-size:17px">${esc(l[0].it.codigo)} · ${esc(l[0].it.nombre)}</b><span style="white-space:nowrap;color:var(--bad);font-weight:800">faltaron ${u} u.</span></div><div class="mut" style="margin:2px 0 4px">${l.length} ${l.length === 1 ? 'pedido' : 'pedidos'}</div>${l.map(fila).join('')}</div>`; }).join('');
+}
 /* ---------- manual de uso (admin) ---------- */
 const MANUAL = [
   ['🚀', 'Primeros pasos', `<p>Entrás con tu <b>usuario</b> y <b>contraseña</b>. Abajo (en el celular) o a la izquierda (en la computadora) tenés el menú: <b>Inicio, Pedidos, Clientes, Listado, Faltantes</b>, y en la computadora también <b>Promociones</b> y <b>Novedades</b>. <b>Configuración</b> y <b>Cerrar sesión</b> están al final.</p>
@@ -571,6 +599,9 @@ const MANUAL = [
   ['👥', 'Usuarios y contraseñas', `<p>En <b>Configuración → Usuarios</b> creás y editás a los vendedores.</p>
     <ul><li><b>+ Nuevo usuario</b>: nombre, usuario (para ingresar), contraseña y rol (<b>Vendedor</b> o <b>Administrador</b>).</li><li>Tocá un usuario para <b>cambiar su nombre o su usuario</b>, ponerle una contraseña nueva, o <b>desactivarlo</b> (no puede ingresar, pero conserva sus pedidos).</li><li>Si le cambiás el nombre, sus pedidos pasan a mostrar el nombre nuevo.</li><li>Para <b>eliminar</b> a un vendedor, primero reasigná sus clientes a otro.</li></ul>
     <p>Tu propio nombre y usuario los cambiás en <b>Configuración → Mis datos</b>, y tu contraseña en <b>Cambiar contraseña</b>. Siempre tiene que quedar al menos un administrador activo.</p>`],
+  ['📝', 'Registro de cambios en pedidos', `<p>Cuando editás un pedido (sacás un producto, bajás o subís una cantidad, agregás algo o cambiás un precio), el sistema lo <b>anota solo</b>: qué producto, en qué pedido, a qué cliente, cuántas unidades y cuándo. Lo ves en <b>Configuración → Registro de cambios en pedidos</b>.</p>
+    <ul><li><b>Lo que faltó:</b> los productos que sacaste o bajaste, agrupados por producto con el total de unidades que faltaron y a quién. Es la lista para cuando llega la mercadería.</li><li>Cuando ya repusiste o avisaste, tildá <b>Resuelto</b> y sale de la lista (con "Mostrar también los ya resueltos" lo volvés a ver).</li><li><b>Precios</b> y <b>Agregados</b> tienen su propia lista, y <b>Todo</b> las junta en orden de fecha.</li><li>Con el buscador encontrás un producto, un cliente o un número de pedido.</li></ul>
+    <p>Solo anota lo que cambia el administrador. Lo que modifican los vendedores se ve con la etiqueta <b>Agregar</b>.</p>`],
   ['💾', 'Copias de seguridad', `<p>Los pedidos <b>nunca se borran</b>. Además, el sistema hace <b>una copia automática por día</b> y guarda las últimas 14.</p>
     <p>En <b>Configuración → Copia de seguridad</b>:</p>
     <ul><li><b>💾 Descargar copia completa</b>: te baja un archivo con todo. Conviene hacerlo de vez en cuando y guardarlo.</li><li><b>📊 Descargar pedidos en Excel</b>: el detalle de todos los pedidos.</li><li><b>♻️ Restaurar una copia</b>: volvés a una copia automática o a un archivo que descargaste. Antes de restaurar, el sistema guarda una copia de seguridad de cómo estaba. Los usuarios y contraseñas <b>no</b> se tocan.</li></ul>`],
@@ -661,7 +692,7 @@ function vConfig() {
   const a = esAdmin(), fila = (v, i, t) => `<div class="row" data-go="${v}" style="cursor:pointer"><span style="font-size:22px">${i}</span><div class="nm"><b>${t}</b></div><span class="mut">›</span></div>`;
   $('#main').innerHTML = `<div class="card"><b>${esc(user.nombre)}</b><br><span class="mut">usuario: ${esc(user.usuario)} · ${a ? 'Administrador' : 'Vendedor'}</span></div>
     ${a ? `<div class="card"><h2>Mis datos</h2><form id="fp"><label>Nombre</label><input name="nombre" value="${esc(user.nombre)}" required><label>Usuario (para ingresar)</label><input name="usuario" value="${esc(user.usuario)}" autocapitalize="none" required><div style="height:14px"></div><button class="btn">Guardar mis datos</button></form></div>` : ''}
-    ${a ? `<div class="card">${fila('productos', '🗂️', `Productos (${productos.length})`)}${fila('importar', '📥', 'Importar / exportar Excel')}${fila('usuarios', '👥', 'Usuarios')}${fila('manual', '📖', 'Manual de uso')}${fila('promos', '🏷️', 'Promociones')}</div>` : ''}
+    ${a ? `<div class="card">${fila('productos', '🗂️', `Productos (${productos.length})`)}${fila('importar', '📥', 'Importar / exportar Excel')}${fila('usuarios', '👥', 'Usuarios')}${fila('manual', '📖', 'Manual de uso')}${fila('cambios', '📝', 'Registro de cambios en pedidos')}${fila('promos', '🏷️', 'Promociones')}</div>` : ''}
     ${a ? `<div class="card"><h2>Copia de seguridad</h2><p class="mut" style="margin:0 0 8px">Se guarda una copia automática por día (las últimas 14) dentro de la base de datos. Además podés bajar una copia a tu computadora o el detalle de los pedidos en Excel.</p>
       <button class="btn" data-act="respaldo">💾 Descargar copia completa</button><button class="btn sec" data-act="pedidosExcel" style="margin-top:8px">📊 Descargar pedidos en Excel</button><button class="btn sec" data-act="abrirRestaurar" style="margin-top:8px">♻️ Restaurar una copia</button></div>` : ''}
     <div class="card"><h2>Notificaciones</h2><div id="pushBox"></div></div>
@@ -1565,7 +1596,7 @@ function exportarExcel() {
 
 /* ---------- eventos ---------- */
 document.addEventListener('click', async e => {
-  const t = e.target.closest('button, [data-selgrp], [data-go], [data-sel], [data-editcombo], [data-ped], [data-pnav], [data-edit], [data-edituser], [data-editcli], [data-cli], [data-precio], [data-promoprecio], [data-nuevapromo]');
+  const t = e.target.closest('button, [data-selgrp], [data-cres], [data-go], [data-sel], [data-editcombo], [data-ped], [data-pnav], [data-edit], [data-edituser], [data-editcli], [data-cli], [data-precio], [data-promoprecio], [data-nuevapromo]');
   if (!t || e.target.closest('[data-stop]')) return;
   const d = t.dataset, row = t.closest('[data-pid]');
   if (d.tab) {
@@ -1582,6 +1613,12 @@ document.addEventListener('click', async e => {
     const v = await pedirPrecio(p.nombre, precioLinea(p), !!manualDe(p)); if (v === null) return;
     draft.manual = draft.manual || {}; if (v > 0) draft.manual[p.id] = v; else delete draft.manual[p.id];
     const y = window.scrollY; pintarPedido(); actualizarBoton(); window.scrollTo(0, y);
+  }
+  else if (d.cfil) { cFiltro = d.cfil; vCambios(); }
+  else if (d.cres && esAdmin()) {
+    const [id, k] = d.cres.split(':').map(Number), e = (cambiosReg || []).find(x => x.id === id), ok = t.checked;
+    try { const r = await api('PUT', 'p/cambios/' + id, { i: k, ok }); if (e) e.items[k] = r.items[k]; } catch (er) { toast(er.message); }
+    pintarCambios();
   }
   else if (d.hed && hojaEd) {
     const [acc, pid] = d.hed.split(':'), it = hojaEd.items.find(x => x.pid === +pid), pr = it && productos.find(x => x.id === it.pid), m = (pr && pr.multiplo) || 1;

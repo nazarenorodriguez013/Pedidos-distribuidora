@@ -23,6 +23,8 @@ async function load(pool) {
   state.seq.c = state.seq.c || 1;
   state.combos = state.combos || [];
   state.novedades = state.novedades || [];
+  state.cambios = state.cambios || [];   // registro de lo que el administrador modifica en los pedidos (quitó, bajó, agregó, cambió el precio)
+  state.seq.x = state.seq.x || 1;
   state.pushSubs = state.pushSubs || [];
   if (webpush) {   // claves VAPID: de las variables de entorno o generadas una vez y guardadas junto con los datos
     const env = process.env;
@@ -146,7 +148,7 @@ function restaurarDatos(d) {   // reemplaza pedidos, clientes, productos, promos
   for (const k of ['productos', 'pedidos', 'clientes']) if (!Array.isArray(d[k])) throw { code: 400, msg: 'El archivo no es una copia válida (falta ' + k + ')' };
   if (d.pedidos.some(p => !p || !Number.isInteger(p.id) || !Array.isArray(p.items)) || d.clientes.some(c => !c || !Number.isInteger(c.id)) || d.productos.some(p => !p || !Number.isInteger(p.id))) throw { code: 400, msg: 'El archivo tiene datos dañados' };
   state.productos = d.productos; state.pedidos = d.pedidos; state.clientes = d.clientes;
-  state.combos = Array.isArray(d.combos) ? d.combos : []; state.novedades = Array.isArray(d.novedades) ? d.novedades : [];
+  state.combos = Array.isArray(d.combos) ? d.combos : []; state.novedades = Array.isArray(d.novedades) ? d.novedades : []; state.cambios = Array.isArray(d.cambios) ? d.cambios : []; state.seq.x = Math.max(state.seq.x || 1, state.cambios.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
   state.configPorCodigo = d.configPorCodigo && typeof d.configPorCodigo === 'object' ? d.configPorCodigo : {};
   const mx = l => l.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1;
   state.seq.p = Math.max(state.seq.p || 1, mx(state.productos), (d.seq || {}).p || 1); state.seq.o = Math.max(state.seq.o || 1, mx(state.pedidos), (d.seq || {}).o || 1);
@@ -426,6 +428,22 @@ function sumarDe(o) {
   const m = new Map((o.sumar || []).map(x => [x.pid, { ...x }]));
   for (const i of o.items) { const d = i.cant - (i.cantCargada || 0); if (d > 0) { const x = m.get(i.pid) || { pid: i.pid, nombre: i.nombre, cant: 0 }; x.cant += d; m.set(i.pid, x); } }
   return m.size ? [...m.values()] : undefined;
+}
+// Diferencias entre un pedido antes y después de que el administrador lo edite: producto quitado, cantidad bajada o subida, producto agregado y precio cambiado
+function difItems(antes, ahora) {
+  const a = new Map((antes || []).map(i => [i.pid, i])), n = new Map((ahora || []).map(i => [i.pid, i])), out = [];
+  const base = (i, o) => ({ pid: i.pid, codigo: i.codigo, nombre: i.nombre, ...o });
+  for (const [pid, i] of a) {
+    const j = n.get(pid);
+    if (!j) out.push(base(i, { tipo: 'saco', antes: i.cant, ahora: 0 }));
+    else {
+      if (j.cant < i.cant) out.push(base(i, { tipo: 'baja', antes: i.cant, ahora: j.cant }));
+      else if (j.cant > i.cant) out.push(base(i, { tipo: 'sube', antes: i.cant, ahora: j.cant }));
+      if (Math.abs((j.precio || 0) - (i.precio || 0)) > 0.004) out.push(base(i, { tipo: 'precio', precioAntes: i.precio, precioAhora: j.precio }));
+    }
+  }
+  for (const [pid, j] of n) if (!a.has(pid)) out.push(base(j, { tipo: 'agrego', antes: 0, ahora: j.cant }));
+  return out;
 }
 const adminsActivos = () => state.usuarios.filter(u => u.rol === 'admin' && u.activo);
 
@@ -731,7 +749,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     }
     if (rec === 'respaldo' && req.method === 'GET') {   // el administrador descarga todos los datos (sin contraseñas ni claves)
       soloAdmin();
-      return send(res, 200, { fecha: new Date().toISOString(), version: 1, productos: s.productos, pedidos: s.pedidos, clientes: s.clientes, combos: s.combos, novedades: s.novedades, seq: s.seq, configPorCodigo: s.configPorCodigo || {}, usuarios: s.usuarios.map(pub) });
+      return send(res, 200, { fecha: new Date().toISOString(), version: 1, productos: s.productos, pedidos: s.pedidos, clientes: s.clientes, combos: s.combos, novedades: s.novedades, cambios: s.cambios, seq: s.seq, configPorCodigo: s.configPorCodigo || {}, usuarios: s.usuarios.map(pub) });
     }
     if (rec === 'pushkey' && req.method === 'GET') return send(res, 200, { key: webpush && s.vapid ? s.vapid.publica : null });
     if (rec === 'pushsub') {   // el dispositivo se suscribe / se da de baja para recibir notificaciones
@@ -744,6 +762,19 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       } else if (req.method !== 'DELETE') throw { code: 405, msg: 'Método no permitido' };
       await save(pool);
       return send(res, 200, { ok: true });
+    }
+    if (rec === 'cambios') {   // registro de cambios hechos por el administrador en los pedidos
+      soloAdmin();
+      if (!id && req.method === 'GET') return send(res, 200, { cambios: [...s.cambios].reverse() });
+      if (id && req.method === 'PUT') {   // marcar (o desmarcar) un renglón como resuelto: ya se repuso o ya se avisó
+        const c = s.cambios.find(x => x.id === id); if (!c) throw { code: 404, msg: 'No existe' };
+        const b = await body(req, 1e4), k = Number(b.i);
+        if (!c.items[k]) throw { code: 400, msg: 'Renglón inexistente' };
+        if (b.ok) c.items[k].ok = new Date().toISOString(); else delete c.items[k].ok;
+        await save(pool);
+        return send(res, 200, c);
+      }
+      throw { code: 405, msg: 'Método no permitido' };
     }
     if (rec === 'novedades' || rec === 'novedadleida') {   // novedades: las escribe el administrador y las ven los vendedores (todos o uno)
       const visibleN = n => admin || n.para === 'todos' || n.para === yo.id;
@@ -823,6 +854,13 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         const antes = list[idx]; antesAgregado = antes.agregadoEn;
         list[idx] = { ...antes, ...armarPedido(b, antes, yo, admin), editado: new Date().toISOString() };
         ajustarStock(antes, list[idx]);
+        if (admin && rec === 'pedidos') {   // se anota qué cambió el administrador, en qué pedido y cuándo
+          const items = difItems(antes.items, list[idx].items);
+          if (items.length) {
+            s.cambios.push({ id: s.seq.x++, en: new Date().toISOString(), por: yo.nombre, pedidoId: antes.id, cliente: list[idx].cliente, clienteCodigo: list[idx].clienteCodigo, vendedor: list[idx].vendedor, dia: list[idx].dia, turno: list[idx].turno, estado: antes.estado === 'cargado' ? 'cargado' : 'pendiente', items });
+            if (s.cambios.length > 3000) s.cambios.splice(0, s.cambios.length - 3000);
+          }
+        }
       }
       await save(pool);
       const n = list[idx];
