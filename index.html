@@ -442,7 +442,7 @@ function vHoja() {
       <div class="hoja-cab"><div class="hoja-cod">${p.clienteCodigo ? esc(p.clienteCodigo) : '—'}</div><div class="hoja-cli"><b>${esc(p.cliente)}</b><span>${esc(cli.direccion || '')}</span></div></div>
       <table><thead><tr><th>Código</th><th class="n">Cant.</th><th>Descripción</th><th class="n">Precio</th></tr></thead><tbody>${filasHoja(p).map(i => `<tr${i.promo ? ' class="promo"' : ''}><td class="c">${esc(i.codigo)}</td><td class="n q">${i.cant}</td><td>${esc(i.nombre)}</td><td class="n">${money(i.precio)}${i.promo ? '<small class="hoja-pr">promoción</small>' : ''}</td></tr>`).join('')}</tbody></table>
       ${p.redondeo ? `<div class="hoja-sub">Subtotal ${money(p.subtotal)}<br>Redondeo <b>${p.redondeo > 0 ? '+' : '−'} ${money(Math.abs(p.redondeo))}</b></div>` : ''}<div class="hoja-total">Total <b>${money(p.total)}</b></div></div>
-    ${cargado ? `<button class="btn sec" data-act="hojaEditarBtn" style="margin-top:12px">✏️ Editar este pedido</button>` : `<button class="btn" data-act="hojaCargar" style="margin-top:12px">✓ Marcar como cargado</button>`}${todos ? '<button class="btn" data-act="atras" style="margin-top:10px">✓ Terminé: volver a Pedidos</button>' : ''}`;
+    ${cargado ? `<button class="btn sec" data-act="hojaEditarBtn" style="margin-top:12px">✏️ Editar este pedido</button>` : `<button class="btn" data-act="hojaCargar" style="margin-top:12px">✓ Marcar como cargado</button>`}`;
   if (turnoPrev !== null && turnoPrev !== undefined) avisarTurno(turnoPrev, p.turno || '');
 }
 /* editar el pedido en la misma hoja: tras aceptar aparecen los botones para cambiar cantidades, quitar o agregar productos */
@@ -523,6 +523,15 @@ function avisarTurno(prev, act) {
   el.addEventListener('click', e => { if (e.target === el || e.target.closest('[data-r]')) el.remove(); });
   document.body.appendChild(el);
 }
+/* al cargar el último pedido: ventana en el medio de la pantalla para terminar (o quedarse a revisar) */
+function avisoFinHoja() {
+  if (document.getElementById('dlgFin')) return;
+  const n = hojaIds.length, el = document.createElement('div'); el.id = 'dlgFin'; el.className = 'modal'; el.style.cssText = 'z-index:90;align-items:center;padding:0 16px';
+  el.innerHTML = `<div class="modal-card" data-stop style="max-width:420px;border-radius:18px;padding:22px 20px 20px;text-align:center;position:relative"><button type="button" data-r="x" aria-label="Cerrar" style="position:absolute;top:8px;right:10px;width:38px;height:38px;border:0;background:none;color:var(--mut);font-size:24px;line-height:1;cursor:pointer">✕</button><p style="font-size:22px;font-weight:800;margin:10px 24px 18px;color:#16a34a">✓ Cargaste todos los pedidos</p>
+    <button type="button" class="btn" data-r="fin">Listo</button></div>`;
+  el.addEventListener('click', e => { const b = e.target.closest('[data-r]'); if (!b && e.target !== el) return; el.remove(); if (b && b.dataset.r === 'fin') history.back(); });
+  document.body.appendChild(el);
+}
 function hojaMover(d) { if (hojaEd) return; const i = hojaI + d; if (i < 0 || i >= hojaIds.length) return; hojaI = i; render(); window.scrollTo(0, 0); }
 async function hojaCargar() {
   const id = hojaIds[hojaI]; if (!id) return;
@@ -531,7 +540,10 @@ async function hojaCargar() {
     const f = await api('GET', 'p/pedidos/' + id); const k = pedidos.findIndex(x => x.id === id); if (k >= 0) pedidos[k] = f; cacheDatos();
     // el pedido cargado queda en la lista (con un aviso y la opción de editarlo); se pasa al siguiente
     if (hojaI < hojaIds.length - 1) hojaI++;
-    toast(hojaIds.every(x => (pedidos.find(y => y.id === x) || {}).estado === 'cargado') ? 'Cargaste todos los pedidos ✓' : 'Pedido cargado ✓'); render(); window.scrollTo(0, 0);
+    const terminaste = hojaIds.every(x => (pedidos.find(y => y.id === x) || {}).estado === 'cargado');
+    if (!terminaste) toast('Pedido cargado ✓');
+    render(); window.scrollTo(0, 0);
+    if (terminaste) avisoFinHoja();
   } catch (e) { toast(e.message); }
 }
 
@@ -1111,9 +1123,9 @@ function vCliente() {
 
 /* ---------- pedidos cargados ---------- */
 let selMode = false, selTipo = 'cargados', selPeds = new Set(), repintarPeds = null, visiblesPeds = [];   // selTipo: 'cargados' (marcar entrega) o 'pendientes' (abrirlos en la hoja)
-// orden dentro de cada turno: por reparto (Concordia, Afuera, sin etiqueta) y, dentro de cada uno, en el orden en que se cargaron
+// orden dentro de cada turno: los cargados, en el orden en que se cargaron; los demás, por reparto (Concordia, Afuera, sin etiqueta)
 const ordenZona = p => esAdmin() ? { concordia: 0, afuera: 1 }[p.zona] ?? 2 : 0;
-const porReparto = (a, b) => ordenZona(a) - ordenZona(b) || (a.cargadoEn && b.cargadoEn ? a.cargadoEn.localeCompare(b.cargadoEn) : 0);   // sin etiqueta ni fecha de carga, queda el orden de siempre (el sort es estable)
+const porReparto = (a, b) => a.cargadoEn && b.cargadoEn ? a.cargadoEn.localeCompare(b.cargadoEn) : ordenZona(a) - ordenZona(b);   // los cargados, en el orden en que se cargaron (de cualquier día); los demás, por reparto y como siempre   // sin etiqueta ni fecha de carga, queda el orden de siempre (el sort es estable)
 const ZONAS = { concordia: 'Concordia', afuera: 'Afuera' };
 const esElegible = p => selTipo === 'reparto' ? true : selTipo === 'cargados' ? p.estado === 'cargado' : p.estado !== 'cargado';
 const cargadosVisibles = () => visiblesPeds.filter(esElegible);
@@ -1207,7 +1219,7 @@ function vPedidos() {
       <div class="row" style="border:0;padding:8px 0 0">${x.error ? `<button class="btn sec" data-reint="${esc(x.uid)}">Reintentar</button>` : ''}<button class="btn sec" data-delcola="${esc(x.uid)}">Eliminar</button></div></div>`).join('');
     $('#lista').innerHTML = pend + (l.length || (esAdmin() && pedidos.some(conSumar)) ? `` + (() => { const tarj = p => `<div class="card${esAdmin() && ZONAS[p.zona] ? ' z-' + p.zona : ''}${hayAgregados(p) ? ' agr' : ''}" data-ped="${p.id}" style="${selMode && esElegible(p) && selPeds.has(p.id) ? 'border-color:var(--pri);background-image:linear-gradient(rgba(26,136,112,.1),rgba(26,136,112,.1))' : ''}"><div class="row" style="border:0;padding:0">${selMode && esElegible(p) ? `<input type="checkbox" ${selPeds.has(p.id) ? 'checked' : ''} tabindex="-1" style="width:22px;min-height:22px;flex:none;pointer-events:none">` : ''}<div class="nm"><b>#${p.id} · ${p.clienteCodigo ? esc(p.clienteCodigo) + ' · ' : ''}${esc(p.cliente)}</b> ${badgeTurno(p)}${estadoTag(p)}
       <span class="mut">${p.dia ? `<b>${esc(diaTxt(p.dia))}</b> · ` : ''}${esAdmin() ? esc(p.vendedor || '—') + ' · ' : ''}${p.items.length} prod. · ${p.items.reduce((s, i) => s + i.cant, 0)} u.${p.estado === 'cargado' && p.cargadoEn && p.editado > p.cargadoEn ? ' · <b>✎ editado ' + new Date(p.editado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) + '</b>' : ''}</span></div><div style="flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:6px">${esAdmin() && p.zona && ZONAS[p.zona] ? `<span class="tag info" style="margin:0">📍 ${ZONAS[p.zona]}</span>` : ''}<span class="price">${money(p.total)}</span></div></div></div>`; const cab = (t, lst, sub) => { const el = sub === 'turno' && selMode ? lst.filter(esElegible) : [], chk = el.length ? `<input type="checkbox" data-selgrp="${el.map(p => p.id).join(',')}" ${el.every(p => selPeds.has(p.id)) ? 'checked' : ''} aria-label="Elegir los pedidos de este turno" style="width:24px;min-height:24px;height:24px;flex:none;vertical-align:middle;margin:0 8px 0 0;cursor:pointer">` : ''; return `<div style="grid-column:1/-1;margin-top:${sub ? 4 : 10}px;padding:${sub === 'turno' ? '4px 2px 4px 10px' : sub ? '6px 8px' : '8px 2px'};border-bottom:${sub ? '1px solid' : '2px solid'} var(--bd);${sub === true ? 'background:var(--card);border-radius:8px' : ''}">${chk}<b${sub === 'turno' ? ' class="mut"' : ''}>${t}</b> <span class="mut">· <b class="cnt">${lst.length}</b> ${lst.length === 1 ? 'pedido' : 'pedidos'} · ${money(lst.reduce((a, p) => a + p.total, 0))}</span></div>`; }; const porTurno = lst => ['manana', 'tarde', ''].map(k => [k, lst.filter(p => (p.turno || '') === k)]).filter(([, x]) => x.length).map(([k, x]) => (lst.length === x.length && !k ? '' : cab(k ? TURNOS[k] : 'Sin turno', x, 'turno')) + (esAdmin() ? x.slice().sort(porReparto) : x).map(tarj).join('')).join('');
-      const bloque = (t, lst) => { if (!lst.length) return ''; if (!esAdmin()) return cab(t, lst) + porTurno(lst); const g = {}; lst.forEach(p => (g[p.vendedor || '—'] = g[p.vendedor || '—'] || []).push(p)); return cab(t, lst) + Object.keys(g).sort().map(v => cab('👤 ' + esc(v), g[v], true) + porTurno(g[v])).join(''); }; const totales = () => { const rech = x => !!(x.entrega && x.entrega.estado === 'rechazado'), ncDe = x => (!rech(x) && x.notaCredito && x.notaCredito.monto) || 0, netoDe = x => rech(x) ? 0 : x.total - ncDe(x);
+      const bloque = (t, lst) => { if (!lst.length) return ''; if (!esAdmin() || t.startsWith('✓')) return cab(t, lst) + porTurno(lst); /* los cargados van por turno y en el orden en que se cargaron, de todos los vendedores juntos */ const g = {}; lst.forEach(p => (g[p.vendedor || '—'] = g[p.vendedor || '—'] || []).push(p)); return cab(t, lst) + Object.keys(g).sort().map(v => cab('👤 ' + esc(v), g[v], true) + porTurno(g[v])).join(''); }; const totales = () => { const rech = x => !!(x.entrega && x.entrega.estado === 'rechazado'), ncDe = x => (!rech(x) && x.notaCredito && x.notaCredito.monto) || 0, netoDe = x => rech(x) ? 0 : x.total - ncDe(x);
         const pr = l.filter(rech), pn = l.filter(x => ncDe(x) > 0), sinMonto = l.filter(x => !rech(x) && x.notaCredito && !x.notaCredito.monto).length;
         const mr = sumaPeds(pr), mn = pn.reduce((a, x) => a + ncDe(x), 0), neto = tot - mr - mn;
         return `<div class="tabla" style="grid-column:1/-1"><h3>Total por turno</h3>${['manana', 'tarde', ''].map(k => [k, l.filter(p => (p.turno || '') === k)]).filter(([, x]) => x.length).map(([k, x]) => `<div class="tfila"><span>${k ? TURNOS[k] : 'Sin turno'}<br><small class="mut">${cuentaPeds(x)}</small></span><b>${money(x.reduce((a, p) => a + netoDe(p), 0))}</b></div>`).join('')}
