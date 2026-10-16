@@ -73,6 +73,8 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .hoja tr.promo td{background:#fef3c7}.hoja tr.promo td.n:last-child{color:#dc2626;font-weight:700}.hoja .hoja-pr{display:block;font-size:9px;line-height:1;font-weight:400;text-transform:uppercase;letter-spacing:.04em;color:#dc2626}
 .hoja .n{text-align:right;white-space:nowrap}.hoja td.c{font-weight:700;white-space:nowrap}
 .hoja td.q{font-weight:800;font-size:19px}
+.hoja-cargada{opacity:.55}
+.hoja-ok{background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:10px;padding:8px 12px;margin-bottom:8px;font-weight:700;text-align:center}
 .hoja-edit-top{background:#dbeafe;color:#1e3a8a;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-weight:700}
 .hed-fila{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #e5e7eb}.hed-n{flex:1 1 0;min-width:0;font-size:15px;overflow-wrap:anywhere}
 .hed-p{display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-top:4px;font-size:13px;color:#6b7280;white-space:nowrap}.hed-p input{width:92px;min-height:34px;height:34px;font:inherit;font-size:15px;font-weight:700;text-align:right;border:1px solid #d1d5db;border-radius:6px;background:#fff;color:#111827;padding:0 8px}.hed-p em{font-style:normal;font-size:11px;color:#b45309;font-weight:700;flex-basis:100%}
@@ -433,13 +435,14 @@ function vHoja() {
   const cli = clientes.find(c => c.id === p.clienteId) || {}, n = hojaIds.length;
   if (hojaEd && hojaEd.id === p.id) return vHojaEd(p, cli);
   const b = (d, t, off) => `<button class="btn sec" data-hnav="${d}" ${off ? 'disabled' : ''} style="width:auto;min-width:0;padding:0 14px;min-height:40px">${t}</button>`;
-  const prevP = hojaI > 0 ? pedidos.find(x => x.id === hojaIds[hojaI - 1]) : null, turnoPrev = prevP ? prevP.turno || '' : hojaUlt;
-  $('#main').innerHTML = `<div class="row" style="border:0;padding:0 0 8px;gap:8px;align-items:center">${b(-1, '‹ Anterior', hojaI === 0)}<div class="nm" style="text-align:center"><b>${hojaI + 1} de ${n}</b> <span class="mut">· #${p.id}</span> ${badgeTurno(p)}</div>${b(1, 'Siguiente ›', hojaI === n - 1)}</div>
-    <div class="hoja">
+  const prevP = hojaI > 0 ? pedidos.find(x => x.id === hojaIds[hojaI - 1]) : null, turnoPrev = prevP ? prevP.turno || '' : null;
+  const cargado = p.estado === 'cargado', nCarg = hojaIds.filter(id => (pedidos.find(x => x.id === id) || {}).estado === 'cargado').length, todos = nCarg === n;   // los cargados quedan en la lista: se puede volver a verlos y editarlos
+  $('#main').innerHTML = `<div class="row" style="border:0;padding:0 0 8px;gap:8px;align-items:center">${b(-1, '‹ Anterior', hojaI === 0)}<div class="nm" style="text-align:center"><b>${hojaI + 1} de ${n}</b> <span class="mut">· #${p.id}</span> ${badgeTurno(p)}${nCarg ? `<br><span class="mut">${nCarg} ${nCarg === 1 ? 'cargado' : 'cargados'}</span>` : ''}</div>${b(1, 'Siguiente ›', hojaI === n - 1)}</div>
+    ${cargado ? '<div class="hoja-ok">✓ Pedido cargado</div>' : ''}<div class="hoja${cargado ? ' hoja-cargada' : ''}">
       <div class="hoja-cab"><div class="hoja-cod">${p.clienteCodigo ? esc(p.clienteCodigo) : '—'}</div><div class="hoja-cli"><b>${esc(p.cliente)}</b><span>${esc(cli.direccion || '')}</span></div></div>
       <table><thead><tr><th>Código</th><th class="n">Cant.</th><th>Descripción</th><th class="n">Precio</th></tr></thead><tbody>${filasHoja(p).map(i => `<tr${i.promo ? ' class="promo"' : ''}><td class="c">${esc(i.codigo)}</td><td class="n q">${i.cant}</td><td>${esc(i.nombre)}</td><td class="n">${money(i.precio)}${i.promo ? '<small class="hoja-pr">promoción</small>' : ''}</td></tr>`).join('')}</tbody></table>
       ${p.redondeo ? `<div class="hoja-sub">Subtotal ${money(p.subtotal)}<br>Redondeo <b>${p.redondeo > 0 ? '+' : '−'} ${money(Math.abs(p.redondeo))}</b></div>` : ''}<div class="hoja-total">Total <b>${money(p.total)}</b></div></div>
-    <button class="btn" data-act="hojaCargar" style="margin-top:12px">✓ Marcar como cargado</button>`;
+    ${cargado ? `<button class="btn sec" data-act="hojaEditarBtn" style="margin-top:12px">✏️ Editar este pedido</button>` : `<button class="btn" data-act="hojaCargar" style="margin-top:12px">✓ Marcar como cargado</button>`}${todos ? '<button class="btn" data-act="atras" style="margin-top:10px">✓ Terminé: volver a Pedidos</button>' : ''}`;
   if (turnoPrev !== null && turnoPrev !== undefined) avisarTurno(turnoPrev, p.turno || '');
 }
 /* editar el pedido en la misma hoja: tras aceptar aparecen los botones para cambiar cantidades, quitar o agregar productos */
@@ -526,9 +529,9 @@ async function hojaCargar() {
   try {
     await api('PUT', 'p/cargar/' + id, { accion: 'cargado' });
     const f = await api('GET', 'p/pedidos/' + id); const k = pedidos.findIndex(x => x.id === id); if (k >= 0) pedidos[k] = f; cacheDatos();
-    hojaUlt = f.turno || ''; hojaIds.splice(hojaI, 1); if (hojaI >= hojaIds.length) hojaI = Math.max(0, hojaIds.length - 1);
-    toast('Pedido cargado ✓'); render(); window.scrollTo(0, 0);
-    if (!hojaIds.length) { toast('No quedan pedidos sin cargar'); volverA('pedidos'); }
+    // el pedido cargado queda en la lista (con un aviso y la opción de editarlo); se pasa al siguiente
+    if (hojaI < hojaIds.length - 1) hojaI++;
+    toast(hojaIds.every(x => (pedidos.find(y => y.id === x) || {}).estado === 'cargado') ? 'Cargaste todos los pedidos ✓' : 'Pedido cargado ✓'); render(); window.scrollTo(0, 0);
   } catch (e) { toast(e.message); }
 }
 
@@ -1710,6 +1713,7 @@ document.addEventListener('click', async e => {
   else if (d.act === 'exportarExcel') exportarExcel();
   else if (d.act === 'borrarPedido') borrarPedido();
   else if (d.act === 'hojaCargar') hojaCargar();
+  else if (d.act === 'hojaEditarBtn') { const p = pedidos.find(x => x.id === hojaIds[hojaI]); if (p) hojaEditar(p); }
   else if (d.hnav) hojaMover(+d.hnav);
   else if (d.pnav) irAPedido(+d.pnav);
   else if (d.act === 'selZona') aplicarZona(d.zona);
