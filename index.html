@@ -1131,7 +1131,8 @@ const esElegible = p => selTipo === 'reparto' ? true : selTipo === 'cargados' ? 
 const cargadosVisibles = () => visiblesPeds.filter(esElegible);
 function pintarSel() {
   const t = $('#selTools'), b = $('#selBar'); if (!t || !b) return;
-  if (!selMode) { t.innerHTML = '<button class="btn sec" data-act="selModo" data-tipo="pendientes" style="padding:0 6px;font-size:15px">☑ Sin cargar</button><button class="btn sec" data-act="selModo" data-tipo="cargados" style="padding:0 6px;font-size:15px">☑ Cargados</button><button class="btn sec" data-act="selModo" data-tipo="reparto" style="padding:0 6px;font-size:15px;grid-column:1/-1">🚚 Crear reparto</button>'; b.innerHTML = ''; return; }
+  t.style.gridTemplateColumns = selMode ? '' : 'repeat(3,1fr)';
+  if (!selMode) { t.innerHTML = '<button class="btn sec" data-act="selModo" data-tipo="pendientes" style="padding:0 6px;font-size:15px">☑ Sin cargar</button><button class="btn sec" data-act="selModo" data-tipo="cargados" style="padding:0 6px;font-size:15px">☑ Cargados</button><button class="btn sec" data-act="selModo" data-tipo="reparto" style="padding:0 6px;font-size:15px">🚚 Crear reparto</button>'; b.innerHTML = ''; return; }
   const cv = cargadosVisibles(), pend = selTipo === 'pendientes', rep = selTipo === 'reparto';
   t.innerHTML = '';   // las opciones van fijas abajo, en la barra, para no tener que subir y bajar
   const filaSel = `<div class="selfila"><button class="btn sec" data-act="selTodos">${cv.length && cv.every(p => selPeds.has(p.id)) ? 'Quitar selección' : `Seleccionar todos (${cv.length})`}</button><button class="btn sec" data-act="selModo">Cancelar</button></div>`;
@@ -1184,7 +1185,7 @@ async function guardarEntrega() {
   if ((entSel === 'devoluciones' || entSel === 'rechazado') && !motivo.trim()) return toast('Indicá el motivo');
   if (await enviarEntrega(pasos)) { toast('Guardado ✓'); cerrarModal(); }
 }
-let vend = '', fdia = '', fturno = '', festado = '', fdiaInit = false;   // al entrar a Pedidos se muestran los de hoy
+let qProd = '', vend = '', fdia = '', fturno = '', festado = '', fdiaInit = false;   // al entrar a Pedidos se muestran los de hoy
 const badgeTurno = p => TURNOS[p.turno] ? `<span class="t ${p.turno === 'manana' ? 'm' : 'a'}">${TURNOS[p.turno].toUpperCase()}</span>` : '';
 const sumaPeds = l => l.reduce((a, p) => a + p.total, 0);
 /* resumen de lo que el vendedor agregó a pedidos ya cargados: cantidad, producto y cliente */
@@ -1209,11 +1210,24 @@ function vPedidos() {
   const opcEstado = [['', 'Estado: todos'], ['pendiente', 'Pendientes'], ['cargado', 'Cargados'], ...(esAdmin() ? [['agregados', '⚠ Agregar' + (pedidos.some(hayAgregados) ? ' (' + pedidos.filter(hayAgregados).length + ')' : '')]] : []), ['sinentregar', 'En preparación'], ['reparto', 'En reparto'], ['entregado', 'Entregados'], ['devoluciones', 'Con devoluciones'], ['rechazado', 'Rechazados']];
   const chipEstado = festado ? `<button class="btn sec" id="fquitar" style="min-height:40px;margin-top:8px;background:var(--bg)">Filtro: ${esc((opcEstado.find(o => o[0] === festado) || ['', festado])[1])} ✕ quitar</button>` : '';
   $('#main').innerHTML = `<div style="display:flex;gap:8px"><input id="q" type="search" placeholder="Buscar pedido" value="${esc(q)}" style="flex:1 1 0;min-width:0"><button class="btn" data-go="pedido" data-nuevo="1" style="flex:none;width:auto;padding:0 14px;white-space:nowrap">🛒 ${leerBorrador() ? 'Continuar' : 'Cargar pedido'}</button></div>
+    <input id="qp" type="search" placeholder="Buscar producto en los pedidos (ej: aceite)" value="${esc(qProd)}" style="margin-top:8px;width:100%">
     <div class="filtros">${esAdmin() ? `<div class="fgrid" style="margin:0">${selVend}${selTurno}</div><div class="fgrid" style="grid-template-columns:1fr">${fecha}</div>` : `<div class="fgrid" style="grid-template-columns:1fr;margin:0">${selTurno}</div><div class="fgrid" style="grid-template-columns:1fr">${fecha}</div>`}${chipEstado}</div>
     ${esAdmin() ? '<div id="selTools" class="fgrid" style="margin-top:8px"></div>' : ''}<div id="lista" class="grid2" style="margin-top:10px"></div><div id="selBar"></div>`;
   const pintar = () => {
     const n = norm(q), l = pedidos.filter(p => (!n || norm(p.cliente).includes(n) || String(p.id) === n) && (!vend || p.vendedor === vend) && (!fdia || p.dia === fdia) && (!fturno || p.turno === fturno) && (!festado || (festado === 'sinentregar' ? p.estado === 'cargado' && !p.entrega : ['reparto', 'entregado', 'devoluciones', 'rechazado'].includes(festado) ? p.entrega && p.entrega.estado === festado : festado === 'agregados' ? hayAgregados(p) : festado === 'cargado' ? p.estado === 'cargado' : p.estado !== 'cargado')));
     visiblesPeds = l; const tot = l.reduce((a, p) => a + p.total, 0);
+    const pal = norm(qProd).split(/\s+/).filter(Boolean);
+    if (pal.length) {
+      const coincide = i => { const t = norm((i.codigo || '') + ' ' + i.nombre); return pal.every(w => t.includes(w)); };
+      const rs = ['manana', 'tarde', ''].flatMap(k => l.filter(p => (p.turno || '') === k)).map(p => ({ p, its: p.items.filter(coincide) })).filter(x => x.its.length);
+      visiblesPeds = rs.map(x => x.p);
+      const res = new Map(); rs.forEach(({ p, its }) => its.forEach(i => { const r = res.get(i.nombre) || { nombre: i.nombre, cant: 0, peds: new Set() }; r.cant += i.cant; r.peds.add(p.id); res.set(i.nombre, r); }));
+      const resumen = rs.length ? `<div class="card" style="grid-column:1/-1"><b>Total de «${esc(qProd.trim())}»</b>${[...res.values()].sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre))).map(r => `<div style="display:flex;gap:8px;padding:6px 0 0;font-size:16px"><span style="flex:1 1 0;min-width:0">${esc(r.nombre)}</span><b style="flex:none;font-size:18px">${r.cant} u. <span class="mut" style="font-weight:400;font-size:13px">· ${r.peds.size} ${r.peds.size === 1 ? 'pedido' : 'pedidos'}</span></b></div>`).join('')}</div>` : '';
+      const tj = ({ p, its }) => `<div class="card${esAdmin() && ZONAS[p.zona] ? ' z-' + p.zona : ''}" data-ped="${p.id}"><div class="row" style="border:0;padding:0"><div class="nm"><b>#${p.id} · ${p.clienteCodigo ? esc(p.clienteCodigo) + ' · ' : ''}${esc(p.cliente)}</b> ${badgeTurno(p)}${estadoTag(p)}<span class="mut">${p.dia ? `<b>${esc(diaTxt(p.dia))}</b> · ` : ''}${esAdmin() ? esc(p.vendedor || '—') + ' · ' : ''}${p.items.length} prod.</span></div></div>${its.map(i => `<div style="display:flex;gap:8px;padding:6px 0 0;font-size:16px"><span style="flex:1 1 0;min-width:0">${esc(i.nombre)}</span><b style="flex:none;font-size:18px">${i.cant} u.</b></div>`).join('')}</div>`;
+      $('#lista').innerHTML = rs.length ? `<div style="grid-column:1/-1" class="mut"><b class="cnt">${rs.length}</b> ${rs.length === 1 ? 'pedido tiene' : 'pedidos tienen'} ese producto</div>` + resumen + rs.map(tj).join('') : vacio('Ningún pedido tiene ese producto');
+      $('#selBar').innerHTML = ''; if ($('#selTools')) $('#selTools').innerHTML = '';
+      return;
+    }
     const pend = colaMia().filter(x => !n || norm(x.body.cliente).includes(n)).map(x => `<div class="card" style="border-color:${x.error ? 'var(--bad)' : 'var(--warn)'}"><div class="row" style="border:0;padding:0"><div class="nm"><b>${esc(x.body.cliente)}</b>
       <span class="mut">${x.body.dia ? esc(diaTxt(x.body.dia)) + ' · ' + (TURNOS[x.body.turno] || '') + ' · ' : ''}${x.error ? 'Rechazado: ' + esc(x.error) : '⏳ Esperando señal para enviarse'} · ${x.body.items.length} prod. · ${x.body.items.reduce((s, i) => s + i.cant, 0)} u.</span></div><span class="price">${money(x.total)}</span></div>
       <div class="row" style="border:0;padding:8px 0 0">${x.error ? `<button class="btn sec" data-reint="${esc(x.uid)}">Reintentar</button>` : ''}<button class="btn sec" data-delcola="${esc(x.uid)}">Eliminar</button></div></div>`).join('');
@@ -1233,6 +1247,7 @@ function vPedidos() {
   };
   repintarPeds = pintar;
   $('#q').oninput = e => { q = e.target.value; pintar(); };
+  $('#qp').oninput = e => { qProd = e.target.value; pintar(); };
   $('#fdia').onchange = e => { fdia = e.target.value; pintar(); };
   const mover = n => { const d = new Date((fdia || hoy()) + 'T12:00:00'); d.setDate(d.getDate() + n); fdia = d.toISOString().slice(0, 10); $('#fdia').value = fdia; pintar(); };
   $('#fprev').onclick = () => mover(-1); $('#fsig').onclick = () => mover(1);
