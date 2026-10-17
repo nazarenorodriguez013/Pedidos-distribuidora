@@ -105,7 +105,7 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .quien small{font-weight:500;opacity:.85}
 .buscadores{display:grid;grid-template-columns:1fr auto;gap:8px}.buscadores input{min-width:0}.buscadores #qp{grid-column:1/-1}.buscadores .btn{width:auto;padding:0 14px;white-space:nowrap;grid-row:1;grid-column:2}
 @media (min-width:900px){.buscadores{grid-template-columns:1fr 1fr auto}.buscadores #qp{grid-column:auto}.buscadores .btn{grid-column:auto}}
-.pvf{display:grid;grid-template-columns:minmax(70px,110px) 1fr auto 46px;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--bd);font-size:14px;cursor:pointer;line-height:1.2}.pvf:first-child{border-top:0}.pvh{cursor:default;font-size:12px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid var(--bd)}.pvh span{font-weight:700}.pvf:nth-child(2){border-top:0}.pvf span,.pvf b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.pvf.pp{grid-template-columns:minmax(70px,110px) 1fr auto 64px}.ppc{width:64px;min-height:36px;padding:4px 6px;text-align:center;font-size:16px;font-weight:700}.pvc{color:var(--mut)}.pvp{text-align:right}.pvs{text-align:right;font-weight:700}.pvs.cero{color:var(--bad)}
+.pvf{display:grid;grid-template-columns:minmax(70px,110px) 1fr 56px 110px;gap:8px 22px;align-items:center;padding:6px 0;border-top:1px solid var(--bd);font-size:14px;cursor:pointer;line-height:1.2}.pvf:first-child{border-top:0}.pvh{cursor:default;font-size:12px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid var(--bd)}.pvh span{font-weight:700}.pvf:nth-child(2){border-top:0}.pvf span,.pvf b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.pvf.pp{grid-template-columns:minmax(70px,110px) 1fr 80px}.ppc{width:64px;min-height:36px;padding:4px 6px;text-align:center;font-size:16px;font-weight:700}.pvc{color:var(--mut)}.pvp{text-align:right}.pvs{text-align:right;font-weight:700}.pvs.cero{color:var(--bad)}
 @media (max-width:600px){.quien small{display:none}.quien{max-width:55%}}
 .estado{padding:8px 12px;font-size:14px;font-weight:600;text-align:center;background:#fef3c7;color:#78350f}
 .estado.ok{background:#dcfce7;color:#166534}
@@ -1633,9 +1633,9 @@ const pvClave = (p, c) => String(p).trim().toLowerCase() + '|' + String(c).trim(
 function vProveedores() {
   if (view === 'proveedor' && !provSel) return go('proveedores', true);
   if (view === 'proveedores') { provSel = ''; provQ = ''; } else { provQ = ''; const h = $('#app h1'); if (h) h.textContent = provSel; }
-  $('#main').innerHTML = `${view === 'proveedor' ? '<button class="btn" data-pvact="pedido" style="margin-bottom:8px">🛒 Crear pedido</button>' : ''}<div class="fgrid" style="margin:0"><button class="btn ${view === 'proveedor' ? 'sec' : ''}" data-pvact="cargar">📥 Cargar lista</button><button class="btn sec" data-pvact="nuevo">➕ Agregar producto</button></div>
+  $('#main').innerHTML = `${view === 'proveedor' ? '<button class="btn" data-pvact="pedido" style="margin-bottom:8px">🛒 Crear pedido</button>' : ''}<div class="fgrid" style="margin:0">${view === 'proveedor' ? '' : '<button class="btn" data-pvact="cargar">📥 Cargar lista</button>'}<button class="btn sec" data-pvact="nuevo">➕ Agregar producto</button></div>
     <input id="pvArch" type="file" accept=".xlsx,.xls,.csv" hidden>
-    <p class="mut" style="margin:8px 0 0;font-size:13px">Excel o CSV: se leen las columnas <b>Cod. barra</b>, <b>Artículo</b>, <b>Lista 1</b>, <b>Proveedor</b> y <b>Stock</b>; las demás se ignoran.</p>
+    ${view === 'proveedor' ? '' : `<p class="mut" style="margin:8px 0 0;font-size:13px">Excel o CSV: se leen las columnas <b>Cod. barra</b>, <b>Artículo</b>, <b>Costo</b>, <b>Proveedor</b> y <b>Stock</b>; las demás se ignoran.</p>`}
     <input id="pvQ" type="search" placeholder="${view === 'proveedor' ? 'Buscar producto' : 'Buscar proveedor o producto'}" value="${esc(provQ)}" style="margin-top:10px;width:100%">
     <div id="pvLista" style="margin-top:10px"></div>`;
   $('#pvQ').oninput = e => { provQ = e.target.value; pintarProv(); };
@@ -1662,7 +1662,7 @@ function pintarProv() {
   const g = {}; l.forEach(x => (g[x.proveedor] = g[x.proveedor] || []).push(x));
   $('#pvLista').innerHTML = Object.keys(g).sort((a, b) => norm(a).localeCompare(norm(b))).map(n => {
     const it = g[n].sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre))), unid = it.reduce((a, x) => a + (x.stock || 0), 0);
-    return `<div style="margin-top:12px;padding:8px 2px;border-bottom:2px solid var(--bd)"><b style="font-size:17px">🏭 ${esc(n)}</b> <span class="mut">· <b class="cnt">${it.length}</b> ${it.length === 1 ? 'producto' : 'productos'} · ${unid} u. en stock</span></div><div class="card" style="margin-top:6px;padding:2px 10px"><div class="pvf pvh"><span>Código</span><span>Descripción</span><span class="pvp">Precio</span><span class="pvs">Stock</span></div>${it.map(x => `<div data-pv="${x.id}" class="pvf"><span class="pvc">${esc(x.codigo)}</span><span class="pvn">${esc(x.nombre || x.codigo)}</span><b class="pvp">${money(x.precio)}</b><span class="pvs${x.stock > 0 ? '' : ' cero'}">${x.stock || 0}</span></div>`).join('')}</div>`;
+    return `<div style="margin-top:12px;padding:8px 2px;border-bottom:2px solid var(--bd)"><b style="font-size:17px">🏭 ${esc(n)}</b> <span class="mut">· <b class="cnt">${it.length}</b> ${it.length === 1 ? 'producto' : 'productos'} · ${unid} u. en stock</span></div><div class="card" style="margin-top:6px;padding:2px 10px"><div class="pvf pvh"><span>Código</span><span>Descripción</span><span class="pvs">Stock</span><span class="pvp">Costo</span></div>${it.map(x => `<div data-pv="${x.id}" class="pvf"><span class="pvc">${esc(x.codigo)}</span><span class="pvn">${esc(x.nombre || x.codigo)}</span><span class="pvs${x.stock > 0 ? '' : ' cero'}">${x.stock || 0}</span><b class="pvp">${money(x.precio)}</b></div>`).join('')}</div>`;
   }).join('') + `<div class="fgrid" style="margin-top:14px"><button class="btn sec" data-pvact="excel">📊 Descargar Excel</button>${provSel ? '<button class="btn sec" data-pvact="borrarprov" style="color:var(--bad)">🗑 Borrar este proveedor</button>' : ''}</div>`;
 }
 function dlgProv(html) {
@@ -1674,7 +1674,7 @@ function editarProv(x) {
   const el = dlgProv(`<p style="font-size:18px;margin:0 0 8px"><b>${x ? 'Editar producto' : 'Agregar producto'}</b></p>
     <label>Proveedor</label><input id="pvP" list="pvProvs" value="${esc(x ? x.proveedor : provSel)}" autocomplete="off"><datalist id="pvProvs">${[...new Set(provs.map(v => v.proveedor))].map(n => `<option value="${esc(n)}">`).join('')}</datalist>
     <label>Código</label><input id="pvC" value="${esc(x ? x.codigo : '')}" autocomplete="off"><label>Descripción</label><input id="pvD" value="${esc(x ? x.nombre : '')}" autocomplete="off">
-    <div class="fgrid"><div><label>Precio</label><input id="pvPr" inputmode="decimal" value="${x ? String(x.precio).replace('.', ',') : ''}"></div><div><label>Stock</label><input id="pvS" inputmode="numeric" value="${x ? x.stock : ''}"></div></div>
+    <div class="fgrid"><div><label>Stock</label><input id="pvS" inputmode="numeric" value="${x ? x.stock : ''}"></div><div><label>Costo</label><input id="pvPr" inputmode="decimal" value="${x ? String(x.precio).replace('.', ',') : ''}"></div></div>
     <div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="0" style="flex:1">Cancelar</button><button class="btn" data-r="1" style="flex:1">Guardar</button></div>${x ? '<button class="btn sec" data-r="D" style="margin-top:10px;color:var(--bad)">🗑 Eliminar producto</button>' : ''}`);
   el.addEventListener('click', async e => {
     const b = e.target.closest('[data-r]'); if (e.target === el || (b && b.dataset.r === '0')) return el.remove(); if (!b) return;
@@ -1696,7 +1696,7 @@ async function leerListaProv(f) {
   try {
     const wb = /\.csv$/i.test(f.name) ? XLSX.read(await f.text(), { type: 'string', raw: true }) : XLSX.read(await f.arrayBuffer(), { type: 'array' });
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true }).filter(r => r.some(c => String(c ?? '').trim() !== ''));
-    const COLP = { proveedor: ['proveedor'], codigo: ['cod barra', 'codigo de barra', 'codigo barra', 'codigo'], nombre: ['articulo', 'descripcion'], precio: ['lista 1'], stock: ['stock'] };
+    const COLP = { proveedor: ['proveedor'], codigo: ['cod barra', 'codigo de barra', 'codigo barra', 'codigo'], nombre: ['articulo', 'descripcion'], precio: ['costo'], stock: ['stock'] };
     const limpio = c => norm(c).replace(/[^a-z0-9]+/g, ' ').trim();
     let h = -1, mapa = {};
     for (let i = 0; i < Math.min(rows.length, 25) && h < 0; i++) {
@@ -1720,7 +1720,7 @@ async function leerListaProv(f) {
 }
 function excelProv() {
   if (!window.XLSX) return toast('No cargó el generador de Excel (revisá la conexión)');
-  const ws = XLSX.utils.json_to_sheet(provs.slice().sort((a, b) => norm(a.proveedor).localeCompare(norm(b.proveedor)) || norm(a.nombre).localeCompare(norm(b.nombre))).map(x => ({ 'Proveedor': x.proveedor, 'Código': x.codigo, 'Descripción': x.nombre, 'Precio': x.precio, 'Stock': x.stock })));
+  const ws = XLSX.utils.json_to_sheet(provs.slice().sort((a, b) => norm(a.proveedor).localeCompare(norm(b.proveedor)) || norm(a.nombre).localeCompare(norm(b.nombre))).map(x => ({ 'Proveedor': x.proveedor, 'Código': x.codigo, 'Descripción': x.nombre, 'Costo': x.precio, 'Stock': x.stock })));
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Proveedores');
   XLSX.writeFile(wb, 'proveedores-' + new Date().toISOString().slice(0, 10) + '.xlsx');
 }
@@ -1729,7 +1729,7 @@ function excelProv() {
 let pedProv = {}, pedProvQ = '';
 function textoPedProv() {
   const l = provs.filter(x => x.proveedor === provSel && pedProv[x.id] > 0).sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre)));
-  return `Pedido a ${provSel}\n\n` + l.map(x => `${pedProv[x.id]} x ${x.nombre || x.codigo}${x.codigo && x.nombre ? ' (' + x.codigo + ')' : ''}`).join('\n') + `\n\nTotal: ${money(l.reduce((a, x) => a + x.precio * pedProv[x.id], 0))}`;
+  return `Pedido a ${provSel}\n\n` + l.map(x => `${pedProv[x.id]} x ${x.nombre || x.codigo}${x.codigo && x.nombre ? ' (' + x.codigo + ')' : ''}`).join('\n');
 }
 function vPedProv() {
   if (!provSel) return go('proveedores', true);
@@ -1738,15 +1738,20 @@ function vPedProv() {
   const pintar = () => {
     const t = norm(pedProvQ).split(/\s+/).filter(Boolean), todos = provs.filter(x => x.proveedor === provSel).sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre)));
     const l = todos.filter(x => t.every(w => norm(x.codigo + ' ' + x.nombre).includes(w)));
-    $('#ppLista').innerHTML = l.length ? `<div class="card" style="padding:2px 10px"><div class="pvf pp pvh"><span>Código</span><span>Descripción</span><span class="pvp">Precio</span><span class="pvs" style="text-align:center">Cant.</span></div>${l.map(x => `<div class="pvf pp" style="cursor:default"><span class="pvc">${esc(x.codigo)}</span><span class="pvn">${esc(x.nombre || x.codigo)}</span><b class="pvp">${money(x.precio)}</b><input class="ppc" data-ppid="${x.id}" inputmode="numeric" placeholder="0" value="${pedProv[x.id] || ''}"></div>`).join('')}</div>` : vacio('Sin resultados');
+    $('#ppLista').innerHTML = l.length ? `<div class="card" style="padding:2px 10px"><div class="pvf pp pvh"><span>Código</span><span>Descripción</span><span class="pvs" style="text-align:center">Cantidad</span></div>${l.map(x => `<div class="pvf pp" style="cursor:default"><span class="pvc">${esc(x.codigo)}</span><span class="pvn">${esc(x.nombre || x.codigo)}</span><input class="ppc" data-ppid="${x.id}" inputmode="numeric" placeholder="0" value="${pedProv[x.id] || ''}"></div>`).join('')}</div>` : vacio('Sin resultados');
     barra();
   };
   const barra = () => {
-    const l = provs.filter(x => x.proveedor === provSel && pedProv[x.id] > 0), u = l.reduce((a, x) => a + pedProv[x.id], 0), tot = l.reduce((a, x) => a + x.precio * pedProv[x.id], 0);
-    $('#ppBar').innerHTML = `<div style="height:90px"></div><div class="bar sel"><div class="tot" style="font-size:15px;white-space:nowrap">${l.length} prod. · ${u} u.<br><b>${money(tot)}</b></div><button class="btn sec" data-ppact="copiar" ${l.length ? '' : 'disabled'} style="padding:12px 14px">📋 Copiar</button><button class="btn" data-ppact="wa" ${l.length ? '' : 'disabled'} style="padding:12px 14px">WhatsApp</button></div>`;
+    const l = provs.filter(x => x.proveedor === provSel && pedProv[x.id] > 0), u = l.reduce((a, x) => a + pedProv[x.id], 0);
+    $('#ppBar').innerHTML = `<div style="height:90px"></div><div class="bar sel"><div class="tot" style="font-size:15px;white-space:nowrap">${l.length} prod.<br><b>${u} u.</b></div><button class="btn sec" data-ppact="copiar" ${l.length ? '' : 'disabled'} style="padding:12px 14px">📋 Copiar</button><button class="btn" data-ppact="wa" ${l.length ? '' : 'disabled'} style="padding:12px 14px">WhatsApp</button></div>`;
   };
   $('#ppQ').oninput = e => { pedProvQ = e.target.value; pintar(); };
   $('#ppLista').oninput = e => { const i = e.target.closest('.ppc'); if (!i) return; const n = Math.max(0, Math.floor(pvN(i.value))); if (n) pedProv[i.dataset.ppid] = n; else delete pedProv[i.dataset.ppid]; barra(); };
+  $('#ppLista').onkeydown = e => {   // Enter o flecha abajo pasan al siguiente artículo; flecha arriba, al anterior
+    const i = e.target.closest('.ppc'); if (!i || !['Enter', 'ArrowDown', 'ArrowUp'].includes(e.key)) return;
+    e.preventDefault(); const l = [...$('#ppLista').querySelectorAll('.ppc')], n = l[l.indexOf(i) + (e.key === 'ArrowUp' ? -1 : 1)];
+    if (n) { n.focus(); n.select(); } else if (e.key === 'Enter') i.blur();
+  };
   $('#ppBar').onclick = async e => {
     const b = e.target.closest('[data-ppact]'); if (!b || b.disabled) return;
     const txt = textoPedProv();
