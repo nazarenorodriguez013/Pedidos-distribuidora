@@ -1635,7 +1635,7 @@ const pvClave = (p, c) => String(p).trim().toLowerCase() + '|' + String(c).trim(
 function vProveedores() {
   if (view === 'proveedor' && !provSel) return go('proveedores', true);
   if (view === 'proveedores') { provSel = ''; provQ = ''; } else { provQ = ''; const h = $('#app h1'); if (h) h.textContent = provSel; }
-  $('#main').innerHTML = `${view === 'proveedor' ? `<button class="btn" data-pvact="pedido" style="margin-bottom:8px">🛒 Crear pedido</button><button class="btn sec" data-pvact="contacto" style="margin-bottom:8px">📞 Mail y WhatsApp · <span class="mut">${esc([contactoProv(provSel).email, contactoProv(provSel).whatsapp].filter(Boolean).join(' · ') || 'sin cargar')}</span></button>` : ''}<div class="fgrid" style="margin:0">${view === 'proveedor' ? '' : '<button class="btn" data-pvact="cargar">📥 Cargar lista</button>'}<button class="btn sec" data-pvact="nuevo">➕ Agregar producto</button></div>
+  $('#main').innerHTML = `${view === 'proveedor' ? `<button class="btn" data-pvact="pedido" style="margin-bottom:8px">🛒 Crear pedido</button><button class="btn sec" data-pvact="contacto" style="margin-bottom:8px">📞 Mail y WhatsApp · <span class="mut">${esc([contactoProv(provSel).email, contactoProv(provSel).whatsapp].filter(Boolean).join(' · ') || 'sin cargar')}</span></button>` : ''}<div class="fgrid" style="margin:0">${view === 'proveedor' ? '' : '<button class="btn" data-pvact="cargar">📥 Cargar lista</button>'}<button class="btn sec" data-pvact="nuevo">➕ Agregar producto</button></div>${view === 'proveedor' ? '' : '<button class="btn sec" data-pvact="textos" style="margin-top:8px">✎ Mensaje del pedido (texto de arriba y final)</button>'}
     <input id="pvArch" type="file" accept=".xlsx,.xls,.csv" hidden>
     ${view === 'proveedor' ? '' : `<p class="mut" style="margin:8px 0 0;font-size:13px">Excel o CSV: se leen las columnas <b>Cod. barra</b>, <b>Artículo</b>, <b>Costo</b>, <b>Proveedor</b> y <b>Stock</b>; las demás se ignoran.</p>`}
     <input id="pvQ" type="search" placeholder="${view === 'proveedor' ? 'Buscar producto' : 'Buscar proveedor o producto'}" value="${esc(provQ)}" style="margin-top:10px;width:100%">
@@ -1644,7 +1644,7 @@ function vProveedores() {
   $('#pvArch').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) leerListaProv(f); };
   $('#main').onclick = e => {
     const a = e.target.closest('[data-pvact]'), r = e.target.closest('[data-pv], [data-pvprov]');
-    if (a) { if (a.dataset.pvact === 'cargar') $('#pvArch').click(); else if (a.dataset.pvact === 'nuevo') editarProv(null); else if (a.dataset.pvact === 'excel') excelProv(); else if (a.dataset.pvact === 'contacto') editarContacto(); else if (a.dataset.pvact === 'pedido') { pedProv = {}; go('pedprov'); } else if (a.dataset.pvact === 'borrarprov') borrarProveedor(provSel); }
+    if (a) { if (a.dataset.pvact === 'cargar') $('#pvArch').click(); else if (a.dataset.pvact === 'nuevo') editarProv(null); else if (a.dataset.pvact === 'excel') excelProv(); else if (a.dataset.pvact === 'contacto') editarContacto(); else if (a.dataset.pvact === 'textos') editarTextos(); else if (a.dataset.pvact === 'pedido') { pedProv = {}; go('pedprov'); } else if (a.dataset.pvact === 'borrarprov') borrarProveedor(provSel); }
     else if (r && r.dataset.pvprov !== undefined) { provSel = r.dataset.pvprov; go('proveedor'); }
     else if (r && r.dataset.pv) editarProv(provs.find(x => x.id === +r.dataset.pv));
   };
@@ -1687,6 +1687,19 @@ function editarProv(x) {
     } catch (er) { toast(er.message); }
   });
   $(x ? '#pvPr' : '#pvP').focus();
+}
+function editarTextos() {
+  const campo = 'width:100%;font:inherit;font-size:15px;border:1px solid var(--bd);border-radius:8px;padding:8px;background:var(--bg);color:var(--tx);resize:vertical';
+  const el = dlgProv(`<p style="font-size:18px;margin:0 0 8px"><b>Mensaje del pedido</b></p><p class="mut" style="margin:0 0 8px">Se usa en todos los pedidos a proveedores: va arriba y al final de la lista.</p>
+    <label>Texto de arriba</label><textarea id="mtA" rows="3" style="${campo}">${esc(cabeceraPed())}</textarea>
+    <label>Texto final</label><textarea id="mtF" rows="2" style="${campo}">${esc(cierrePed())}</textarea>
+    <div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="0" style="flex:1">Cancelar</button><button class="btn" data-r="1" style="flex:1">Guardar</button></div><button class="btn sec" data-r="orig" style="margin-top:10px">Volver al texto original</button>`);
+  el.addEventListener('click', async e => {
+    const b = e.target.closest('[data-r]'); if (e.target === el || (b && b.dataset.r === '0')) return el.remove(); if (!b) return;
+    const t = b.dataset.r === 'orig' ? {} : { cabecera: $('#mtA').value.trim() === CAB_PED ? '' : $('#mtA').value, cierre: $('#mtF').value.trim() === CIERRE_PED ? '' : $('#mtF').value };
+    try { const r = await api('POST', 'p/proveedores', { textos: t }); provTextos = r.textos || {}; el.remove(); toast('Guardado ✓'); } catch (er) { toast(er.message); }
+  });
+  $('#mtA').focus();
 }
 function editarContacto() {
   const c = contactoProv(provSel);
@@ -1775,13 +1788,11 @@ function vPedProv() {
     const b = e.target.closest('[data-ppact]'); if (!b || b.disabled) return;
     const l = provs.filter(x => x.proveedor === provSel && pedProv[x.id] > 0).sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre)));
     const el = dlgProv(`<p style="font-size:18px;margin:0 0 8px;flex:none"><b>Pedido a ${esc(provSel)}</b></p><p class="mut" style="margin:0 0 8px;flex:none">${l.length} ${l.length === 1 ? 'producto' : 'productos'} · ${l.reduce((a, x) => a + pedProv[x.id], 0)} u.</p>
-      <p class="mut" style="margin:0 0 8px;font-size:13px;flex:none">${contactoProv(provSel).email || contactoProv(provSel).whatsapp ? 'Para: ' + esc([contactoProv(provSel).email, contactoProv(provSel).whatsapp && 'WhatsApp ' + contactoProv(provSel).whatsapp].filter(Boolean).join(' · ')) : 'Sin mail ni WhatsApp cargado (se carga en el proveedor)'}</p><div class="mut" style="margin:0 0 4px;font-size:13px;flex:none">Mensaje de arriba (se puede editar):</div><textarea id="ppCab" rows="2" style="flex:none;width:100%;margin-bottom:8px;font:inherit;font-size:15px;border:1px solid var(--bd);border-radius:8px;padding:8px;background:var(--bg);color:var(--tx);resize:vertical">${esc(cabeceraPed())}</textarea><div class="mut" style="margin:0 0 4px;font-size:13px;flex:none">Columnas a enviar:</div><div id="ppCols" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;flex:none">${PPCOLS.map(([k, n]) => `<label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" data-col="${k}" ${ppCols[k] ? 'checked' : ''} style="width:20px;min-height:20px;height:20px;margin:0">${n}</label>`).join('')}</div>
-      <div class="card" id="ppRes" style="padding:2px 12px;margin:0;flex:1 1 auto;min-height:0;overflow:auto"></div><div class="mut" style="margin:8px 0 4px;font-size:13px;flex:none">Mensaje final (se puede editar):</div><textarea id="ppCie" rows="1" style="flex:none;width:100%;font:inherit;font-size:15px;border:1px solid var(--bd);border-radius:8px;padding:8px;background:var(--bg);color:var(--tx);resize:vertical">${esc(cierrePed())}</textarea>
+      <p class="mut" style="margin:0 0 8px;font-size:13px;flex:none">${contactoProv(provSel).email || contactoProv(provSel).whatsapp ? 'Para: ' + esc([contactoProv(provSel).email, contactoProv(provSel).whatsapp && 'WhatsApp ' + contactoProv(provSel).whatsapp].filter(Boolean).join(' · ')) : 'Sin mail ni WhatsApp cargado (se carga en el proveedor)'}</p><div class="mut" style="margin:0 0 4px;font-size:13px;flex:none">Columnas a enviar:</div><div id="ppCols" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;flex:none">${PPCOLS.map(([k, n]) => `<label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" data-col="${k}" ${ppCols[k] ? 'checked' : ''} style="width:20px;min-height:20px;height:20px;margin:0">${n}</label>`).join('')}</div>
+      <div class="card" id="ppRes" style="padding:2px 12px;margin:0;flex:1 1 auto;min-height:0;overflow:auto"></div>
       <div style="flex:none"><div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="copiar" style="flex:1">📋 Copiar</button><button class="btn" data-r="wa" style="flex:1">WhatsApp</button></div><button class="btn sec" data-r="mail" style="margin-top:10px">✉️ Enviar por mail (Gmail)</button><button class="btn sec" data-r="0" style="margin-top:10px">Volver</button></div>`, true);
     const res = () => { $('#ppRes').innerHTML = l.map(x => `<div style="display:flex;gap:12px;align-items:baseline;padding:7px 0;border-top:1px solid var(--bd)">${PPCOLS.filter(([k]) => ppCols[k]).map(([k]) => `<span style="${k === 'cant' ? 'flex:none;min-width:36px;font-weight:800;font-size:17px' : k === 'codigo' ? 'flex:none;min-width:90px;color:var(--mut)' : k === 'costo' ? 'flex:none;min-width:90px;text-align:right' : 'flex:1 1 0;min-width:0'}">${esc(String(k === 'cant' ? pedProv[x.id] : k === 'nombre' ? x.nombre || x.codigo : k === 'costo' ? money(x.precio) : x.codigo))}</span>`).join('')}</div>`).join(''); };
     res();
-    let tg; const guardarTextos = () => { provTextos = { cabecera: $('#ppCab').value.trim() === CAB_PED ? '' : $('#ppCab').value, cierre: $('#ppCie').value.trim() === CIERRE_PED ? '' : $('#ppCie').value }; clearTimeout(tg); tg = setTimeout(() => api('POST', 'p/proveedores', { textos: provTextos }).catch(() => {}), 600); };
-    $('#ppCab').oninput = $('#ppCie').oninput = guardarTextos;
     el.addEventListener('change', ev => { const c = ev.target.closest('[data-col]'); if (!c) return; ppCols[c.dataset.col] = c.checked; if (!PPCOLS.some(([k]) => ppCols[k])) { ppCols[c.dataset.col] = true; c.checked = true; toast('Dejá al menos una columna'); } res(); });
     el.addEventListener('click', async ev => {
       const c = ev.target.closest('[data-r]'); if (ev.target === el || (c && c.dataset.r === '0')) return el.remove(); if (!c) return;
