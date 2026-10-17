@@ -1727,9 +1727,12 @@ function excelProv() {
 
 /* pedido a un proveedor: se eligen cantidades, se ve el total y se copia o comparte el texto (no se guarda) */
 let pedProv = {}, pedProvQ = '';
+let ppCols = { codigo: true, nombre: true, cant: true };   // columnas que se incluyen al enviar el pedido
+const PPCOLS = [['codigo', 'Código'], ['nombre', 'Producto'], ['cant', 'Cantidad']];
+const lineaPedProv = x => PPCOLS.filter(([k]) => ppCols[k]).map(([k]) => k === 'codigo' ? x.codigo : k === 'nombre' ? x.nombre || x.codigo : pedProv[x.id]);
 function textoPedProv() {
   const l = provs.filter(x => x.proveedor === provSel && pedProv[x.id] > 0).sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre)));
-  return `Pedido a ${provSel}\n\n` + l.map(x => `${pedProv[x.id]} x ${x.nombre || x.codigo}${x.codigo && x.nombre ? ' (' + x.codigo + ')' : ''}`).join('\n');
+  return `Pedido a ${provSel}\n\n` + l.map(x => lineaPedProv(x).join(' - ')).join('\n');
 }
 function vPedProv() {
   if (!provSel) return go('proveedores', true);
@@ -1743,7 +1746,7 @@ function vPedProv() {
   };
   const barra = () => {
     const l = provs.filter(x => x.proveedor === provSel && pedProv[x.id] > 0), u = l.reduce((a, x) => a + pedProv[x.id], 0);
-    $('#ppBar').innerHTML = `<div style="height:90px"></div><div class="bar sel"><div class="tot" style="font-size:15px;white-space:nowrap">${l.length} prod.<br><b>${u} u.</b></div><button class="btn sec" data-ppact="copiar" ${l.length ? '' : 'disabled'} style="padding:12px 14px">📋 Copiar</button><button class="btn" data-ppact="wa" ${l.length ? '' : 'disabled'} style="padding:12px 14px">WhatsApp</button></div>`;
+    $('#ppBar').innerHTML = `<div style="height:90px"></div><div class="bar sel"><div class="tot" style="font-size:15px;white-space:nowrap">${l.length} prod.<br><b>${u} u.</b></div><button class="btn" data-ppact="fin" ${l.length ? '' : 'disabled'} style="padding:12px 22px">Finalizar</button></div>`;
   };
   $('#ppQ').oninput = e => { pedProvQ = e.target.value; pintar(); };
   $('#ppLista').oninput = e => { const i = e.target.closest('.ppc'); if (!i) return; const n = Math.max(0, Math.floor(pvN(i.value))); if (n) pedProv[i.dataset.ppid] = n; else delete pedProv[i.dataset.ppid]; barra(); };
@@ -1754,10 +1757,22 @@ function vPedProv() {
   };
   $('#ppBar').onclick = async e => {
     const b = e.target.closest('[data-ppact]'); if (!b || b.disabled) return;
-    const txt = textoPedProv();
-    if (b.dataset.ppact === 'wa') return void window.open('https://wa.me/?text=' + encodeURIComponent(txt), '_blank');
-    try { await navigator.clipboard.writeText(txt); } catch { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch {} ta.remove(); }
-    toast('Pedido copiado ✓');
+    const l = provs.filter(x => x.proveedor === provSel && pedProv[x.id] > 0).sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre)));
+    const el = dlgProv(`<p style="font-size:18px;margin:0 0 8px"><b>Pedido a ${esc(provSel)}</b></p><p class="mut" style="margin:0 0 8px">${l.length} ${l.length === 1 ? 'producto' : 'productos'} · ${l.reduce((a, x) => a + pedProv[x.id], 0)} u.</p>
+      <div class="mut" style="margin:0 0 4px;font-size:13px">Columnas a enviar:</div><div id="ppCols" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px">${PPCOLS.map(([k, n]) => `<label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" data-col="${k}" ${ppCols[k] ? 'checked' : ''} style="width:20px;min-height:20px;height:20px;margin:0">${n}</label>`).join('')}</div>
+      <div class="card" id="ppRes" style="padding:2px 10px;margin:0"></div>
+      <div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="copiar" style="flex:1">📋 Copiar</button><button class="btn" data-r="wa" style="flex:1">WhatsApp</button></div><button class="btn sec" data-r="mail" style="margin-top:10px">✉️ Enviar por mail (Gmail)</button><button class="btn sec" data-r="0" style="margin-top:10px">Volver</button>`);
+    const res = () => { $('#ppRes').innerHTML = l.map(x => `<div style="display:flex;gap:12px;align-items:baseline;padding:7px 0;border-top:1px solid var(--bd)">${lineaPedProv(x).map((v, i, a) => `<span style="${i === a.length - 1 && a.length > 1 ? 'flex:none;font-weight:800' : 'flex:1 1 0;min-width:0'}">${esc(String(v))}</span>`).join('')}</div>`).join(''); };
+    res();
+    el.addEventListener('change', ev => { const c = ev.target.closest('[data-col]'); if (!c) return; ppCols[c.dataset.col] = c.checked; if (!PPCOLS.some(([k]) => ppCols[k])) { ppCols[c.dataset.col] = true; c.checked = true; toast('Dejá al menos una columna'); } res(); });
+    el.addEventListener('click', async ev => {
+      const c = ev.target.closest('[data-r]'); if (ev.target === el || (c && c.dataset.r === '0')) return el.remove(); if (!c) return;
+      const txt = textoPedProv();
+      if (c.dataset.r === 'mail') return void window.open('https://mail.google.com/mail/?view=cm&fs=1&su=' + encodeURIComponent('Pedido a ' + provSel) + '&body=' + encodeURIComponent(txt), '_blank');
+      if (c.dataset.r === 'wa') return void window.open('https://wa.me/?text=' + encodeURIComponent(txt), '_blank');
+      try { await navigator.clipboard.writeText(txt); } catch { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch {} ta.remove(); }
+      toast('Pedido copiado ✓');
+    });
   };
   pintar();
   if (!provs.length) api('GET', 'p/proveedores').then(r => { provs = r.items; if (view === 'pedprov') pintar(); }).catch(e => toast(e.message));
