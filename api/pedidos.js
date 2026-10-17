@@ -23,8 +23,10 @@ async function load(pool) {
   state.seq.c = state.seq.c || 1;
   state.combos = state.combos || [];
   state.novedades = state.novedades || [];
+  state.provs = Array.isArray(state.provs) ? state.provs : [];   // lista de lo que se le compra a cada proveedor (solo la ve el administrador)
   state.cambios = state.cambios || [];   // registro de lo que el administrador modifica en los pedidos (quitó, bajó, agregó, cambió el precio)
   state.seq.x = state.seq.x || 1;
+  state.seq.v = state.seq.v || (state.provs.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
   state.pushSubs = state.pushSubs || [];
   if (webpush) {   // claves VAPID: de las variables de entorno o generadas una vez y guardadas junto con los datos
     const env = process.env;
@@ -149,6 +151,7 @@ function restaurarDatos(d) {   // reemplaza pedidos, clientes, productos, promos
   if (d.pedidos.some(p => !p || !Number.isInteger(p.id) || !Array.isArray(p.items)) || d.clientes.some(c => !c || !Number.isInteger(c.id)) || d.productos.some(p => !p || !Number.isInteger(p.id))) throw { code: 400, msg: 'El archivo tiene datos dañados' };
   state.productos = d.productos; state.pedidos = d.pedidos; state.clientes = d.clientes;
   state.combos = Array.isArray(d.combos) ? d.combos : []; state.novedades = Array.isArray(d.novedades) ? d.novedades : []; state.cambios = Array.isArray(d.cambios) ? d.cambios : []; state.seq.x = Math.max(state.seq.x || 1, state.cambios.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
+  state.provs = Array.isArray(d.provs) ? d.provs : state.provs; state.seq.v = Math.max(state.seq.v || 1, state.provs.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
   state.configPorCodigo = d.configPorCodigo && typeof d.configPorCodigo === 'object' ? d.configPorCodigo : {};
   const mx = l => l.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1;
   state.seq.p = Math.max(state.seq.p || 1, mx(state.productos), (d.seq || {}).p || 1); state.seq.o = Math.max(state.seq.o || 1, mx(state.pedidos), (d.seq || {}).o || 1);
@@ -749,7 +752,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     }
     if (rec === 'respaldo' && req.method === 'GET') {   // el administrador descarga todos los datos (sin contraseñas ni claves)
       soloAdmin();
-      return send(res, 200, { fecha: new Date().toISOString(), version: 1, productos: s.productos, pedidos: s.pedidos, clientes: s.clientes, combos: s.combos, novedades: s.novedades, cambios: s.cambios, seq: s.seq, configPorCodigo: s.configPorCodigo || {}, usuarios: s.usuarios.map(pub) });
+      return send(res, 200, { fecha: new Date().toISOString(), version: 1, productos: s.productos, pedidos: s.pedidos, clientes: s.clientes, combos: s.combos, novedades: s.novedades, cambios: s.cambios, provs: s.provs, seq: s.seq, configPorCodigo: s.configPorCodigo || {}, usuarios: s.usuarios.map(pub) });
     }
     if (rec === 'pushkey' && req.method === 'GET') return send(res, 200, { key: webpush && s.vapid ? s.vapid.publica : null });
     if (rec === 'pushsub') {   // el dispositivo se suscribe / se da de baja para recibir notificaciones
@@ -762,6 +765,42 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       } else if (req.method !== 'DELETE') throw { code: 405, msg: 'Método no permitido' };
       await save(pool);
       return send(res, 200, { ok: true });
+    }
+    if (rec === 'proveedores') {   // lista de productos por proveedor: código, descripción, precio y stock (solo administrador)
+      soloAdmin();
+      const clave = (p, c) => String(p).trim().toLowerCase() + '|' + String(c).trim().toLowerCase();
+      const limpiarP = (b, prev = {}) => {
+        const proveedor = String(b.proveedor ?? prev.proveedor ?? '').trim().slice(0, 80), codigo = String(b.codigo ?? prev.codigo ?? '').trim().slice(0, 40), nombre = String(b.nombre ?? prev.nombre ?? '').trim().slice(0, 200);
+        if (!proveedor) throw { code: 400, msg: 'Falta el proveedor' };
+        if (!codigo && !nombre) throw { code: 400, msg: 'Falta el código o la descripción' };
+        return { proveedor, codigo, nombre, precio: Math.max(0, num(b.precio, prev.precio ?? 0)), stock: Math.max(0, num(b.stock, prev.stock ?? 0)) };
+      };
+      if (!id && req.method === 'GET') return send(res, 200, { items: s.provs });
+      if (!id && req.method === 'POST') {
+        const b = await body(req, 30e6), ahora = new Date().toISOString();
+        if (b.borrarProveedor) {
+          const k = String(b.borrarProveedor).trim().toLowerCase(), antes = s.provs.length;
+          s.provs = s.provs.filter(x => x.proveedor.toLowerCase() !== k);
+          await save(pool); return send(res, 200, { ok: true, borrados: antes - s.provs.length });
+        }
+        const filas = Array.isArray(b.filas) ? b.filas : [];
+        if (!filas.length) throw { code: 400, msg: 'No hay filas para cargar' };
+        const nuevas = filas.map(f => limpiarP(f));
+        const vistos = new Set(), unicas = nuevas.filter(f => { const k = clave(f.proveedor, f.codigo || f.nombre); if (vistos.has(k)) return false; vistos.add(k); return true; });
+        let creados = 0, actualizados = 0, borrados = 0;
+        if (b.reemplazar) { borrados = s.provs.filter(x => !vistos.has(clave(x.proveedor, x.codigo || x.nombre))).length; s.provs = s.provs.filter(x => vistos.has(clave(x.proveedor, x.codigo || x.nombre))); }
+        const porClave = new Map(s.provs.map(x => [clave(x.proveedor, x.codigo || x.nombre), x]));
+        for (const f of unicas) {
+          const x = porClave.get(clave(f.proveedor, f.codigo || f.nombre));
+          if (x) { Object.assign(x, f, { editado: ahora }); actualizados++; }
+          else { const n = { id: s.seq.v++, ...f, editado: ahora }; s.provs.push(n); porClave.set(clave(f.proveedor, f.codigo || f.nombre), n); creados++; }
+        }
+        await save(pool); return send(res, 200, { ok: true, creados, actualizados, borrados });
+      }
+      const x = s.provs.find(v => v.id === id); if (!x) throw { code: 404, msg: 'No existe' };
+      if (req.method === 'PUT') { Object.assign(x, limpiarP(await body(req, 1e4), x), { editado: new Date().toISOString() }); await save(pool); return send(res, 200, x); }
+      if (req.method === 'DELETE') { s.provs = s.provs.filter(v => v.id !== id); await save(pool); return send(res, 200, { ok: true }); }
+      throw { code: 405, msg: 'Método no permitido' };
     }
     if (rec === 'cambios') {   // registro de cambios hechos por el administrador en los pedidos
       soloAdmin();

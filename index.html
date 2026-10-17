@@ -363,21 +363,21 @@ window.addEventListener('popstate', async e => {
 });
 
 /* ---------- vistas ---------- */
-const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', manual: 'Manual de uso', cambios: 'Registro de cambios', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', novedades: 'Novedades', hoja: 'Pedidos sin cargar' };
+const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', manual: 'Manual de uso', cambios: 'Registro de cambios', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', proveedores: 'Proveedores', proveedor: 'Proveedor', novedades: 'Novedades', hoja: 'Pedidos sin cargar' };
 const escritorio = () => window.matchMedia('(min-width:900px)').matches;
 const TABS = ['menu', 'pedidos', 'clientes', 'precios', 'faltantes', 'config'];   // pantallas con barra de botones abajo
 function render() {
   document.body.classList.remove('login-pg');
   if (!token) return login();
-  if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc','hoja','manual','cambios'].includes(view)) view = 'menu';
+  if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc','hoja','manual','cambios','proveedores','proveedor'].includes(view)) view = 'menu';
   if (view !== 'pedido') document.body.classList.remove('bloq-ped');
   if (view !== 'hoja') hojaEd = null;
   if (view !== 'pedidos' && view !== 'pedido' && view !== 'hoja') { fdiaInit = false; selMode = false; selPeds = new Set(); }   // al volver a Pedidos desde otra sección arranca en el día de hoy
   const tab = TABS.includes(view), desk = escritorio();
   document.body.classList.toggle('hay-tabs', desk || tab);
-  $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1>${campana()}<span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab || desk ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '📦', 'Listado'], ...(desk ? [['promos', '🏷️', 'Promociones'], ['novedades', '📣', 'Novedades' + (nNuevas() ? ' (' + nNuevas() + ')' : '')]] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo">${esAdmin() ? `<button data-go="manual" class="${view === 'manual' ? 'on' : ''}"><span>📖</span>Manual de uso</button>` : ''}<button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
+  $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1>${campana()}<span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab || desk ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '📦', 'Listado'], ...(desk ? [['promos', '🏷️', 'Promociones'], ['novedades', '📣', 'Novedades' + (nNuevas() ? ' (' + nNuevas() + ')' : '')]] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk && esAdmin() ? [['proveedores', '🏭', 'Proveedores']] : []), ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v || (v === 'proveedores' && view === 'proveedor') ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo">${esAdmin() ? `<button data-go="manual" class="${view === 'manual' ? 'on' : ''}"><span>📖</span>Manual de uso</button>` : ''}<button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
   estado();
-  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, manual: vManual, cambios: vCambios, novedades: vNovedades, hoja: vHoja })[view]();
+  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, manual: vManual, cambios: vCambios, novedades: vNovedades, hoja: vHoja, proveedores: vProveedores, proveedor: vProveedores })[view]();
 }
 function login() {
   document.body.classList.remove('hay-tabs'); document.body.classList.add('login-pg');
@@ -709,7 +709,7 @@ function vConfig() {
   const a = esAdmin(), fila = (v, i, t) => `<div class="row" data-go="${v}" style="cursor:pointer"><span style="font-size:22px">${i}</span><div class="nm"><b>${t}</b></div><span class="mut">›</span></div>`;
   $('#main').innerHTML = `<div class="card"><b>${esc(user.nombre)}</b><br><span class="mut">usuario: ${esc(user.usuario)} · ${a ? 'Administrador' : 'Vendedor'}</span></div>
     ${a ? `<div class="card"><h2>Mis datos</h2><form id="fp"><label>Nombre</label><input name="nombre" value="${esc(user.nombre)}" required><label>Usuario (para ingresar)</label><input name="usuario" value="${esc(user.usuario)}" autocapitalize="none" required><div style="height:14px"></div><button class="btn">Guardar mis datos</button></form></div>` : ''}
-    ${a ? `<div class="card">${fila('productos', '🗂️', `Productos (${productos.length})`)}${fila('importar', '📥', 'Importar / exportar Excel')}${fila('usuarios', '👥', 'Usuarios')}${fila('manual', '📖', 'Manual de uso')}${fila('cambios', '📝', 'Registro de cambios en pedidos')}${fila('promos', '🏷️', 'Promociones')}</div>` : ''}
+    ${a ? `<div class="card">${fila('productos', '🗂️', `Productos (${productos.length})`)}${fila('importar', '📥', 'Importar / exportar Excel')}${fila('proveedores', '🏭', 'Proveedores')}${fila('usuarios', '👥', 'Usuarios')}${fila('manual', '📖', 'Manual de uso')}${fila('cambios', '📝', 'Registro de cambios en pedidos')}${fila('promos', '🏷️', 'Promociones')}</div>` : ''}
     ${a ? `<div class="card"><h2>Copia de seguridad</h2><p class="mut" style="margin:0 0 8px">Se guarda una copia automática por día (las últimas 14) dentro de la base de datos. Además podés bajar una copia a tu computadora o el detalle de los pedidos en Excel.</p>
       <button class="btn" data-act="respaldo">💾 Descargar copia completa</button><button class="btn sec" data-act="pedidosExcel" style="margin-top:8px">📊 Descargar pedidos en Excel</button><button class="btn sec" data-act="abrirRestaurar" style="margin-top:8px">♻️ Restaurar una copia</button></div>` : ''}
     <div class="card"><h2>Notificaciones</h2><div id="pushBox"></div></div>
@@ -1623,6 +1623,105 @@ function exportarExcel() {
   const ws = XLSX.utils.json_to_sheet(productos.map(p => ({ 'Código': p.codigo, 'Nombre': p.nombre, 'Precio': p.precio,'Unidad de venta': p.multiplo || 1, 'Stock': p.usaStock ? p.stock || 0 : '', 'Activo': p.activo ? 'si' : 'no' })));
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Productos');
   XLSX.writeFile(wb, 'productos-' + new Date().toISOString().slice(0, 10) + '.xlsx');
+}
+
+/* ---------- proveedores (admin): lista de productos por proveedor, con código, descripción, precio y stock ---------- */
+let provs = [], provSel = '', provQ = '';
+const pvN = v => typeof v === 'number' ? v : (/,/.test(String(v)) ? parseFloat(String(v).replace(/\./g, '').replace(',', '.')) : parseFloat(v)) || 0;
+const pvClave = (p, c) => String(p).trim().toLowerCase() + '|' + String(c).trim().toLowerCase();
+function vProveedores() {
+  if (view === 'proveedor' && !provSel) return go('proveedores', true);
+  if (view === 'proveedores') { provSel = ''; provQ = ''; } else { provQ = ''; const h = $('#app h1'); if (h) h.textContent = provSel; }
+  $('#main').innerHTML = `<div class="fgrid" style="margin:0"><button class="btn" data-pvact="cargar">📥 Cargar lista</button><button class="btn sec" data-pvact="nuevo">➕ Agregar producto</button></div>
+    <input id="pvArch" type="file" accept=".xlsx,.xls,.csv" hidden>
+    <p class="mut" style="margin:8px 0 0;font-size:13px">Excel o CSV: se leen las columnas <b>Cod. barra</b>, <b>Artículo</b>, <b>Lista 1</b>, <b>Proveedor</b> y <b>Stock</b>; las demás se ignoran.</p>
+    <input id="pvQ" type="search" placeholder="${view === 'proveedor' ? 'Buscar producto' : 'Buscar proveedor o producto'}" value="${esc(provQ)}" style="margin-top:10px;width:100%">
+    <div id="pvLista" style="margin-top:10px"></div>`;
+  $('#pvQ').oninput = e => { provQ = e.target.value; pintarProv(); };
+  $('#pvArch').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) leerListaProv(f); };
+  $('#main').onclick = e => {
+    const a = e.target.closest('[data-pvact]'), r = e.target.closest('[data-pv], [data-pvprov]');
+    if (a) { if (a.dataset.pvact === 'cargar') $('#pvArch').click(); else if (a.dataset.pvact === 'nuevo') editarProv(null); else if (a.dataset.pvact === 'excel') excelProv(); else if (a.dataset.pvact === 'borrarprov') borrarProveedor(provSel); }
+    else if (r && r.dataset.pvprov !== undefined) { provSel = r.dataset.pvprov; go('proveedor'); }
+    else if (r && r.dataset.pv) editarProv(provs.find(x => x.id === +r.dataset.pv));
+  };
+  pintarProv();
+  api('GET', 'p/proveedores').then(r => { provs = r.items; if (view === 'proveedores') pintarProv(); }).catch(e => toast(e.message));
+}
+function pintarProv() {
+  const nombres = [...new Set(provs.map(x => x.proveedor))].sort((a, b) => norm(a).localeCompare(norm(b)));
+  if (provSel && !nombres.includes(provSel)) provSel = '';
+  const t = norm(provQ).split(/\s+/).filter(Boolean);
+  if (view === 'proveedores' && !t.length) {   // sin elegir: solo la lista de proveedores
+    $('#pvLista').innerHTML = nombres.length ? `<div class="card cols2">${nombres.map(n => { const it = provs.filter(x => x.proveedor === n); return `<div class="row" data-pvprov="${esc(n)}" style="cursor:pointer"><span style="font-size:22px">🏭</span><div class="nm"><b>${esc(n)}</b><span class="mut">${it.length} ${it.length === 1 ? 'producto' : 'productos'} · ${it.reduce((a, x) => a + (x.stock || 0), 0)} u. en stock</span></div><span class="mut">›</span></div>`; }).join('')}</div><div class="fgrid" style="margin-top:14px"><button class="btn sec" data-pvact="excel">📊 Descargar Excel</button></div>` : vacio('Todavía no cargaste ninguna lista de proveedores');
+    return;
+  }
+  const l = provs.filter(x => (!provSel || x.proveedor === provSel) && t.every(w => norm(x.codigo + ' ' + x.nombre + ' ' + x.proveedor).includes(w)));
+  if (!l.length) { $('#pvLista').innerHTML = vacio(provs.length ? 'Sin resultados' : 'Todavía no cargaste ninguna lista de proveedores'); return; }
+  const g = {}; l.forEach(x => (g[x.proveedor] = g[x.proveedor] || []).push(x));
+  $('#pvLista').innerHTML = Object.keys(g).sort((a, b) => norm(a).localeCompare(norm(b))).map(n => {
+    const it = g[n].sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre))), unid = it.reduce((a, x) => a + (x.stock || 0), 0);
+    return `<div style="margin-top:12px;padding:8px 2px;border-bottom:2px solid var(--bd)"><b style="font-size:17px">🏭 ${esc(n)}</b> <span class="mut">· <b class="cnt">${it.length}</b> ${it.length === 1 ? 'producto' : 'productos'} · ${unid} u. en stock</span></div><div class="card cols2" style="margin-top:6px">${it.map(x => `<div class="row" data-pv="${x.id}" style="cursor:pointer"><div class="nm"><b>${esc(x.nombre || x.codigo)}</b><span class="mut">${esc(x.codigo)}</span></div><div style="flex:none;text-align:right"><span class="price">${money(x.precio)}</span><br><span class="tag${x.stock > 0 ? '' : ' bad'}" style="margin:0">Stock: ${x.stock || 0}</span></div></div>`).join('')}</div>`;
+  }).join('') + `<div class="fgrid" style="margin-top:14px"><button class="btn sec" data-pvact="excel">📊 Descargar Excel</button>${provSel ? '<button class="btn sec" data-pvact="borrarprov" style="color:var(--bad)">🗑 Borrar este proveedor</button>' : ''}</div>`;
+}
+function dlgProv(html) {
+  const el = document.createElement('div'); el.className = 'modal'; el.style.cssText = 'z-index:90;align-items:center;padding:0 16px';
+  el.innerHTML = `<div class="modal-card" data-stop style="max-width:460px;max-height:90vh;overflow:auto;border-radius:18px;padding:20px">${html}</div>`;
+  document.body.appendChild(el); return el;
+}
+function editarProv(x) {
+  const el = dlgProv(`<p style="font-size:18px;margin:0 0 8px"><b>${x ? 'Editar producto' : 'Agregar producto'}</b></p>
+    <label>Proveedor</label><input id="pvP" list="pvProvs" value="${esc(x ? x.proveedor : provSel)}" autocomplete="off"><datalist id="pvProvs">${[...new Set(provs.map(v => v.proveedor))].map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+    <label>Código</label><input id="pvC" value="${esc(x ? x.codigo : '')}" autocomplete="off"><label>Descripción</label><input id="pvD" value="${esc(x ? x.nombre : '')}" autocomplete="off">
+    <div class="fgrid"><div><label>Precio</label><input id="pvPr" inputmode="decimal" value="${x ? String(x.precio).replace('.', ',') : ''}"></div><div><label>Stock</label><input id="pvS" inputmode="numeric" value="${x ? x.stock : ''}"></div></div>
+    <div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="0" style="flex:1">Cancelar</button><button class="btn" data-r="1" style="flex:1">Guardar</button></div>${x ? '<button class="btn sec" data-r="D" style="margin-top:10px;color:var(--bad)">🗑 Eliminar producto</button>' : ''}`);
+  el.addEventListener('click', async e => {
+    const b = e.target.closest('[data-r]'); if (e.target === el || (b && b.dataset.r === '0')) return el.remove(); if (!b) return;
+    try {
+      if (b.dataset.r === 'D') { if (!await confirmar('¿Eliminar este producto de la lista?')) return; await api('DELETE', 'p/proveedores/' + x.id); }
+      else { const body = { proveedor: $('#pvP').value, codigo: $('#pvC').value, nombre: $('#pvD').value, precio: $('#pvPr').value, stock: $('#pvS').value }; if (x) await api('PUT', 'p/proveedores/' + x.id, body); else await api('POST', 'p/proveedores', { filas: [body] }); }
+      el.remove(); provs = (await api('GET', 'p/proveedores')).items; pintarProv(); toast('Guardado ✓');
+    } catch (er) { toast(er.message); }
+  });
+  $(x ? '#pvPr' : '#pvP').focus();
+}
+async function borrarProveedor(n) {
+  if (!n || !await confirmar(`¿Borrar el proveedor «${n}» con todos sus productos?`)) return;
+  try { await api('POST', 'p/proveedores', { borrarProveedor: n }); provs = (await api('GET', 'p/proveedores')).items; provSel = ''; toast('Proveedor borrado'); volverA('proveedores'); } catch (e) { toast(e.message); }
+}
+async function leerListaProv(f) {
+  if (!window.XLSX) return toast('No cargó el lector de Excel (revisá la conexión)');
+  let filas;
+  try {
+    const wb = /\.csv$/i.test(f.name) ? XLSX.read(await f.text(), { type: 'string', raw: true }) : XLSX.read(await f.arrayBuffer(), { type: 'array' });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true }).filter(r => r.some(c => String(c ?? '').trim() !== ''));
+    const COLP = { proveedor: ['proveedor'], codigo: ['cod barra', 'codigo de barra', 'codigo barra', 'codigo'], nombre: ['articulo', 'descripcion'], precio: ['lista 1'], stock: ['stock'] };
+    const limpio = c => norm(c).replace(/[^a-z0-9]+/g, ' ').trim();
+    let h = -1, mapa = {};
+    for (let i = 0; i < Math.min(rows.length, 25) && h < 0; i++) {
+      const cab = rows[i].map(limpio), m = {};
+      for (const [k, ks] of Object.entries(COLP)) { for (const w of ks) { const j = cab.indexOf(w); if (j >= 0) { m[k] = j; break; } } }
+      if (m.proveedor !== undefined && (m.codigo !== undefined || m.nombre !== undefined)) { h = i; mapa = m; }
+    }
+    if (h < 0) return toast('No encontré la columna «Proveedor» (con Código o Descripción) en el archivo');
+    filas = rows.slice(h + 1).map(r => { const o = {}; for (const [k, j] of Object.entries(mapa)) o[k] = r[j] ?? ''; return { proveedor: String(o.proveedor).trim(), codigo: String(o.codigo ?? '').trim(), nombre: String(o.nombre ?? '').trim(), precio: pvN(o.precio), stock: pvN(o.stock) }; }).filter(r => r.proveedor && (r.codigo || r.nombre) && !['9999', '7040'].includes(r.codigo.replace(/^0+(?=\d)/, '')));   // 9999 y 7040 no se cargan
+  } catch { return toast('No se pudo leer el archivo'); }
+  if (!filas.length) return toast('No se encontraron productos en el archivo');
+  const archivo = new Set(filas.map(r => pvClave(r.proveedor, r.codigo || r.nombre))), actuales = new Set(provs.map(x => pvClave(x.proveedor, x.codigo || x.nombre)));
+  const nuevos = [...archivo].filter(k => !actuales.has(k)).length, upd = archivo.size - nuevos, quedan = provs.filter(x => !archivo.has(pvClave(x.proveedor, x.codigo || x.nombre))).length, nprov = new Set(filas.map(r => r.proveedor.toLowerCase())).size;
+  const el = dlgProv(`<p style="font-size:18px;margin:0 0 8px"><b>Cargar lista de proveedores</b></p><p style="margin:0 0 10px">Se leyeron <b>${filas.length}</b> filas de <b>${nprov}</b> ${nprov === 1 ? 'proveedor' : 'proveedores'}: se crean <b>${nuevos}</b> productos y se actualizan <b>${upd}</b> (precio y stock).</p>
+    ${quedan ? `<div class="row" style="border:0"><div class="nm"><b>Reemplazar toda la lista</b><span class="mut">Borra los ${quedan} productos cargados que no figuran en el archivo.</span></div><label class="sw" style="margin:0"><input type="checkbox" id="pvRep"><span></span></label></div>` : ''}
+    <div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="0" style="flex:1">Cancelar</button><button class="btn" data-r="1" style="flex:1">Cargar</button></div>`);
+  el.addEventListener('click', async e => {
+    const b = e.target.closest('[data-r]'); if (e.target === el || (b && b.dataset.r === '0')) return el.remove(); if (!b) return;
+    try { const r = await api('POST', 'p/proveedores', { filas, reemplazar: !!($('#pvRep') && $('#pvRep').checked) }); el.remove(); provs = (await api('GET', 'p/proveedores')).items; pintarProv(); toast(`Listo: ${r.creados} nuevos, ${r.actualizados} actualizados${r.borrados ? ', ' + r.borrados + ' borrados' : ''}`); } catch (er) { toast(er.message); }
+  });
+}
+function excelProv() {
+  if (!window.XLSX) return toast('No cargó el generador de Excel (revisá la conexión)');
+  const ws = XLSX.utils.json_to_sheet(provs.slice().sort((a, b) => norm(a.proveedor).localeCompare(norm(b.proveedor)) || norm(a.nombre).localeCompare(norm(b.nombre))).map(x => ({ 'Proveedor': x.proveedor, 'Código': x.codigo, 'Descripción': x.nombre, 'Precio': x.precio, 'Stock': x.stock })));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Proveedores');
+  XLSX.writeFile(wb, 'proveedores-' + new Date().toISOString().slice(0, 10) + '.xlsx');
 }
 
 /* ---------- eventos ---------- */
