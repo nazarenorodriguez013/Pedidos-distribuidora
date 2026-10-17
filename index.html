@@ -1741,12 +1741,12 @@ function excelProv() {
 
 /* pedido a un proveedor: se eligen cantidades, se ve el total y se copia o comparte el texto (no se guarda) */
 let pedProv = {}, pedProvQ = '';
-let ppCols = { codigo: true, nombre: true, cant: true };   // columnas que se incluyen al enviar el pedido
-const PPCOLS = [['codigo', 'Código'], ['nombre', 'Producto'], ['cant', 'Cantidad']];
-const lineaPedProv = x => PPCOLS.filter(([k]) => ppCols[k]).map(([k]) => k === 'codigo' ? x.codigo : k === 'nombre' ? x.nombre || x.codigo : pedProv[x.id]);
+let ppCols = { cant: true, nombre: true, codigo: true, costo: true };   // columnas que se incluyen al enviar el pedido
+const PPCOLS = [['cant', 'Cantidad'], ['nombre', 'Descripción'], ['codigo', 'Código'], ['costo', 'Costo']];
+const lineaPedProv = x => PPCOLS.filter(([k]) => ppCols[k]).map(([k]) => k === 'codigo' ? x.codigo : k === 'nombre' ? x.nombre || x.codigo : k === 'costo' ? money(x.precio) : pedProv[x.id]);
 function textoPedProv() {
   const l = provs.filter(x => x.proveedor === provSel && pedProv[x.id] > 0).sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre)));
-  return `Pedido a ${provSel}\n\n` + l.map(x => lineaPedProv(x).join(' - ')).join('\n');
+  return 'Pedido para Distribuidora Don Luis (Luis Caputi), Moulins 47, Concordia, Entre Ríos\n\n' + l.map(x => lineaPedProv(x).join(' - ')).join('\n') + '\n\nSaludos.';
 }
 function vPedProv() {
   if (!provSel) return go('proveedores', true);
@@ -1776,13 +1776,13 @@ function vPedProv() {
       <p class="mut" style="margin:0 0 8px;font-size:13px;flex:none">${contactoProv(provSel).email || contactoProv(provSel).whatsapp ? 'Para: ' + esc([contactoProv(provSel).email, contactoProv(provSel).whatsapp && 'WhatsApp ' + contactoProv(provSel).whatsapp].filter(Boolean).join(' · ')) : 'Sin mail ni WhatsApp cargado (se carga en el proveedor)'}</p><div class="mut" style="margin:0 0 4px;font-size:13px;flex:none">Columnas a enviar:</div><div id="ppCols" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;flex:none">${PPCOLS.map(([k, n]) => `<label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" data-col="${k}" ${ppCols[k] ? 'checked' : ''} style="width:20px;min-height:20px;height:20px;margin:0">${n}</label>`).join('')}</div>
       <div class="card" id="ppRes" style="padding:2px 12px;margin:0;flex:1 1 auto;min-height:0;overflow:auto"></div>
       <div style="flex:none"><div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="copiar" style="flex:1">📋 Copiar</button><button class="btn" data-r="wa" style="flex:1">WhatsApp</button></div><button class="btn sec" data-r="mail" style="margin-top:10px">✉️ Enviar por mail (Gmail)</button><button class="btn sec" data-r="0" style="margin-top:10px">Volver</button></div>`, true);
-    const res = () => { $('#ppRes').innerHTML = l.map(x => `<div style="display:flex;gap:12px;align-items:baseline;padding:7px 0;border-top:1px solid var(--bd)">${lineaPedProv(x).map((v, i, a) => `<span style="${i === a.length - 1 && a.length > 1 ? 'flex:none;font-weight:800' : 'flex:1 1 0;min-width:0'}">${esc(String(v))}</span>`).join('')}</div>`).join(''); };
+    const res = () => { $('#ppRes').innerHTML = l.map(x => `<div style="display:flex;gap:12px;align-items:baseline;padding:7px 0;border-top:1px solid var(--bd)">${PPCOLS.filter(([k]) => ppCols[k]).map(([k]) => `<span style="${k === 'cant' ? 'flex:none;min-width:36px;font-weight:800;font-size:17px' : k === 'codigo' ? 'flex:none;min-width:90px;color:var(--mut)' : k === 'costo' ? 'flex:none;min-width:90px;text-align:right' : 'flex:1 1 0;min-width:0'}">${esc(String(k === 'cant' ? pedProv[x.id] : k === 'nombre' ? x.nombre || x.codigo : k === 'costo' ? money(x.precio) : x.codigo))}</span>`).join('')}</div>`).join(''); };
     res();
     el.addEventListener('change', ev => { const c = ev.target.closest('[data-col]'); if (!c) return; ppCols[c.dataset.col] = c.checked; if (!PPCOLS.some(([k]) => ppCols[k])) { ppCols[c.dataset.col] = true; c.checked = true; toast('Dejá al menos una columna'); } res(); });
     el.addEventListener('click', async ev => {
       const c = ev.target.closest('[data-r]'); if (ev.target === el || (c && c.dataset.r === '0')) return el.remove(); if (!c) return;
       const txt = textoPedProv(), ct = contactoProv(provSel);
-      if (c.dataset.r === 'mail') return void window.open('https://mail.google.com/mail/?view=cm&fs=1' + (ct.email ? '&to=' + encodeURIComponent(ct.email) : '') + '&su=' + encodeURIComponent('Pedido a ' + provSel) + '&body=' + encodeURIComponent(txt), '_blank');
+      if (c.dataset.r === 'mail') return void window.open('https://mail.google.com/mail/?view=cm&fs=1' + (ct.email ? '&to=' + encodeURIComponent(ct.email) : '') + '&su=' + encodeURIComponent('Pedido para Distribuidora Don Luis') + '&body=' + encodeURIComponent(txt), '_blank');
       if (c.dataset.r === 'wa') return void window.open('https://wa.me/' + (ct.whatsapp || '') + '?text=' + encodeURIComponent(txt), '_blank');
       try { await navigator.clipboard.writeText(txt); } catch { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch {} ta.remove(); }
       toast('Pedido copiado ✓');
