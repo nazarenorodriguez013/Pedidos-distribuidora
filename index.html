@@ -105,7 +105,7 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .quien small{font-weight:500;opacity:.85}
 .buscadores{display:grid;grid-template-columns:1fr auto;gap:8px}.buscadores input{min-width:0}.buscadores #qp{grid-column:1/-1}.buscadores .btn{width:auto;padding:0 14px;white-space:nowrap;grid-row:1;grid-column:2}
 @media (min-width:900px){.buscadores{grid-template-columns:1fr 1fr auto}.buscadores #qp{grid-column:auto}.buscadores .btn{grid-column:auto}}
-.pvf{display:grid;grid-template-columns:minmax(70px,110px) 1fr 56px 110px;gap:8px 22px;align-items:center;padding:6px 0;border-top:1px solid var(--bd);font-size:14px;cursor:pointer;line-height:1.2}.pvf:first-child{border-top:0}.pvh{cursor:default;font-size:12px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid var(--bd)}.pvh span{font-weight:700}.pvf:nth-child(2){border-top:0}.pvf span,.pvf b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.pvf.pp{grid-template-columns:minmax(70px,110px) 1fr 80px}.ppc{width:64px;min-height:36px;padding:4px 6px;text-align:center;font-size:16px;font-weight:700}.pvc{color:var(--mut)}.pvp{text-align:right}.pvs{text-align:right;font-weight:700}.pvs.cero{color:var(--bad)}
+.pvf{display:grid;grid-template-columns:minmax(70px,110px) 1fr 56px 110px;gap:8px 22px;align-items:center;padding:6px 0;border-top:1px solid var(--bd);font-size:14px;cursor:pointer;line-height:1.2}.pvf:first-child{border-top:0}.pvh{cursor:default;font-size:12px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid var(--bd)}.pvh span{font-weight:700}.pvf:nth-child(2){border-top:0}.pvf span,.pvf b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.pvf.pp{grid-template-columns:minmax(70px,110px) 1fr 56px 80px}.ppc{width:64px;min-height:36px;padding:4px 6px;text-align:center;font-size:16px;font-weight:700}.pvc{color:var(--mut)}.pvp{text-align:right}.pvs{text-align:right;font-weight:700}.pvs.cero{color:var(--bad)}
 @media (max-width:600px){.quien small{display:none}.quien{max-width:55%}}
 .estado{padding:8px 12px;font-size:14px;font-weight:600;text-align:center;background:#fef3c7;color:#78350f}
 .estado.ok{background:#dcfce7;color:#166534}
@@ -1627,13 +1627,15 @@ function exportarExcel() {
 }
 
 /* ---------- proveedores (admin): lista de productos por proveedor, con código, descripción, precio y stock ---------- */
-let provs = [], provSel = '', provQ = '';
+let provs = [], provContactos = {}, provSel = '', provQ = '';
+async function cargarProvs() { const r = await api('GET', 'p/proveedores'); provs = r.items; provContactos = r.contactos || {}; }
+const contactoProv = n => provContactos[String(n).toLowerCase()] || {};
 const pvN = v => typeof v === 'number' ? v : (/,/.test(String(v)) ? parseFloat(String(v).replace(/\./g, '').replace(',', '.')) : parseFloat(v)) || 0;
 const pvClave = (p, c) => String(p).trim().toLowerCase() + '|' + String(c).trim().toLowerCase();
 function vProveedores() {
   if (view === 'proveedor' && !provSel) return go('proveedores', true);
   if (view === 'proveedores') { provSel = ''; provQ = ''; } else { provQ = ''; const h = $('#app h1'); if (h) h.textContent = provSel; }
-  $('#main').innerHTML = `${view === 'proveedor' ? '<button class="btn" data-pvact="pedido" style="margin-bottom:8px">🛒 Crear pedido</button>' : ''}<div class="fgrid" style="margin:0">${view === 'proveedor' ? '' : '<button class="btn" data-pvact="cargar">📥 Cargar lista</button>'}<button class="btn sec" data-pvact="nuevo">➕ Agregar producto</button></div>
+  $('#main').innerHTML = `${view === 'proveedor' ? `<button class="btn" data-pvact="pedido" style="margin-bottom:8px">🛒 Crear pedido</button><button class="btn sec" data-pvact="contacto" style="margin-bottom:8px">📞 Mail y WhatsApp · <span class="mut">${esc([contactoProv(provSel).email, contactoProv(provSel).whatsapp].filter(Boolean).join(' · ') || 'sin cargar')}</span></button>` : ''}<div class="fgrid" style="margin:0">${view === 'proveedor' ? '' : '<button class="btn" data-pvact="cargar">📥 Cargar lista</button>'}<button class="btn sec" data-pvact="nuevo">➕ Agregar producto</button></div>
     <input id="pvArch" type="file" accept=".xlsx,.xls,.csv" hidden>
     ${view === 'proveedor' ? '' : `<p class="mut" style="margin:8px 0 0;font-size:13px">Excel o CSV: se leen las columnas <b>Cod. barra</b>, <b>Artículo</b>, <b>Costo</b>, <b>Proveedor</b> y <b>Stock</b>; las demás se ignoran.</p>`}
     <input id="pvQ" type="search" placeholder="${view === 'proveedor' ? 'Buscar producto' : 'Buscar proveedor o producto'}" value="${esc(provQ)}" style="margin-top:10px;width:100%">
@@ -1642,12 +1644,12 @@ function vProveedores() {
   $('#pvArch').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) leerListaProv(f); };
   $('#main').onclick = e => {
     const a = e.target.closest('[data-pvact]'), r = e.target.closest('[data-pv], [data-pvprov]');
-    if (a) { if (a.dataset.pvact === 'cargar') $('#pvArch').click(); else if (a.dataset.pvact === 'nuevo') editarProv(null); else if (a.dataset.pvact === 'excel') excelProv(); else if (a.dataset.pvact === 'pedido') { pedProv = {}; go('pedprov'); } else if (a.dataset.pvact === 'borrarprov') borrarProveedor(provSel); }
+    if (a) { if (a.dataset.pvact === 'cargar') $('#pvArch').click(); else if (a.dataset.pvact === 'nuevo') editarProv(null); else if (a.dataset.pvact === 'excel') excelProv(); else if (a.dataset.pvact === 'contacto') editarContacto(); else if (a.dataset.pvact === 'pedido') { pedProv = {}; go('pedprov'); } else if (a.dataset.pvact === 'borrarprov') borrarProveedor(provSel); }
     else if (r && r.dataset.pvprov !== undefined) { provSel = r.dataset.pvprov; go('proveedor'); }
     else if (r && r.dataset.pv) editarProv(provs.find(x => x.id === +r.dataset.pv));
   };
   pintarProv();
-  api('GET', 'p/proveedores').then(r => { provs = r.items; if (view === 'proveedores') pintarProv(); }).catch(e => toast(e.message));
+  api('GET', 'p/proveedores').then(r => { provs = r.items; provContactos = r.contactos || {}; if (view === 'proveedores' || view === 'proveedor') pintarProv(); }).catch(e => toast(e.message));
 }
 function pintarProv() {
   const nombres = [...new Set(provs.map(x => x.proveedor))].sort((a, b) => norm(a).localeCompare(norm(b)));
@@ -1681,14 +1683,26 @@ function editarProv(x) {
     try {
       if (b.dataset.r === 'D') { if (!await confirmar('¿Eliminar este producto de la lista?')) return; await api('DELETE', 'p/proveedores/' + x.id); }
       else { const body = { proveedor: $('#pvP').value, codigo: $('#pvC').value, nombre: $('#pvD').value, precio: $('#pvPr').value, stock: $('#pvS').value }; if (x) await api('PUT', 'p/proveedores/' + x.id, body); else await api('POST', 'p/proveedores', { filas: [body] }); }
-      el.remove(); provs = (await api('GET', 'p/proveedores')).items; pintarProv(); toast('Guardado ✓');
+      el.remove(); await cargarProvs(); pintarProv(); toast('Guardado ✓');
     } catch (er) { toast(er.message); }
   });
   $(x ? '#pvPr' : '#pvP').focus();
 }
+function editarContacto() {
+  const c = contactoProv(provSel);
+  const el = dlgProv(`<p style="font-size:18px;margin:0 0 8px"><b>Contacto de ${esc(provSel)}</b></p><p class="mut" style="margin:0 0 8px">Al enviar el pedido, el destinatario ya queda puesto.</p>
+    <label>Mail</label><input id="pcE" type="email" inputmode="email" autocapitalize="none" autocomplete="off" value="${esc(c.email || '')}" placeholder="proveedor@correo.com">
+    <label>WhatsApp (característica y número, sin 0 ni 15)</label><input id="pcW" inputmode="tel" autocomplete="off" value="${esc(c.whatsapp || '')}" placeholder="3751 123456"><p class="mut" style="margin:4px 0 0;font-size:13px">Se agrega solo el código de Argentina (+54 9).</p>
+    <div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="0" style="flex:1">Cancelar</button><button class="btn" data-r="1" style="flex:1">Guardar</button></div>`);
+  el.addEventListener('click', async e => {
+    const b = e.target.closest('[data-r]'); if (e.target === el || (b && b.dataset.r === '0')) return el.remove(); if (!b) return;
+    try { await api('POST', 'p/proveedores', { contacto: { proveedor: provSel, email: $('#pcE').value, whatsapp: $('#pcW').value } }); el.remove(); await cargarProvs(); render(); toast('Guardado ✓'); } catch (er) { toast(er.message); }
+  });
+  $('#pcE').focus();
+}
 async function borrarProveedor(n) {
   if (!n || !await confirmar(`¿Borrar el proveedor «${n}» con todos sus productos?`)) return;
-  try { await api('POST', 'p/proveedores', { borrarProveedor: n }); provs = (await api('GET', 'p/proveedores')).items; provSel = ''; toast('Proveedor borrado'); volverA('proveedores'); } catch (e) { toast(e.message); }
+  try { await api('POST', 'p/proveedores', { borrarProveedor: n }); await cargarProvs(); provSel = ''; toast('Proveedor borrado'); volverA('proveedores'); } catch (e) { toast(e.message); }
 }
 async function leerListaProv(f) {
   if (!window.XLSX) return toast('No cargó el lector de Excel (revisá la conexión)');
@@ -1715,7 +1729,7 @@ async function leerListaProv(f) {
     <div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="0" style="flex:1">Cancelar</button><button class="btn" data-r="1" style="flex:1">Cargar</button></div>`);
   el.addEventListener('click', async e => {
     const b = e.target.closest('[data-r]'); if (e.target === el || (b && b.dataset.r === '0')) return el.remove(); if (!b) return;
-    try { const r = await api('POST', 'p/proveedores', { filas, reemplazar: !!($('#pvRep') && $('#pvRep').checked) }); el.remove(); provs = (await api('GET', 'p/proveedores')).items; pintarProv(); toast(`Listo: ${r.creados} nuevos, ${r.actualizados} actualizados${r.borrados ? ', ' + r.borrados + ' borrados' : ''}`); } catch (er) { toast(er.message); }
+    try { const r = await api('POST', 'p/proveedores', { filas, reemplazar: !!($('#pvRep') && $('#pvRep').checked) }); el.remove(); await cargarProvs(); pintarProv(); toast(`Listo: ${r.creados} nuevos, ${r.actualizados} actualizados${r.borrados ? ', ' + r.borrados + ' borrados' : ''}`); } catch (er) { toast(er.message); }
   });
 }
 function excelProv() {
@@ -1741,7 +1755,7 @@ function vPedProv() {
   const pintar = () => {
     const t = norm(pedProvQ).split(/\s+/).filter(Boolean), todos = provs.filter(x => x.proveedor === provSel).sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre)));
     const l = todos.filter(x => t.every(w => norm(x.codigo + ' ' + x.nombre).includes(w)));
-    $('#ppLista').innerHTML = l.length ? `<div class="card" style="padding:2px 10px"><div class="pvf pp pvh"><span>Código</span><span>Descripción</span><span class="pvs" style="text-align:center">Cantidad</span></div>${l.map(x => `<div class="pvf pp" style="cursor:default"><span class="pvc">${esc(x.codigo)}</span><span class="pvn">${esc(x.nombre || x.codigo)}</span><input class="ppc" data-ppid="${x.id}" inputmode="numeric" placeholder="0" value="${pedProv[x.id] || ''}"></div>`).join('')}</div>` : vacio('Sin resultados');
+    $('#ppLista').innerHTML = l.length ? `<div class="card" style="padding:2px 10px"><div class="pvf pp pvh"><span>Código</span><span>Descripción</span><span class="pvs">Stock</span><span class="pvs" style="text-align:center">Cantidad</span></div>${l.map(x => `<div class="pvf pp" style="cursor:default"><span class="pvc">${esc(x.codigo)}</span><span class="pvn">${esc(x.nombre || x.codigo)}</span><span class="pvs${x.stock > 0 ? '' : ' cero'}">${x.stock || 0}</span><input class="ppc" data-ppid="${x.id}" inputmode="numeric" placeholder="0" value="${pedProv[x.id] || ''}"></div>`).join('')}</div>` : vacio('Sin resultados');
     barra();
   };
   const barra = () => {
@@ -1759,7 +1773,7 @@ function vPedProv() {
     const b = e.target.closest('[data-ppact]'); if (!b || b.disabled) return;
     const l = provs.filter(x => x.proveedor === provSel && pedProv[x.id] > 0).sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre)));
     const el = dlgProv(`<p style="font-size:18px;margin:0 0 8px;flex:none"><b>Pedido a ${esc(provSel)}</b></p><p class="mut" style="margin:0 0 8px;flex:none">${l.length} ${l.length === 1 ? 'producto' : 'productos'} · ${l.reduce((a, x) => a + pedProv[x.id], 0)} u.</p>
-      <div class="mut" style="margin:0 0 4px;font-size:13px;flex:none">Columnas a enviar:</div><div id="ppCols" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;flex:none">${PPCOLS.map(([k, n]) => `<label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" data-col="${k}" ${ppCols[k] ? 'checked' : ''} style="width:20px;min-height:20px;height:20px;margin:0">${n}</label>`).join('')}</div>
+      <p class="mut" style="margin:0 0 8px;font-size:13px;flex:none">${contactoProv(provSel).email || contactoProv(provSel).whatsapp ? 'Para: ' + esc([contactoProv(provSel).email, contactoProv(provSel).whatsapp && 'WhatsApp ' + contactoProv(provSel).whatsapp].filter(Boolean).join(' · ')) : 'Sin mail ni WhatsApp cargado (se carga en el proveedor)'}</p><div class="mut" style="margin:0 0 4px;font-size:13px;flex:none">Columnas a enviar:</div><div id="ppCols" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;flex:none">${PPCOLS.map(([k, n]) => `<label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" data-col="${k}" ${ppCols[k] ? 'checked' : ''} style="width:20px;min-height:20px;height:20px;margin:0">${n}</label>`).join('')}</div>
       <div class="card" id="ppRes" style="padding:2px 12px;margin:0;flex:1 1 auto;min-height:0;overflow:auto"></div>
       <div style="flex:none"><div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="copiar" style="flex:1">📋 Copiar</button><button class="btn" data-r="wa" style="flex:1">WhatsApp</button></div><button class="btn sec" data-r="mail" style="margin-top:10px">✉️ Enviar por mail (Gmail)</button><button class="btn sec" data-r="0" style="margin-top:10px">Volver</button></div>`, true);
     const res = () => { $('#ppRes').innerHTML = l.map(x => `<div style="display:flex;gap:12px;align-items:baseline;padding:7px 0;border-top:1px solid var(--bd)">${lineaPedProv(x).map((v, i, a) => `<span style="${i === a.length - 1 && a.length > 1 ? 'flex:none;font-weight:800' : 'flex:1 1 0;min-width:0'}">${esc(String(v))}</span>`).join('')}</div>`).join(''); };
@@ -1767,15 +1781,15 @@ function vPedProv() {
     el.addEventListener('change', ev => { const c = ev.target.closest('[data-col]'); if (!c) return; ppCols[c.dataset.col] = c.checked; if (!PPCOLS.some(([k]) => ppCols[k])) { ppCols[c.dataset.col] = true; c.checked = true; toast('Dejá al menos una columna'); } res(); });
     el.addEventListener('click', async ev => {
       const c = ev.target.closest('[data-r]'); if (ev.target === el || (c && c.dataset.r === '0')) return el.remove(); if (!c) return;
-      const txt = textoPedProv();
-      if (c.dataset.r === 'mail') return void window.open('https://mail.google.com/mail/?view=cm&fs=1&su=' + encodeURIComponent('Pedido a ' + provSel) + '&body=' + encodeURIComponent(txt), '_blank');
-      if (c.dataset.r === 'wa') return void window.open('https://wa.me/?text=' + encodeURIComponent(txt), '_blank');
+      const txt = textoPedProv(), ct = contactoProv(provSel);
+      if (c.dataset.r === 'mail') return void window.open('https://mail.google.com/mail/?view=cm&fs=1' + (ct.email ? '&to=' + encodeURIComponent(ct.email) : '') + '&su=' + encodeURIComponent('Pedido a ' + provSel) + '&body=' + encodeURIComponent(txt), '_blank');
+      if (c.dataset.r === 'wa') return void window.open('https://wa.me/' + (ct.whatsapp || '') + '?text=' + encodeURIComponent(txt), '_blank');
       try { await navigator.clipboard.writeText(txt); } catch { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch {} ta.remove(); }
       toast('Pedido copiado ✓');
     });
   };
   pintar();
-  if (!provs.length) api('GET', 'p/proveedores').then(r => { provs = r.items; if (view === 'pedprov') pintar(); }).catch(e => toast(e.message));
+  if (!provs.length) api('GET', 'p/proveedores').then(r => { provs = r.items; provContactos = r.contactos || {}; if (view === 'pedprov') pintar(); }).catch(e => toast(e.message));
 }
 
 /* ---------- eventos ---------- */
