@@ -1701,7 +1701,7 @@ async function leerListaProv(f) {
     let h = -1, mapa = {};
     for (let i = 0; i < Math.min(rows.length, 25) && h < 0; i++) {
       const cab = rows[i].map(limpio), m = {};
-      for (const [k, ks] of Object.entries(COLP)) { for (const w of ks) { const j = cab.indexOf(w); if (j >= 0) { m[k] = j; break; } } }
+      for (const [k, ks] of Object.entries(COLP)) { for (const w of ks) { const j = cab.indexOf(w); if (j >= 0) { m[k] = j; break; } } if (m[k] === undefined && k === 'precio') { const j = cab.findIndex(c => c.startsWith('costo')); if (j >= 0) m[k] = j; } }   // costo exacto, o una columna que empiece con "costo" (ej. «Costo s/IVA»)
       if (m.proveedor !== undefined && (m.codigo !== undefined || m.nombre !== undefined)) { h = i; mapa = m; }
     }
     if (h < 0) return toast('No encontré la columna «Proveedor» (con Código o Descripción) en el archivo');
