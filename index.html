@@ -103,6 +103,8 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 #toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:10px;z-index:60;max-width:90%;display:none;font-size:14px}
 .quien{margin-left:auto;flex:none;max-width:48%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:700;background:rgba(255,255,255,.2);border-radius:99px;padding:5px 11px}
 .quien small{font-weight:500;opacity:.85}
+.buscadores{display:grid;grid-template-columns:1fr auto;gap:8px}.buscadores input{min-width:0}.buscadores #qp{grid-column:1/-1}.buscadores .btn{width:auto;padding:0 14px;white-space:nowrap;grid-row:1;grid-column:2}
+@media (min-width:900px){.buscadores{grid-template-columns:1fr 1fr auto}.buscadores #qp{grid-column:auto}.buscadores .btn{grid-column:auto}}
 @media (max-width:600px){.quien small{display:none}.quien{max-width:55%}}
 .estado{padding:8px 12px;font-size:14px;font-weight:600;text-align:center;background:#fef3c7;color:#78350f}
 .estado.ok{background:#dcfce7;color:#166534}
@@ -1209,8 +1211,7 @@ function vPedidos() {
   const fecha = `<div class="fdiag"><button class="btn sec" id="fprev" aria-label="Día anterior">‹</button><input id="fdia" type="date" value="${esc(fdia)}" title="Filtrar por día"><button class="btn sec" id="fsig" aria-label="Día siguiente">›</button></div>`;
   const opcEstado = [['', 'Estado: todos'], ['pendiente', 'Pendientes'], ['cargado', 'Cargados'], ...(esAdmin() ? [['agregados', '⚠ Agregar' + (pedidos.some(hayAgregados) ? ' (' + pedidos.filter(hayAgregados).length + ')' : '')]] : []), ['sinentregar', 'En preparación'], ['reparto', 'En reparto'], ['entregado', 'Entregados'], ['devoluciones', 'Con devoluciones'], ['rechazado', 'Rechazados']];
   const chipEstado = festado ? `<button class="btn sec" id="fquitar" style="min-height:40px;margin-top:8px;background:var(--bg)">Filtro: ${esc((opcEstado.find(o => o[0] === festado) || ['', festado])[1])} ✕ quitar</button>` : '';
-  $('#main').innerHTML = `<div style="display:flex;gap:8px"><input id="q" type="search" placeholder="Buscar pedido" value="${esc(q)}" style="flex:1 1 0;min-width:0"><button class="btn" data-go="pedido" data-nuevo="1" style="flex:none;width:auto;padding:0 14px;white-space:nowrap">🛒 ${leerBorrador() ? 'Continuar' : 'Cargar pedido'}</button></div>
-    <input id="qp" type="search" placeholder="Buscar producto en los pedidos (ej: aceite)" value="${esc(qProd)}" style="margin-top:8px;width:100%">
+  $('#main').innerHTML = `<div class="buscadores"><input id="q" type="search" placeholder="Buscar pedido" value="${esc(q)}"><input id="qp" type="search" placeholder="Buscar producto" value="${esc(qProd)}"><button class="btn" data-go="pedido" data-nuevo="1">🛒 ${leerBorrador() ? 'Continuar' : 'Cargar pedido'}</button></div>
     <div class="filtros">${esAdmin() ? `<div class="fgrid" style="margin:0">${selVend}${selTurno}</div><div class="fgrid" style="grid-template-columns:1fr">${fecha}</div>` : `<div class="fgrid" style="grid-template-columns:1fr;margin:0">${selTurno}</div><div class="fgrid" style="grid-template-columns:1fr">${fecha}</div>`}${chipEstado}</div>
     ${esAdmin() ? '<div id="selTools" class="fgrid" style="margin-top:8px"></div>' : ''}<div id="lista" class="grid2" style="margin-top:10px"></div><div id="selBar"></div>`;
   const pintar = () => {
