@@ -105,6 +105,7 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .quien small{font-weight:500;opacity:.85}
 .buscadores{display:grid;grid-template-columns:1fr auto;gap:8px}.buscadores input{min-width:0}.buscadores #qp{grid-column:1/-1}.buscadores .btn{width:auto;padding:0 14px;white-space:nowrap;grid-row:1;grid-column:2}
 @media (min-width:900px){.buscadores{grid-template-columns:1fr 1fr auto}.buscadores #qp{grid-column:auto}.buscadores .btn{grid-column:auto}}
+.pvf{display:grid;grid-template-columns:minmax(70px,110px) 1fr auto 46px;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--bd);font-size:14px;cursor:pointer;line-height:1.2}.pvf:first-child{border-top:0}.pvf span,.pvf b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.pvc{color:var(--mut)}.pvp{text-align:right}.pvs{text-align:right;font-weight:700}.pvs.cero{color:var(--bad)}
 @media (max-width:600px){.quien small{display:none}.quien{max-width:55%}}
 .estado{padding:8px 12px;font-size:14px;font-weight:600;text-align:center;background:#fef3c7;color:#78350f}
 .estado.ok{background:#dcfce7;color:#166534}
@@ -1661,7 +1662,7 @@ function pintarProv() {
   const g = {}; l.forEach(x => (g[x.proveedor] = g[x.proveedor] || []).push(x));
   $('#pvLista').innerHTML = Object.keys(g).sort((a, b) => norm(a).localeCompare(norm(b))).map(n => {
     const it = g[n].sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre))), unid = it.reduce((a, x) => a + (x.stock || 0), 0);
-    return `<div style="margin-top:12px;padding:8px 2px;border-bottom:2px solid var(--bd)"><b style="font-size:17px">🏭 ${esc(n)}</b> <span class="mut">· <b class="cnt">${it.length}</b> ${it.length === 1 ? 'producto' : 'productos'} · ${unid} u. en stock</span></div><div class="card cols2" style="margin-top:6px">${it.map(x => `<div class="row" data-pv="${x.id}" style="cursor:pointer"><div class="nm"><b>${esc(x.nombre || x.codigo)}</b><span class="mut">${esc(x.codigo)}</span></div><div style="flex:none;text-align:right"><span class="price">${money(x.precio)}</span><br><span class="tag${x.stock > 0 ? '' : ' bad'}" style="margin:0">Stock: ${x.stock || 0}</span></div></div>`).join('')}</div>`;
+    return `<div style="margin-top:12px;padding:8px 2px;border-bottom:2px solid var(--bd)"><b style="font-size:17px">🏭 ${esc(n)}</b> <span class="mut">· <b class="cnt">${it.length}</b> ${it.length === 1 ? 'producto' : 'productos'} · ${unid} u. en stock</span></div><div class="card" style="margin-top:6px;padding:2px 10px">${it.map(x => `<div data-pv="${x.id}" class="pvf"><span class="pvc">${esc(x.codigo)}</span><span class="pvn">${esc(x.nombre || x.codigo)}</span><b class="pvp">${money(x.precio)}</b><span class="pvs${x.stock > 0 ? '' : ' cero'}">${x.stock || 0}</span></div>`).join('')}</div>`;
   }).join('') + `<div class="fgrid" style="margin-top:14px"><button class="btn sec" data-pvact="excel">📊 Descargar Excel</button>${provSel ? '<button class="btn sec" data-pvact="borrarprov" style="color:var(--bad)">🗑 Borrar este proveedor</button>' : ''}</div>`;
 }
 function dlgProv(html) {
