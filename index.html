@@ -1665,9 +1665,9 @@ function pintarProv() {
     return `<div style="margin-top:12px;padding:8px 2px;border-bottom:2px solid var(--bd)"><b style="font-size:17px">🏭 ${esc(n)}</b> <span class="mut">· <b class="cnt">${it.length}</b> ${it.length === 1 ? 'producto' : 'productos'} · ${unid} u. en stock</span></div><div class="card" style="margin-top:6px;padding:2px 10px"><div class="pvf pvh"><span>Código</span><span>Descripción</span><span class="pvs">Stock</span><span class="pvp">Costo</span></div>${it.map(x => `<div data-pv="${x.id}" class="pvf"><span class="pvc">${esc(x.codigo)}</span><span class="pvn">${esc(x.nombre || x.codigo)}</span><span class="pvs${x.stock > 0 ? '' : ' cero'}">${x.stock || 0}</span><b class="pvp">${money(x.precio)}</b></div>`).join('')}</div>`;
   }).join('') + `<div class="fgrid" style="margin-top:14px"><button class="btn sec" data-pvact="excel">📊 Descargar Excel</button>${provSel ? '<button class="btn sec" data-pvact="borrarprov" style="color:var(--bad)">🗑 Borrar este proveedor</button>' : ''}</div>`;
 }
-function dlgProv(html) {
+function dlgProv(html, grande) {
   const el = document.createElement('div'); el.className = 'modal'; el.style.cssText = 'z-index:90;align-items:center;padding:0 16px';
-  el.innerHTML = `<div class="modal-card" data-stop style="max-width:460px;max-height:90vh;overflow:auto;border-radius:18px;padding:20px">${html}</div>`;
+  el.innerHTML = `<div class="modal-card" data-stop style="max-width:${grande ? 720 : 460}px;width:100%;max-height:90vh;${grande ? 'display:flex;flex-direction:column;overflow:hidden;' : 'overflow:auto;'}border-radius:18px;padding:20px">${html}</div>`;
   document.body.appendChild(el); return el;
 }
 function editarProv(x) {
@@ -1758,10 +1758,10 @@ function vPedProv() {
   $('#ppBar').onclick = async e => {
     const b = e.target.closest('[data-ppact]'); if (!b || b.disabled) return;
     const l = provs.filter(x => x.proveedor === provSel && pedProv[x.id] > 0).sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre)));
-    const el = dlgProv(`<p style="font-size:18px;margin:0 0 8px"><b>Pedido a ${esc(provSel)}</b></p><p class="mut" style="margin:0 0 8px">${l.length} ${l.length === 1 ? 'producto' : 'productos'} · ${l.reduce((a, x) => a + pedProv[x.id], 0)} u.</p>
-      <div class="mut" style="margin:0 0 4px;font-size:13px">Columnas a enviar:</div><div id="ppCols" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px">${PPCOLS.map(([k, n]) => `<label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" data-col="${k}" ${ppCols[k] ? 'checked' : ''} style="width:20px;min-height:20px;height:20px;margin:0">${n}</label>`).join('')}</div>
-      <div class="card" id="ppRes" style="padding:2px 10px;margin:0"></div>
-      <div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="copiar" style="flex:1">📋 Copiar</button><button class="btn" data-r="wa" style="flex:1">WhatsApp</button></div><button class="btn sec" data-r="mail" style="margin-top:10px">✉️ Enviar por mail (Gmail)</button><button class="btn sec" data-r="0" style="margin-top:10px">Volver</button>`);
+    const el = dlgProv(`<p style="font-size:18px;margin:0 0 8px;flex:none"><b>Pedido a ${esc(provSel)}</b></p><p class="mut" style="margin:0 0 8px;flex:none">${l.length} ${l.length === 1 ? 'producto' : 'productos'} · ${l.reduce((a, x) => a + pedProv[x.id], 0)} u.</p>
+      <div class="mut" style="margin:0 0 4px;font-size:13px;flex:none">Columnas a enviar:</div><div id="ppCols" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;flex:none">${PPCOLS.map(([k, n]) => `<label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" data-col="${k}" ${ppCols[k] ? 'checked' : ''} style="width:20px;min-height:20px;height:20px;margin:0">${n}</label>`).join('')}</div>
+      <div class="card" id="ppRes" style="padding:2px 12px;margin:0;flex:1 1 auto;min-height:0;overflow:auto"></div>
+      <div style="flex:none"><div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="copiar" style="flex:1">📋 Copiar</button><button class="btn" data-r="wa" style="flex:1">WhatsApp</button></div><button class="btn sec" data-r="mail" style="margin-top:10px">✉️ Enviar por mail (Gmail)</button><button class="btn sec" data-r="0" style="margin-top:10px">Volver</button></div>`, true);
     const res = () => { $('#ppRes').innerHTML = l.map(x => `<div style="display:flex;gap:12px;align-items:baseline;padding:7px 0;border-top:1px solid var(--bd)">${lineaPedProv(x).map((v, i, a) => `<span style="${i === a.length - 1 && a.length > 1 ? 'flex:none;font-weight:800' : 'flex:1 1 0;min-width:0'}">${esc(String(v))}</span>`).join('')}</div>`).join(''); };
     res();
     el.addEventListener('change', ev => { const c = ev.target.closest('[data-col]'); if (!c) return; ppCols[c.dataset.col] = c.checked; if (!PPCOLS.some(([k]) => ppCols[k])) { ppCols[c.dataset.col] = true; c.checked = true; toast('Dejá al menos una columna'); } res(); });
