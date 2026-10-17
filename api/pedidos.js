@@ -25,6 +25,7 @@ async function load(pool) {
   state.novedades = state.novedades || [];
   state.provs = Array.isArray(state.provs) ? state.provs : [];   // lista de lo que se le compra a cada proveedor (solo la ve el administrador)
   state.provContacto = state.provContacto && typeof state.provContacto === 'object' ? state.provContacto : {};   // mail y WhatsApp de cada proveedor, por nombre en minúsculas
+  state.provTextos = state.provTextos && typeof state.provTextos === 'object' ? state.provTextos : {};   // texto de arriba y de cierre del pedido a proveedores
   state.cambios = state.cambios || [];   // registro de lo que el administrador modifica en los pedidos (quitó, bajó, agregó, cambió el precio)
   state.seq.x = state.seq.x || 1;
   state.seq.v = state.seq.v || (state.provs.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
@@ -152,7 +153,7 @@ function restaurarDatos(d) {   // reemplaza pedidos, clientes, productos, promos
   if (d.pedidos.some(p => !p || !Number.isInteger(p.id) || !Array.isArray(p.items)) || d.clientes.some(c => !c || !Number.isInteger(c.id)) || d.productos.some(p => !p || !Number.isInteger(p.id))) throw { code: 400, msg: 'El archivo tiene datos dañados' };
   state.productos = d.productos; state.pedidos = d.pedidos; state.clientes = d.clientes;
   state.combos = Array.isArray(d.combos) ? d.combos : []; state.novedades = Array.isArray(d.novedades) ? d.novedades : []; state.cambios = Array.isArray(d.cambios) ? d.cambios : []; state.seq.x = Math.max(state.seq.x || 1, state.cambios.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
-  state.provContacto = d.provContacto && typeof d.provContacto === 'object' ? d.provContacto : state.provContacto; state.provs = Array.isArray(d.provs) ? d.provs : state.provs; state.seq.v = Math.max(state.seq.v || 1, state.provs.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
+  state.provTextos = d.provTextos && typeof d.provTextos === 'object' ? d.provTextos : state.provTextos; state.provContacto = d.provContacto && typeof d.provContacto === 'object' ? d.provContacto : state.provContacto; state.provs = Array.isArray(d.provs) ? d.provs : state.provs; state.seq.v = Math.max(state.seq.v || 1, state.provs.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
   state.configPorCodigo = d.configPorCodigo && typeof d.configPorCodigo === 'object' ? d.configPorCodigo : {};
   const mx = l => l.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1;
   state.seq.p = Math.max(state.seq.p || 1, mx(state.productos), (d.seq || {}).p || 1); state.seq.o = Math.max(state.seq.o || 1, mx(state.pedidos), (d.seq || {}).o || 1);
@@ -760,7 +761,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     }
     if (rec === 'respaldo' && req.method === 'GET') {   // el administrador descarga todos los datos (sin contraseñas ni claves)
       soloAdmin();
-      return send(res, 200, { fecha: new Date().toISOString(), version: 1, productos: s.productos, pedidos: s.pedidos, clientes: s.clientes, combos: s.combos, novedades: s.novedades, cambios: s.cambios, provs: s.provs, provContacto: s.provContacto, seq: s.seq, configPorCodigo: s.configPorCodigo || {}, usuarios: s.usuarios.map(pub) });
+      return send(res, 200, { fecha: new Date().toISOString(), version: 1, productos: s.productos, pedidos: s.pedidos, clientes: s.clientes, combos: s.combos, novedades: s.novedades, cambios: s.cambios, provs: s.provs, provContacto: s.provContacto, provTextos: s.provTextos, seq: s.seq, configPorCodigo: s.configPorCodigo || {}, usuarios: s.usuarios.map(pub) });
     }
     if (rec === 'pushkey' && req.method === 'GET') return send(res, 200, { key: webpush && s.vapid ? s.vapid.publica : null });
     if (rec === 'pushsub') {   // el dispositivo se suscribe / se da de baja para recibir notificaciones
@@ -783,9 +784,13 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         if (!codigo && !nombre) throw { code: 400, msg: 'Falta el código o la descripción' };
         return { proveedor, codigo, nombre, precio: Math.max(0, num(b.precio, prev.precio ?? 0)), stock: Math.max(0, num(b.stock, prev.stock ?? 0)) };
       };
-      if (!id && req.method === 'GET') return send(res, 200, { items: s.provs, contactos: s.provContacto });
+      if (!id && req.method === 'GET') return send(res, 200, { items: s.provs, contactos: s.provContacto, textos: s.provTextos });
       if (!id && req.method === 'POST') {
         const b = await body(req, 30e6), ahora = new Date().toISOString();
+        if (b.textos) {   // texto de arriba y de cierre del pedido (si se deja vacío vuelve al de siempre)
+          const t = {}; for (const k of ['cabecera', 'cierre']) if (typeof b.textos[k] === 'string' && b.textos[k].trim() !== '') t[k] = b.textos[k].slice(0, 500);
+          s.provTextos = t; await save(pool); return send(res, 200, { ok: true, textos: s.provTextos });
+        }
         if (b.contacto) {   // mail y WhatsApp del proveedor, para dejar el destinatario puesto al enviar el pedido
           const nom = String(b.contacto.proveedor || '').trim(); if (!nom) throw { code: 400, msg: 'Falta el proveedor' };
           const email = String(b.contacto.email || '').trim().slice(0, 120), whatsapp = waArgentina(b.contacto.whatsapp);
