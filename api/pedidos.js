@@ -25,9 +25,11 @@ async function load(pool) {
   state.novedades = state.novedades || [];
   state.provs = Array.isArray(state.provs) ? state.provs : [];   // lista de lo que se le compra a cada proveedor (solo la ve el administrador)
   state.provContacto = state.provContacto && typeof state.provContacto === 'object' ? state.provContacto : {};   // mail y WhatsApp de cada proveedor, por nombre en minúsculas
+  state.provPedidos = Array.isArray(state.provPedidos) ? state.provPedidos : [];   // historial de pedidos hechos a cada proveedor
   state.provTextos = state.provTextos && typeof state.provTextos === 'object' ? state.provTextos : {};   // texto de arriba y de cierre del pedido a proveedores
   state.cambios = state.cambios || [];   // registro de lo que el administrador modifica en los pedidos (quitó, bajó, agregó, cambió el precio)
   state.seq.x = state.seq.x || 1;
+  state.seq.w = state.seq.w || (state.provPedidos.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
   state.seq.v = state.seq.v || (state.provs.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
   state.pushSubs = state.pushSubs || [];
   if (webpush) {   // claves VAPID: de las variables de entorno o generadas una vez y guardadas junto con los datos
@@ -153,6 +155,7 @@ function restaurarDatos(d) {   // reemplaza pedidos, clientes, productos, promos
   if (d.pedidos.some(p => !p || !Number.isInteger(p.id) || !Array.isArray(p.items)) || d.clientes.some(c => !c || !Number.isInteger(c.id)) || d.productos.some(p => !p || !Number.isInteger(p.id))) throw { code: 400, msg: 'El archivo tiene datos dañados' };
   state.productos = d.productos; state.pedidos = d.pedidos; state.clientes = d.clientes;
   state.combos = Array.isArray(d.combos) ? d.combos : []; state.novedades = Array.isArray(d.novedades) ? d.novedades : []; state.cambios = Array.isArray(d.cambios) ? d.cambios : []; state.seq.x = Math.max(state.seq.x || 1, state.cambios.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
+  state.provPedidos = Array.isArray(d.provPedidos) ? d.provPedidos : state.provPedidos; state.seq.w = Math.max(state.seq.w || 1, state.provPedidos.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
   state.provTextos = d.provTextos && typeof d.provTextos === 'object' ? d.provTextos : state.provTextos; state.provContacto = d.provContacto && typeof d.provContacto === 'object' ? d.provContacto : state.provContacto; state.provs = Array.isArray(d.provs) ? d.provs : state.provs; state.seq.v = Math.max(state.seq.v || 1, state.provs.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
   state.configPorCodigo = d.configPorCodigo && typeof d.configPorCodigo === 'object' ? d.configPorCodigo : {};
   const mx = l => l.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1;
@@ -761,7 +764,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     }
     if (rec === 'respaldo' && req.method === 'GET') {   // el administrador descarga todos los datos (sin contraseñas ni claves)
       soloAdmin();
-      return send(res, 200, { fecha: new Date().toISOString(), version: 1, productos: s.productos, pedidos: s.pedidos, clientes: s.clientes, combos: s.combos, novedades: s.novedades, cambios: s.cambios, provs: s.provs, provContacto: s.provContacto, provTextos: s.provTextos, seq: s.seq, configPorCodigo: s.configPorCodigo || {}, usuarios: s.usuarios.map(pub) });
+      return send(res, 200, { fecha: new Date().toISOString(), version: 1, productos: s.productos, pedidos: s.pedidos, clientes: s.clientes, combos: s.combos, novedades: s.novedades, cambios: s.cambios, provs: s.provs, provContacto: s.provContacto, provTextos: s.provTextos, provPedidos: s.provPedidos, seq: s.seq, configPorCodigo: s.configPorCodigo || {}, usuarios: s.usuarios.map(pub) });
     }
     if (rec === 'pushkey' && req.method === 'GET') return send(res, 200, { key: webpush && s.vapid ? s.vapid.publica : null });
     if (rec === 'pushsub') {   // el dispositivo se suscribe / se da de baja para recibir notificaciones
@@ -774,6 +777,24 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       } else if (req.method !== 'DELETE') throw { code: 405, msg: 'Método no permitido' };
       await save(pool);
       return send(res, 200, { ok: true });
+    }
+    if (rec === 'provpedidos') {   // historial de pedidos a proveedores (solo administrador)
+      soloAdmin();
+      if (!id && req.method === 'GET') return send(res, 200, { pedidos: [...s.provPedidos].reverse() });
+      if (!id && req.method === 'POST') {   // crea el pedido, o lo actualiza si trae id (cuando se edita desde el historial)
+        const b = await body(req, 1e6), ahora = new Date().toISOString();
+        const proveedor = String(b.proveedor || '').trim().slice(0, 80); if (!proveedor) throw { code: 400, msg: 'Falta el proveedor' };
+        const items = (Array.isArray(b.items) ? b.items : []).map(i => ({ pid: Number(i.pid) || 0, codigo: String(i.codigo || '').slice(0, 40), nombre: String(i.nombre || '').slice(0, 200), precio: Math.max(0, num(i.precio, 0)), cant: Math.max(0, Math.floor(num(i.cant, 0))) })).filter(i => i.cant > 0 && (i.codigo || i.nombre));
+        if (!items.length) throw { code: 400, msg: 'El pedido no tiene productos' };
+        let p = b.id ? s.provPedidos.find(x => x.id === Number(b.id)) : null;
+        if (b.id && !p) throw { code: 404, msg: 'No existe' };
+        if (p) Object.assign(p, { items, editado: ahora }); else { p = { id: s.seq.w++, proveedor, creado: ahora, editado: ahora, items }; s.provPedidos.push(p); }
+        if (s.provPedidos.length > 5000) s.provPedidos.splice(0, s.provPedidos.length - 5000);
+        await save(pool); return send(res, 200, p);
+      }
+      const p = s.provPedidos.find(x => x.id === id); if (!p) throw { code: 404, msg: 'No existe' };
+      if (req.method === 'DELETE') { s.provPedidos = s.provPedidos.filter(x => x.id !== id); await save(pool); return send(res, 200, { ok: true }); }
+      throw { code: 405, msg: 'Método no permitido' };
     }
     if (rec === 'proveedores') {   // lista de productos por proveedor: código, descripción, precio y stock (solo administrador)
       soloAdmin();
@@ -800,7 +821,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         }
         if (b.borrarProveedor) {
           const k = String(b.borrarProveedor).trim().toLowerCase(), antes = s.provs.length;
-          s.provs = s.provs.filter(x => x.proveedor.toLowerCase() !== k); delete s.provContacto[k];
+          s.provs = s.provs.filter(x => x.proveedor.toLowerCase() !== k); delete s.provContacto[k];   // el historial de pedidos queda guardado
           await save(pool); return send(res, 200, { ok: true, borrados: antes - s.provs.length });
         }
         const filas = Array.isArray(b.filas) ? b.filas : [];

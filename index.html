@@ -364,21 +364,21 @@ window.addEventListener('popstate', async e => {
 });
 
 /* ---------- vistas ---------- */
-const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', manual: 'Manual de uso', cambios: 'Registro de cambios', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', proveedores: 'Proveedores', proveedor: 'Proveedor', pedprov: 'Pedido al proveedor', novedades: 'Novedades', hoja: 'Pedidos sin cargar' };
+const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', manual: 'Manual de uso', cambios: 'Registro de cambios', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', proveedores: 'Proveedores', proveedor: 'Proveedor', pedprov: 'Pedido al proveedor', pedhist: 'Historial de pedidos', novedades: 'Novedades', hoja: 'Pedidos sin cargar' };
 const escritorio = () => window.matchMedia('(min-width:900px)').matches;
 const TABS = ['menu', 'pedidos', 'clientes', 'precios', 'faltantes', 'config'];   // pantallas con barra de botones abajo
 function render() {
   document.body.classList.remove('login-pg');
   if (!token) return login();
-  if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc','hoja','manual','cambios','proveedores','proveedor','pedprov'].includes(view)) view = 'menu';
+  if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc','hoja','manual','cambios','proveedores','proveedor','pedprov','pedhist'].includes(view)) view = 'menu';
   if (view !== 'pedido') document.body.classList.remove('bloq-ped');
   if (view !== 'hoja') hojaEd = null;
   if (view !== 'pedidos' && view !== 'pedido' && view !== 'hoja') { fdiaInit = false; selMode = false; selPeds = new Set(); }   // al volver a Pedidos desde otra sección arranca en el día de hoy
   const tab = TABS.includes(view), desk = escritorio();
   document.body.classList.toggle('hay-tabs', desk || tab);
-  $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1>${campana()}<span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab || desk ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '📦', 'Listado'], ...(desk ? [['promos', '🏷️', 'Promociones'], ['novedades', '📣', 'Novedades' + (nNuevas() ? ' (' + nNuevas() + ')' : '')]] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk && esAdmin() ? [['proveedores', '🏭', 'Proveedores']] : []), ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v || (v === 'proveedores' && (view === 'proveedor' || view === 'pedprov')) ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo">${esAdmin() ? `<button data-go="manual" class="${view === 'manual' ? 'on' : ''}"><span>📖</span>Manual de uso</button>` : ''}<button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
+  $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1>${campana()}<span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab || desk ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '📦', 'Listado'], ...(desk ? [['promos', '🏷️', 'Promociones'], ['novedades', '📣', 'Novedades' + (nNuevas() ? ' (' + nNuevas() + ')' : '')]] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk && esAdmin() ? [['proveedores', '🏭', 'Proveedores']] : []), ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v || (v === 'proveedores' && (view === 'proveedor' || view === 'pedprov' || view === 'pedhist')) ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo">${esAdmin() ? `<button data-go="manual" class="${view === 'manual' ? 'on' : ''}"><span>📖</span>Manual de uso</button>` : ''}<button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
   estado();
-  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, manual: vManual, cambios: vCambios, novedades: vNovedades, hoja: vHoja, proveedores: vProveedores, proveedor: vProveedores, pedprov: vPedProv })[view]();
+  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, manual: vManual, cambios: vCambios, novedades: vNovedades, hoja: vHoja, proveedores: vProveedores, proveedor: vProveedores, pedprov: vPedProv, pedhist: vPedHist })[view]();
 }
 function login() {
   document.body.classList.remove('hay-tabs'); document.body.classList.add('login-pg');
@@ -1635,7 +1635,7 @@ const pvClave = (p, c) => String(p).trim().toLowerCase() + '|' + String(c).trim(
 function vProveedores() {
   if (view === 'proveedor' && !provSel) return go('proveedores', true);
   if (view === 'proveedores') { provSel = ''; provQ = ''; } else { provQ = ''; const h = $('#app h1'); if (h) h.textContent = provSel; }
-  $('#main').innerHTML = `${view === 'proveedor' ? `<button class="btn" data-pvact="pedido" style="margin-bottom:8px">🛒 Crear pedido</button><button class="btn sec" data-pvact="contacto" style="margin-bottom:8px">📞 Mail y WhatsApp · <span class="mut">${esc([contactoProv(provSel).email, contactoProv(provSel).whatsapp].filter(Boolean).join(' · ') || 'sin cargar')}</span></button>` : ''}<div class="fgrid" style="margin:0">${view === 'proveedor' ? '' : '<button class="btn" data-pvact="cargar">📥 Cargar lista</button>'}<button class="btn sec" data-pvact="nuevo">➕ Agregar producto</button></div>${view === 'proveedor' ? '' : '<button class="btn sec" data-pvact="textos" style="margin-top:8px">✎ Mensaje del pedido (texto de arriba y final)</button>'}
+  $('#main').innerHTML = `${view === 'proveedor' ? `<div class="fgrid" style="margin:0 0 8px"><button class="btn" data-pvact="pedido">🛒 Crear pedido</button><button class="btn sec" data-pvact="hist">🗂 Historial de pedidos</button></div><button class="btn sec" data-pvact="contacto" style="margin-bottom:8px">📞 Mail y WhatsApp · <span class="mut">${esc([contactoProv(provSel).email, contactoProv(provSel).whatsapp].filter(Boolean).join(' · ') || 'sin cargar')}</span></button>` : ''}<div class="fgrid" style="margin:0">${view === 'proveedor' ? '' : '<button class="btn" data-pvact="cargar">📥 Cargar lista</button>'}<button class="btn sec" data-pvact="nuevo">➕ Agregar producto</button></div>${view === 'proveedor' ? '' : '<button class="btn sec" data-pvact="textos" style="margin-top:8px">✎ Mensaje del pedido (texto de arriba y final)</button>'}
     <input id="pvArch" type="file" accept=".xlsx,.xls,.csv" hidden>
     
     <input id="pvQ" type="search" placeholder="${view === 'proveedor' ? 'Buscar producto' : 'Buscar proveedor o producto'}" value="${esc(provQ)}" style="margin-top:10px;width:100%">
@@ -1644,7 +1644,7 @@ function vProveedores() {
   $('#pvArch').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) leerListaProv(f); };
   $('#main').onclick = e => {
     const a = e.target.closest('[data-pvact]'), r = e.target.closest('[data-pv], [data-pvprov]');
-    if (a) { if (a.dataset.pvact === 'cargar') $('#pvArch').click(); else if (a.dataset.pvact === 'nuevo') editarProv(null); else if (a.dataset.pvact === 'excel') excelProv(); else if (a.dataset.pvact === 'contacto') editarContacto(); else if (a.dataset.pvact === 'textos') editarTextos(); else if (a.dataset.pvact === 'pedido') { pedProv = {}; go('pedprov'); } else if (a.dataset.pvact === 'borrarprov') borrarProveedor(provSel); }
+    if (a) { if (a.dataset.pvact === 'cargar') $('#pvArch').click(); else if (a.dataset.pvact === 'nuevo') editarProv(null); else if (a.dataset.pvact === 'excel') excelProv(); else if (a.dataset.pvact === 'contacto') editarContacto(); else if (a.dataset.pvact === 'textos') editarTextos(); else if (a.dataset.pvact === 'pedido') { pedProv = {}; pedProvId = null; go('pedprov'); } else if (a.dataset.pvact === 'hist') go('pedhist'); else if (a.dataset.pvact === 'borrarprov') borrarProveedor(provSel); }
     else if (r && r.dataset.pvprov !== undefined) { provSel = r.dataset.pvprov; go('proveedor'); }
     else if (r && r.dataset.pv) editarProv(provs.find(x => x.id === +r.dataset.pv));
   };
@@ -1758,17 +1758,55 @@ function excelProv() {
 let pedProv = {}, pedProvQ = '';
 let ppCols = { cant: true, nombre: true, codigo: true, costo: true };   // columnas que se incluyen al enviar el pedido
 const PPCOLS = [['cant', 'Cantidad'], ['nombre', 'Descripción'], ['codigo', 'Código'], ['costo', 'Costo']];
-const lineaPedProv = x => PPCOLS.filter(([k]) => ppCols[k]).map(([k]) => k === 'codigo' ? x.codigo : k === 'nombre' ? x.nombre || x.codigo : k === 'costo' ? money(x.precio) : pedProv[x.id]);
+const lineaItem = it => PPCOLS.filter(([k]) => ppCols[k]).map(([k]) => k === 'codigo' ? it.codigo : k === 'nombre' ? it.nombre || it.codigo : k === 'costo' ? money(it.precio) : it.cant);
+let pedProvId = null;   // pedido del historial que se está editando
+const itemsPedProv = () => provs.filter(x => x.proveedor === provSel && pedProv[x.id] > 0).sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre))).map(x => ({ pid: x.id, codigo: x.codigo, nombre: x.nombre, precio: x.precio, cant: pedProv[x.id] }));
 const CAB_PED = 'Pedido para Distribuidora Don Luis (Luis Caputi), Moulins 47, Concordia, Entre Ríos', CIERRE_PED = 'Saludos.';
 const cabeceraPed = () => provTextos.cabecera || CAB_PED, cierrePed = () => provTextos.cierre || CIERRE_PED;
-function textoPedProv() {
-  const l = provs.filter(x => x.proveedor === provSel && pedProv[x.id] > 0).sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre)));
-  return cabeceraPed() + '\n\n' + l.map(x => lineaPedProv(x).join(' - ')).join('\n') + '\n\n' + cierrePed();
+const textoItems = items => cabeceraPed() + '\n\n' + items.map(it => lineaItem(it).join(' - ')).join('\n') + '\n\n' + cierrePed();
+/* ventana con el resumen de un pedido: columnas a elegir, copiar, WhatsApp y mail (y editar / eliminar si viene del historial) */
+function resumenPedido({ prov, items, id, creado, editar, eliminar }) {
+  const ct = contactoProv(prov);
+  const el = dlgProv(`<p style="font-size:18px;margin:0 0 8px;flex:none"><b>Pedido a ${esc(prov)}</b>${id ? ` <span class="mut" style="font-weight:400;font-size:14px">#${id}${creado ? ' · ' + esc(fechaHora(creado)) : ''}</span>` : ''}</p><p class="mut" style="margin:0 0 8px;flex:none">${items.length} ${items.length === 1 ? 'producto' : 'productos'} · ${items.reduce((a, x) => a + x.cant, 0)} u.</p>
+    <p class="mut" style="margin:0 0 8px;font-size:13px;flex:none">${ct.email || ct.whatsapp ? 'Para: ' + esc([ct.email, ct.whatsapp && 'WhatsApp ' + ct.whatsapp].filter(Boolean).join(' · ')) : 'Sin mail ni WhatsApp cargado (se carga en el proveedor)'}</p><div class="mut" style="margin:0 0 4px;font-size:13px;flex:none">Columnas a enviar:</div><div id="ppCols" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;flex:none">${PPCOLS.map(([k, n]) => `<label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" data-col="${k}" ${ppCols[k] ? 'checked' : ''} style="width:20px;min-height:20px;height:20px;margin:0">${n}</label>`).join('')}</div>
+    <div class="card" id="ppRes" style="padding:2px 12px;margin:0;flex:1 1 auto;min-height:0;overflow:auto"></div>
+    <div style="flex:none"><div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="copiar" style="flex:1">📋 Copiar</button><button class="btn" data-r="wa" style="flex:1">WhatsApp</button></div><button class="btn sec" data-r="mail" style="margin-top:10px">✉️ Enviar por mail (Gmail)</button>${editar ? '<button class="btn sec" data-r="editar" style="margin-top:10px">✎ Editar pedido</button>' : ''}${eliminar ? '<button class="btn sec" data-r="eliminar" style="margin-top:10px;color:var(--bad)">🗑 Eliminar pedido</button>' : ''}<button class="btn sec" data-r="0" style="margin-top:10px">Volver</button></div>`, true);
+  const res = () => { $('#ppRes').innerHTML = items.map(x => `<div style="display:flex;gap:12px;align-items:baseline;padding:7px 0;border-top:1px solid var(--bd)">${PPCOLS.filter(([k]) => ppCols[k]).map(([k]) => `<span style="${k === 'cant' ? 'flex:none;min-width:36px;font-weight:800;font-size:17px' : k === 'codigo' ? 'flex:none;min-width:90px;color:var(--mut)' : k === 'costo' ? 'flex:none;min-width:90px;text-align:right' : 'flex:1 1 0;min-width:0'}">${esc(String(k === 'cant' ? x.cant : k === 'nombre' ? x.nombre || x.codigo : k === 'costo' ? money(x.precio) : x.codigo))}</span>`).join('')}</div>`).join(''); };
+  res();
+  el.addEventListener('change', ev => { const k = ev.target.closest('[data-col]'); if (!k) return; ppCols[k.dataset.col] = k.checked; if (!PPCOLS.some(([n]) => ppCols[n])) { ppCols[k.dataset.col] = true; k.checked = true; toast('Dejá al menos una columna'); } res(); });
+  el.addEventListener('click', async ev => {
+    const b = ev.target.closest('[data-r]'); if (ev.target === el || (b && b.dataset.r === '0')) return el.remove(); if (!b) return;
+    const txt = textoItems(items);
+    if (b.dataset.r === 'editar') { el.remove(); return editar(); }
+    if (b.dataset.r === 'eliminar') { if (!await confirmar('¿Eliminar este pedido del historial?')) return; el.remove(); return eliminar(); }
+    if (b.dataset.r === 'mail') return void window.open('https://mail.google.com/mail/?view=cm&fs=1' + (ct.email ? '&to=' + encodeURIComponent(ct.email) : '') + '&su=' + encodeURIComponent('Pedido para Distribuidora Don Luis - Luis Caputi') + '&body=' + encodeURIComponent(txt), '_blank');
+    if (b.dataset.r === 'wa') return void window.open('https://wa.me/' + (ct.whatsapp || '') + '?text=' + encodeURIComponent(txt), '_blank');
+    try { await navigator.clipboard.writeText(txt); } catch { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch {} ta.remove(); }
+    toast('Pedido copiado ✓');
+  });
+}
+/* historial de pedidos del proveedor */
+let provPeds = [];
+function vPedHist() {
+  if (!provSel) return go('proveedores', true);
+  $('#main').innerHTML = `<p style="margin:0 0 8px"><b>🏭 ${esc(provSel)}</b> <span class="mut">· pedidos guardados</span></p><div id="phLista"></div>`;
+  const pintar = () => {
+    const l = provPeds.filter(p => p.proveedor === provSel);
+    $('#phLista').innerHTML = l.length ? `<div class="card" style="padding:2px 12px">${l.map(p => `<div class="row" data-hp="${p.id}" style="cursor:pointer"><div class="nm"><b>Pedido #${p.id}</b><span class="mut">${esc(fechaHora(p.creado))}${p.editado && p.editado !== p.creado ? ' · ✎ editado ' + esc(fechaHora(p.editado)) : ''}</span></div><div style="flex:none;text-align:right"><b>${p.items.reduce((a, x) => a + x.cant, 0)} u.</b><br><span class="mut" style="font-size:13px">${p.items.length} ${p.items.length === 1 ? 'producto' : 'productos'}</span></div><span class="mut">›</span></div>`).join('')}</div>` : vacio('Todavía no hay pedidos guardados de este proveedor');
+  };
+  $('#phLista').onclick = e => {
+    const r = e.target.closest('[data-hp]'); if (!r) return; const p = provPeds.find(x => x.id === +r.dataset.hp); if (!p) return;
+    resumenPedido({ prov: provSel, items: p.items, id: p.id, creado: p.creado,
+      editar: () => { pedProv = {}; let faltan = 0; p.items.forEach(it => { const x = provs.find(v => v.proveedor === provSel && (v.id === it.pid || (it.codigo && v.codigo === it.codigo))); if (x) pedProv[x.id] = it.cant; else faltan++; }); pedProvId = p.id; go('pedprov'); if (faltan) toast(`${faltan} ${faltan === 1 ? 'producto ya no está' : 'productos ya no están'} en la lista y no se incluyen`); },
+      eliminar: async () => { try { await api('DELETE', 'p/provpedidos/' + p.id); provPeds = provPeds.filter(x => x.id !== p.id); pintar(); toast('Pedido eliminado'); } catch (er) { toast(er.message); } } });
+  };
+  pintar();
+  api('GET', 'p/provpedidos').then(r => { provPeds = r.pedidos; if (view === 'pedhist') pintar(); }).catch(e => toast(e.message));
 }
 function vPedProv() {
   if (!provSel) return go('proveedores', true);
   pedProvQ = '';
-  $('#main').innerHTML = `<p style="margin:0 0 8px"><b>🏭 ${esc(provSel)}</b> <span class="mut">· poné la cantidad de cada producto que querés pedir</span></p><input id="ppQ" type="search" placeholder="Buscar producto" style="width:100%"><div id="ppLista" style="margin-top:10px"></div><div id="ppBar"></div>`;
+  $('#main').innerHTML = `<p style="margin:0 0 8px"><b>🏭 ${esc(provSel)}</b> <span class="mut">· ${pedProvId ? 'editando el pedido #' + pedProvId : 'poné la cantidad de cada producto que querés pedir'}</span></p><input id="ppQ" type="search" placeholder="Buscar producto" style="width:100%"><div id="ppLista" style="margin-top:10px"></div><div id="ppBar"></div>`;
   const pintar = () => {
     const t = norm(pedProvQ).split(/\s+/).filter(Boolean), todos = provs.filter(x => x.proveedor === provSel).sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre)));
     const l = todos.filter(x => t.every(w => norm(x.codigo + ' ' + x.nombre).includes(w)));
@@ -1788,22 +1826,12 @@ function vPedProv() {
   };
   $('#ppBar').onclick = async e => {
     const b = e.target.closest('[data-ppact]'); if (!b || b.disabled) return;
-    const l = provs.filter(x => x.proveedor === provSel && pedProv[x.id] > 0).sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre)));
-    const el = dlgProv(`<p style="font-size:18px;margin:0 0 8px;flex:none"><b>Pedido a ${esc(provSel)}</b></p><p class="mut" style="margin:0 0 8px;flex:none">${l.length} ${l.length === 1 ? 'producto' : 'productos'} · ${l.reduce((a, x) => a + pedProv[x.id], 0)} u.</p>
-      <p class="mut" style="margin:0 0 8px;font-size:13px;flex:none">${contactoProv(provSel).email || contactoProv(provSel).whatsapp ? 'Para: ' + esc([contactoProv(provSel).email, contactoProv(provSel).whatsapp && 'WhatsApp ' + contactoProv(provSel).whatsapp].filter(Boolean).join(' · ')) : 'Sin mail ni WhatsApp cargado (se carga en el proveedor)'}</p><div class="mut" style="margin:0 0 4px;font-size:13px;flex:none">Columnas a enviar:</div><div id="ppCols" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;flex:none">${PPCOLS.map(([k, n]) => `<label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" data-col="${k}" ${ppCols[k] ? 'checked' : ''} style="width:20px;min-height:20px;height:20px;margin:0">${n}</label>`).join('')}</div>
-      <div class="card" id="ppRes" style="padding:2px 12px;margin:0;flex:1 1 auto;min-height:0;overflow:auto"></div>
-      <div style="flex:none"><div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="copiar" style="flex:1">📋 Copiar</button><button class="btn" data-r="wa" style="flex:1">WhatsApp</button></div><button class="btn sec" data-r="mail" style="margin-top:10px">✉️ Enviar por mail (Gmail)</button><button class="btn sec" data-r="0" style="margin-top:10px">Volver</button></div>`, true);
-    const res = () => { $('#ppRes').innerHTML = l.map(x => `<div style="display:flex;gap:12px;align-items:baseline;padding:7px 0;border-top:1px solid var(--bd)">${PPCOLS.filter(([k]) => ppCols[k]).map(([k]) => `<span style="${k === 'cant' ? 'flex:none;min-width:36px;font-weight:800;font-size:17px' : k === 'codigo' ? 'flex:none;min-width:90px;color:var(--mut)' : k === 'costo' ? 'flex:none;min-width:90px;text-align:right' : 'flex:1 1 0;min-width:0'}">${esc(String(k === 'cant' ? pedProv[x.id] : k === 'nombre' ? x.nombre || x.codigo : k === 'costo' ? money(x.precio) : x.codigo))}</span>`).join('')}</div>`).join(''); };
-    res();
-    el.addEventListener('change', ev => { const c = ev.target.closest('[data-col]'); if (!c) return; ppCols[c.dataset.col] = c.checked; if (!PPCOLS.some(([k]) => ppCols[k])) { ppCols[c.dataset.col] = true; c.checked = true; toast('Dejá al menos una columna'); } res(); });
-    el.addEventListener('click', async ev => {
-      const c = ev.target.closest('[data-r]'); if (ev.target === el || (c && c.dataset.r === '0')) return el.remove(); if (!c) return;
-      const txt = textoPedProv(), ct = contactoProv(provSel);
-      if (c.dataset.r === 'mail') return void window.open('https://mail.google.com/mail/?view=cm&fs=1' + (ct.email ? '&to=' + encodeURIComponent(ct.email) : '') + '&su=' + encodeURIComponent('Pedido para Distribuidora Don Luis - Luis Caputi') + '&body=' + encodeURIComponent(txt), '_blank');
-      if (c.dataset.r === 'wa') return void window.open('https://wa.me/' + (ct.whatsapp || '') + '?text=' + encodeURIComponent(txt), '_blank');
-      try { await navigator.clipboard.writeText(txt); } catch { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch {} ta.remove(); }
-      toast('Pedido copiado ✓');
-    });
+    const items = itemsPedProv();
+    try {   // el pedido se guarda en el historial al finalizar (y se actualiza si se vuelve a finalizar)
+      const rec = await api('POST', 'p/provpedidos', { id: pedProvId, proveedor: provSel, items }); pedProvId = rec.id;
+      const ya = provPeds.findIndex(x => x.id === rec.id); if (ya >= 0) provPeds[ya] = rec; else provPeds.push(rec);
+      resumenPedido({ prov: provSel, items: rec.items, id: rec.id, creado: rec.creado });
+    } catch (er) { toast(er.message); }
   };
   pintar();
   if (!provs.length) api('GET', 'p/proveedores').then(r => { provs = r.items; provContactos = r.contactos || {}; provTextos = r.textos || {}; if (view === 'pedprov') pintar(); }).catch(e => toast(e.message));
