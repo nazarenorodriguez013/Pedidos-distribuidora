@@ -1422,8 +1422,8 @@ function vFaltantes() {
 }
 async function exportarPdf() {
   if (!window.jspdf) return toast('No cargó el generador de PDF (revisá la conexión)');
-  const l = productos.filter(p => p.activo);
-  if (!l.length) return toast('No hay productos activos');
+  const l = productos.slice().sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre), 'es'));   // en orden alfabético; también salen los faltantes (precio 0, con la marca «faltante»)
+  if (!l.length) return toast('No hay productos');
   const doc = new window.jspdf.jsPDF();
   const hoy = new Date().toLocaleDateString('es-AR');
   // encabezado: logo, nombre y datos de contacto
@@ -1440,9 +1440,16 @@ async function exportarPdf() {
   doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text('Lista de precios', 14, 51); doc.setFont('helvetica', 'normal');
   doc.autoTable({
     startY: 55, head: [['Código', 'Producto', 'Precio']],
-    body: l.map(p => [p.codigo, p.nombre + (hayPromo(p) ? '  (PROMO: ' + promoDesc(p) + ')' : ''), money(efectivo(p))]),
+    body: l.map(p => [p.codigo, p.nombre + (!faltante(p) && hayPromo(p) ? '  (PROMO: ' + promoDesc(p) + ')' : ''), faltante(p) ? money(0) : money(efectivo(p))]),
     headStyles: { fillColor: [15, 118, 110] }, columnStyles: { 2: { halign: 'right' } }, styles: { fontSize: 10 },
-    didParseCell: h => { if (h.column.index === 2) h.cell.styles.halign = 'right'; if (h.section === 'body' && hayPromo(l[h.row.index])) h.cell.styles.fontStyle = 'bold'; },   // el título Precio también a la derecha, sobre los números
+    didParseCell: h => { if (h.column.index === 2) h.cell.styles.halign = 'right'; if (h.section === 'body' && !faltante(l[h.row.index]) && hayPromo(l[h.row.index])) h.cell.styles.fontStyle = 'bold'; },   // el título Precio también a la derecha, sobre los números
+    didDrawCell: h => {   // «faltante» chiquito y en rojo, a la izquierda del precio en 0
+      if (h.section !== 'body' || h.column.index !== 2 || !faltante(l[h.row.index])) return;
+      const ancho = doc.getTextWidth(h.cell.text.join('')), y = h.cell.y + h.cell.height / 2 + 1;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(220, 38, 38);
+      doc.text('faltante', h.cell.x + h.cell.width - h.cell.padding('right') - ancho - 3, y, { align: 'right' });
+      doc.setTextColor(0, 0, 0); doc.setFontSize(10);
+    },
   });
   doc.save('lista-de-precios-' + new Date().toISOString().slice(0, 10) + '.pdf');
 }
