@@ -1422,7 +1422,28 @@ function vFaltantes() {
 }
 async function exportarPdf() {
   if (!window.jspdf) return toast('No cargó el generador de PDF (revisá la conexión)');
-  const l = productos.slice().sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre), 'es'));   // en orden alfabético; también salen los faltantes (precio 0, con la marca «faltante»)
+  const provsPdf = esAdmin() ? [...new Set(productos.map(p => p.proveedor).filter(Boolean))].sort((a, b) => norm(a).localeCompare(norm(b))) : [];
+  if (provsPdf.length) {   // el administrador elige de qué proveedores exportar (el proveedor no sale en el PDF, solo filtra)
+    const sinProv = productos.some(p => !p.proveedor), cant = n => productos.filter(p => (p.proveedor || '') === n).length;
+    const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px;flex:none"><b>Exportar lista de precios</b></p><p class="mut" style="margin:0 0 8px;flex:none">Elegí de qué proveedores querés la lista.</p><input id="pdfQ" type="search" placeholder="Buscar proveedor" autocomplete="off" style="flex:none;width:100%;margin-bottom:8px">
+      <label style="display:flex;gap:10px;align-items:center;margin:0 0 6px;font-weight:700;flex:none"><input type="checkbox" id="pdfTodos" checked style="width:22px;min-height:22px;height:22px;margin:0">Todos</label>
+      <div id="pdfProvs" style="flex:1 1 auto;min-height:0;overflow:auto">${[...provsPdf, ...(sinProv ? [''] : [])].map(n => `<label data-pl="${esc(norm(n || 'sin proveedor'))}" style="display:flex;gap:10px;align-items:center;margin:0;padding:7px 0;border-top:1px solid var(--bd)"><input type="checkbox" data-pp="${esc(n)}" checked style="width:22px;min-height:22px;height:22px;margin:0"><span style="flex:1 1 0">${n ? esc(n) : 'Sin proveedor'}</span><span class="mut">${cant(n)}</span></label>`).join('')}</div>
+      <div style="display:flex;gap:10px;margin-top:14px;flex:none"><button class="btn sec" data-r="0" style="flex:1">Cancelar</button><button class="btn" data-r="1" style="flex:1">Exportar</button></div>`, 480);
+    const marcas = () => [...el.querySelectorAll('[data-pp]')], visibles = () => marcas().filter(i => !i.closest('[data-pl]').hidden);   // «Todos» actúa sobre los que se ven (los que dejó el buscador)
+    const estadoTodos = () => { const v = visibles(); el.querySelector('#pdfTodos').checked = v.length > 0 && v.every(i => i.checked); };
+    el.querySelector('#pdfQ').oninput = e => { const t = norm(e.target.value).trim(); el.querySelectorAll('[data-pl]').forEach(l => { l.hidden = !!t && !l.dataset.pl.includes(t); }); estadoTodos(); };
+    el.addEventListener('change', e => { if (e.target.id === 'pdfTodos') visibles().forEach(i => i.checked = e.target.checked); else estadoTodos(); });
+    el.addEventListener('click', e => {
+      const b = e.target.closest('[data-r]'); if (e.target === el || (b && b.dataset.r === '0')) return el.remove(); if (!b) return;
+      const sel = new Set(marcas().filter(i => i.checked).map(i => i.dataset.pp)); if (!sel.size) return toast('Elegí al menos un proveedor');
+      el.remove(); generarPdf(productos.filter(p => sel.has(p.proveedor || '')));
+    });
+    return;
+  }
+  generarPdf(productos);
+}
+async function generarPdf(lista) {
+  const l = lista.slice().sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre), 'es'));   // en orden alfabético; también salen los faltantes (precio 0, con la marca «faltante»)
   if (!l.length) return toast('No hay productos');
   const doc = new window.jspdf.jsPDF();
   const hoy = new Date().toLocaleDateString('es-AR');
@@ -1484,11 +1505,11 @@ function vUsuario() {
 let importFilas = null, importIgnoradas = [];
 const IGNORADOS_IMP = { '9999': 'redondeo', '7040': 'servicio de reparto' };   // renglones de la lista que no son productos (también los ignora el servidor)
 const ignoradoImp = f => { const c = String(f.codigo ?? '').trim().replace(/^0+(?=\d)/, ''); return IGNORADOS_IMP[c] ? c + ' (' + IGNORADOS_IMP[c] + ')' : ['redondeo', 'servicio de reparto'].includes(norm(String(f.nombre ?? '')).trim()) ? String(f.nombre).trim() : null; };
-const COLS = { codigo: ['codigo', 'cod', 'sku', 'code'], nombre: ['nombre', 'descripcion', 'producto', 'articulo', 'detalle'], precio: ['precio', 'price', 'importe', 'pvp', 'lista'], activo: ['activo', 'habilitado'], multiplo: ['unidad de venta', 'unidad', 'multiplo', 'multiple', 'se vende de a'], stock: ['stock', 'existencia', 'existencias'] };
+const COLS = { codigo: ['codigo', 'cod', 'sku', 'code'], nombre: ['nombre', 'descripcion', 'producto', 'articulo', 'detalle'], precio: ['lista 1', 'precio', 'price', 'importe', 'pvp', 'lista'], activo: ['activo', 'habilitado'], multiplo: ['unidad de venta', 'unidad', 'multiplo', 'multiple', 'se vende de a'], stock: ['stock', 'existencia', 'existencias'], proveedor: ['proveedor'] };
 function leerHoja(rows) {
   rows = rows.filter(r => r.some(c => String(c ?? '').trim() !== ''));
   // el encabezado puede no estar en la primera fila (títulos arriba): se busca en las primeras filas la que tenga código y nombre/precio
-  const mapear = r => { const cab = r.map(norm).map(x => x.trim()), m = {}; for (const [k, ks] of Object.entries(COLS)) { const i = cab.findIndex(c => c !== 'iva' && ks.some(w => c === w || c.startsWith(w))); if (i >= 0) m[k] = i; } return m; };
+  const mapear = r => { const cab = r.map(x => norm(x).replace(/[^a-z0-9]+/g, ' ').trim()), m = {}; for (const [k, ks] of Object.entries(COLS)) { let i = -1; for (const w of ks) { i = cab.findIndex(x => x === w); if (i >= 0) break; } if (i < 0) i = cab.findIndex(x => x !== 'iva' && ks.some(w => x.startsWith(w))); if (i >= 0) m[k] = i; } return m; };   // primero el encabezado exacto (ej. «Lista 1» antes que «Lista 2»), después el que empieza igual
   let h = -1, mapa = {};
   for (let i = 0; i < Math.min(rows.length, 25); i++) { const m = mapear(rows[i]); if (m.codigo !== undefined && (m.nombre !== undefined || m.precio !== undefined)) { h = i; mapa = m; break; } }
   if (h < 0) { Object.assign(mapa, { codigo: 0, nombre: 1, precio: 2 }); }   // sin encabezados: A=código, B=nombre, C=precio
@@ -1686,7 +1707,7 @@ function pintarProv() {
 }
 function dlgProv(html, grande) {
   const el = document.createElement('div'); el.className = 'modal'; el.style.cssText = 'z-index:90;align-items:center;padding:0 16px';
-  el.innerHTML = `<div class="modal-card" data-stop style="max-width:${grande ? 720 : 460}px;width:100%;max-height:90vh;${grande ? 'display:flex;flex-direction:column;overflow:hidden;' : 'overflow:auto;'}border-radius:18px;padding:20px">${html}</div>`;
+  el.innerHTML = `<div class="modal-card" data-stop style="max-width:${grande ? (grande === true ? 720 : grande) : 460}px;width:100%;max-height:90vh;${grande ? 'display:flex;flex-direction:column;overflow:hidden;' : 'overflow:auto;'}border-radius:18px;padding:20px">${html}</div>`;
   document.body.appendChild(el); return el;
 }
 function editarProv(x) {

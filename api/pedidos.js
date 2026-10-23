@@ -488,12 +488,13 @@ function importar(b) {
     if (!p) {
       const nombre = String(f.nombre ?? '').trim();
       if (!nombre || precio === null) return r.errores.push(`Fila ${fila} (${codigo}): producto nuevo necesita nombre y precio`);
-      const nuevoProd = { id: state.seq.p++, codigo, nombre, precio, multiplo: mult ? Math.floor(mult) : 1, multiploSet: !!mult, ...(stk !== null ? { usaStock: true, stock: Math.floor(stk) } : {}), activo: sinPrecio ? false : f.activo === undefined || f.activo === '' ? true : truthy(f.activo), promo: false, precioPromo: 0 };
+      const nuevoProd = { id: state.seq.p++, codigo, nombre, precio, ...(String(f.proveedor ?? '').trim() ? { proveedor: String(f.proveedor).trim().slice(0, 80) } : {}), multiplo: mult ? Math.floor(mult) : 1, multiploSet: !!mult, ...(stk !== null ? { usaStock: true, stock: Math.floor(stk) } : {}), activo: sinPrecio ? false : f.activo === undefined || f.activo === '' ? true : truthy(f.activo), promo: false, precioPromo: 0 };
       state.productos.push(nuevoProd); restaurarProducto(nuevoProd);
       r.nuevos.push({ codigo, nombre, precio });
       return r.creados++;
     }
     if (String(f.nombre ?? '').trim()) p.nombre = String(f.nombre).trim();
+    if (String(f.proveedor ?? '').trim()) p.proveedor = String(f.proveedor).trim().slice(0, 80);   // solo sirve para filtrar al exportar; no se muestra
     if (precio !== null) p.precio = precio;   // precio 0: queda en 0 (y desactivado)
     if (mult && !p.multiploSet) { p.multiplo = Math.floor(mult); p.multiploSet = true; }   // la unidad de venta solo se carga si todavía no estaba definida
     if (stk !== null) { p.usaStock = true; p.stock = Math.floor(stk); }   // la planilla trae stock: el producto pasa a controlar stock
@@ -894,7 +895,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     const visible = x => rec !== 'pedidos' || admin || x.vendedorId === yo.id;
     if (!id && req.method === 'GET') {
       const l = list.filter(visible);
-      return send(res, 200, { [rec]: rec === 'pedidos' ? [...l].reverse() : l });
+      return send(res, 200, { [rec]: rec === 'pedidos' ? [...l].reverse() : admin || rec !== 'productos' ? l : l.map(({ proveedor, ...p }) => p) });   // el proveedor del producto lo ve solo el administrador
     }
     if (rec === 'productos' && req.method !== 'GET') soloAdmin();
     if (!id && req.method === 'POST') {
