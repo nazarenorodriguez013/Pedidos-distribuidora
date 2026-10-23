@@ -1441,13 +1441,13 @@ async function exportarPdf() {
   doc.autoTable({
     startY: 55, head: [['Código', 'Producto', 'Precio']],
     body: l.map(p => [p.codigo, p.nombre + (!faltante(p) && hayPromo(p) ? '  (PROMO: ' + promoDesc(p) + ')' : ''), faltante(p) ? money(0) : money(efectivo(p))]),
-    headStyles: { fillColor: [15, 118, 110] }, columnStyles: { 2: { halign: 'right' } }, styles: { fontSize: 10 },
+    headStyles: { fillColor: [15, 118, 110] }, columnStyles: { 0: { cellWidth: 26 }, 2: { halign: 'right', cellWidth: 34, overflow: 'visible' } }, styles: { fontSize: 10 }, rowPageBreak: 'avoid',   // el precio tiene un ancho fijo para que no se corte en dos renglones
     didParseCell: h => { if (h.column.index === 2) h.cell.styles.halign = 'right'; if (h.section === 'body' && !faltante(l[h.row.index]) && hayPromo(l[h.row.index])) h.cell.styles.fontStyle = 'bold'; },   // el título Precio también a la derecha, sobre los números
     didDrawCell: h => {   // «faltante» chiquito y en rojo, a la izquierda del precio en 0
       if (h.section !== 'body' || h.column.index !== 2 || !faltante(l[h.row.index])) return;
       const ancho = doc.getTextWidth(h.cell.text.join('')), y = h.cell.y + h.cell.height / 2 + 1;
       doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(220, 38, 38);
-      doc.text('faltante', h.cell.x + h.cell.width - h.cell.padding('right') - ancho - 3, y, { align: 'right' });
+      doc.text('FALTANTE', h.cell.x + h.cell.width - h.cell.padding('right') - ancho - 3, y, { align: 'right' });
       doc.setTextColor(0, 0, 0); doc.setFontSize(10);
     },
   });
