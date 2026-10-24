@@ -1506,7 +1506,7 @@ let importFilas = null, importIgnoradas = [];
 const IGNORADOS_IMP = { '9999': 'redondeo', '7040': 'servicio de reparto' };   // renglones de la lista que no son productos (también los ignora el servidor)
 const ignoradoImp = f => { const c = String(f.codigo ?? '').trim().replace(/^0+(?=\d)/, ''); return IGNORADOS_IMP[c] ? c + ' (' + IGNORADOS_IMP[c] + ')' : ['redondeo', 'servicio de reparto'].includes(norm(String(f.nombre ?? '')).trim()) ? String(f.nombre).trim() : null; };
 const COLS = { codigo: ['cod barra', 'cod barras', 'codigo de barra', 'codigo de barras', 'codigo barra', 'codigo barras'],   // el código del producto es «Cod. barra»; la columna «Código» se ignora
-   nombre: ['articulo', 'nombre', 'descripcion', 'producto', 'detalle'], precio: ['lista 1', 'precio', 'price', 'importe', 'pvp', 'lista'], activo: ['activo', 'habilitado'], multiplo: ['unidad de venta', 'unidad', 'multiplo', 'multiple', 'se vende de a'], stock: ['stock', 'existencia', 'existencias'], proveedor: ['proveedor'] };   // columnas que se leen: Cod. barra (código), Artículo, Lista 1 y Proveedor, y como antes las opcionales (unidad de venta, stock, activo); el resto se ignora
+   nombre: ['articulo', 'nombre', 'descripcion', 'producto', 'detalle'], precio: ['lista 1', 'precio', 'price', 'importe', 'pvp', 'lista'], proveedor: ['proveedor'] };   // solo se leen estas cuatro columnas: Cod. barra (código), Artículo, Lista 1 y Proveedor; el resto del Excel (stock, activo, unidad de venta…) se ignora
 function leerHoja(rows) {
   rows = rows.filter(r => r.some(c => String(c ?? '').trim() !== ''));
   // el encabezado puede no estar en la primera fila (títulos arriba): se busca en las primeras filas la que tenga código y nombre/precio
