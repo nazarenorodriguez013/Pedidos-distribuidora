@@ -1420,29 +1420,31 @@ function vFaltantes() {
     $('#lista').innerHTML = l.length ? `<div class="card cols2">${l.map(p => `<div class="row off" ${esAdmin() ? `data-precio="${p.id}"` : ''}><div class="nm"><b>${esc(p.nombre)}</b><span class="mut">${esc(p.codigo)}</span></div>${sinPrecio(p) ? '<span class="tag">Precio 0</span>' : !p.activo ? `<span class="price">${money(p.precio)}</span><span class="tag">Desactivado</span>` : '<span class="tag bad">Sin stock</span>'}</div>`).join('')}</div>` : vacio(n ? 'Sin resultados' : 'No hay faltantes');
   });
 }
+/* proveedores que se ofrecen al exportar, con el nombre tal como figura en el Excel (Gaona figura como «Pilares Compañía Alimenticia S.A.»); no importan mayúsculas ni tildes */
+const PROV_PDF = [['La Virginia', ['la virginia s.a']], ['Riggio', ['comercial riggio']], ['Gaona', ['pilares compania alimenticia']], ['Buraglia', ['buraglia iginio']]];
+const esDeProv = (p, pats) => { const n = norm(p.proveedor || ''); return !!n && pats.some(w => n.includes(w)); };
 async function exportarPdf() {
   if (!window.jspdf) return toast('No cargó el generador de PDF (revisá la conexión)');
-  const provsPdf = [...new Set(productos.map(p => p.proveedor).filter(Boolean))].sort((a, b) => norm(a).localeCompare(norm(b)));
-  if (provsPdf.length) {   // se elige de qué proveedores exportar (el proveedor no sale en el PDF, solo filtra)
-    const sinProv = productos.some(p => !p.proveedor), cant = n => productos.filter(p => (p.proveedor || '') === n).length;
-    const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px;flex:none"><b>Exportar lista de precios</b></p><p class="mut" style="margin:0 0 8px;flex:none">Elegí de qué proveedores querés la lista.</p><input id="pdfQ" type="search" placeholder="Buscar proveedor" autocomplete="off" style="flex:none;width:100%;margin-bottom:8px">
-      <label style="display:flex;gap:10px;align-items:center;margin:0 0 6px;font-weight:700;flex:none"><input type="checkbox" id="pdfTodos" checked style="width:22px;min-height:22px;height:22px;margin:0">Todos</label>
-      <div id="pdfProvs" style="flex:1 1 auto;min-height:0;overflow:auto">${[...provsPdf, ...(sinProv ? [''] : [])].map(n => `<label data-pl="${esc(norm(n || 'sin proveedor'))}" style="display:flex;gap:10px;align-items:center;margin:0;padding:7px 0;border-top:1px solid var(--bd)"><input type="checkbox" data-pp="${esc(n)}" checked style="width:22px;min-height:22px;height:22px;margin:0"><span style="flex:1 1 0">${n ? esc(n) : 'Sin proveedor'}</span><span class="mut">${cant(n)}</span></label>`).join('')}</div>
-      <div style="display:flex;gap:10px;margin-top:14px;flex:none"><button class="btn sec" data-r="0" style="flex:1">Cancelar</button><button class="btn" data-r="1" style="flex:1">Exportar</button></div>`, 480);
-    const marcas = () => [...el.querySelectorAll('[data-pp]')], visibles = () => marcas().filter(i => !i.closest('[data-pl]').hidden);   // «Todos» actúa sobre los que se ven (los que dejó el buscador)
-    const estadoTodos = () => { const v = visibles(); el.querySelector('#pdfTodos').checked = v.length > 0 && v.every(i => i.checked); };
-    el.querySelector('#pdfQ').oninput = e => { const t = norm(e.target.value).trim(); el.querySelectorAll('[data-pl]').forEach(l => { l.hidden = !!t && !l.dataset.pl.includes(t); }); estadoTodos(); };
-    el.addEventListener('change', e => { if (e.target.id === 'pdfTodos') visibles().forEach(i => i.checked = e.target.checked); else estadoTodos(); });
+  if (productos.some(p => p.proveedor)) {   // se elige de qué proveedores exportar (el proveedor no sale en el PDF, solo filtra)
+    const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px"><b>Exportar lista de precios</b></p><p class="mut" style="margin:0 0 10px">Elegí qué lista querés exportar.</p>
+      <label style="display:flex;gap:10px;align-items:center;margin:0 0 6px;font-weight:700"><input type="checkbox" id="pdfTodos" checked style="width:22px;min-height:22px;height:22px;margin:0">Todos<span class="mut" style="margin-left:auto;font-weight:400">${productos.length}</span></label>
+      <div>${PROV_PDF.map(([n, pats], i) => `<label style="display:flex;gap:10px;align-items:center;margin:0;padding:8px 0;border-top:1px solid var(--bd)"><input type="checkbox" data-pp="${i}" style="width:22px;min-height:22px;height:22px;margin:0"><span style="flex:1 1 0">${n}</span><span class="mut">${productos.filter(p => esDeProv(p, pats)).length}</span></label>`).join('')}</div>
+      <div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="0" style="flex:1">Cancelar</button><button class="btn" data-r="1" style="flex:1">Exportar</button></div>`);
+    const marcas = () => [...el.querySelectorAll('[data-pp]')];
+    el.addEventListener('change', e => {   // «Todos» y los proveedores se excluyen entre sí
+      if (e.target.id === 'pdfTodos') { if (e.target.checked) marcas().forEach(i => i.checked = false); else if (!marcas().some(i => i.checked)) e.target.checked = true; }
+      else { const alguno = marcas().some(i => i.checked); el.querySelector('#pdfTodos').checked = !alguno; }
+    });
     el.addEventListener('click', e => {
       const b = e.target.closest('[data-r]'); if (e.target === el || (b && b.dataset.r === '0')) return el.remove(); if (!b) return;
-      const sel = new Set(marcas().filter(i => i.checked).map(i => i.dataset.pp)); if (!sel.size) return toast('Elegí al menos un proveedor');
-      el.remove(); generarPdf(productos.filter(p => sel.has(p.proveedor || '')));
+      const idx = marcas().filter(i => i.checked).map(i => +i.dataset.pp), sel = idx.map(i => PROV_PDF[i][1]), todos = el.querySelector('#pdfTodos').checked || !sel.length;
+      el.remove(); generarPdf(todos ? productos : productos.filter(p => sel.some(pats => esDeProv(p, pats))), todos ? '' : idx.map(i => PROV_PDF[i][0]).join(' Y '));   // el archivo lleva el nombre del proveedor elegido
     });
     return;
   }
   generarPdf(productos);
 }
-async function generarPdf(lista) {
+async function generarPdf(lista, nombreProv = '') {
   const l = lista.slice().sort((a, b) => norm(a.nombre).localeCompare(norm(b.nombre), 'es'));   // en orden alfabético; también salen los faltantes (precio 0, con la marca «faltante»)
   if (!l.length) return toast('No hay productos');
   const doc = new window.jspdf.jsPDF();
@@ -1472,7 +1474,8 @@ async function generarPdf(lista) {
       doc.setTextColor(0, 0, 0); doc.setFontSize(10);
     },
   });
-  doc.save('lista-de-precios-' + new Date().toISOString().slice(0, 10) + '.pdf');
+  const f = new Date(), fecha = [f.getDate(), f.getMonth() + 1, f.getFullYear()].map((n, i) => String(n).padStart(i < 2 ? 2 : 4, '0')).join('.');   // nombre del archivo en mayúsculas, sin guiones: LISTA DE PRECIOS GAONA 24.10.2026
+  doc.save(('LISTA DE PRECIOS ' + (nombreProv ? nombreProv + ' ' : '') + fecha).toUpperCase() + '.pdf');
 }
 
 /* ---------- usuarios (admin) ---------- */
