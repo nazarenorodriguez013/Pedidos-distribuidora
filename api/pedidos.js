@@ -41,6 +41,8 @@ async function load(pool) {
   state.seq.n = state.seq.n || 1;
   for (const c of state.combos) for (const g of c.grupos) if (!g.codigos) g.codigos = g.pids.map(pid => (state.productos.find(p => p.id === pid) || {}).codigo).filter(Boolean);
   state.seq.k = state.seq.k || 1;
+  state.migraciones = state.migraciones || {};
+  if (!state.migraciones.sinStock) { for (const p of state.productos) if (p.usaStock) p.usaStock = false; state.migraciones.sinStock = true; }   // una sola vez: los productos no se trabajan con stock (la importación los había dejado controlando stock y como agotados)
   for (const c of state.combos) if (c.tipo === 'precio' && !c.precios) { c.precios = {}; for (const g of c.grupos) for (const pid of g.pids) c.precios[pid] = c.precio; delete c.precio; }
   for (const o of state.pedidos) if (o.clienteId && o.clienteCodigo === undefined) { const c = state.clientes.find(x => x.id === o.clienteId); if (c) o.clienteCodigo = c.codigo; }
   for (const c of state.clientes) if (c.apellido) { c.nombre = [c.nombre, c.apellido].filter(Boolean).join(' '); c.apellido = ''; }   // un solo campo: nombre y apellido
