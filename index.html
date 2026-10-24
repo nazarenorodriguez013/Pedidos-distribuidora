@@ -1505,14 +1505,15 @@ function vUsuario() {
 let importFilas = null, importIgnoradas = [];
 const IGNORADOS_IMP = { '9999': 'redondeo', '7040': 'servicio de reparto' };   // renglones de la lista que no son productos (también los ignora el servidor)
 const ignoradoImp = f => { const c = String(f.codigo ?? '').trim().replace(/^0+(?=\d)/, ''); return IGNORADOS_IMP[c] ? c + ' (' + IGNORADOS_IMP[c] + ')' : ['redondeo', 'servicio de reparto'].includes(norm(String(f.nombre ?? '')).trim()) ? String(f.nombre).trim() : null; };
-const COLS = { codigo: ['codigo', 'cod', 'sku', 'code'], nombre: ['nombre', 'descripcion', 'producto', 'articulo', 'detalle'], precio: ['lista 1', 'precio', 'price', 'importe', 'pvp', 'lista'], activo: ['activo', 'habilitado'], multiplo: ['unidad de venta', 'unidad', 'multiplo', 'multiple', 'se vende de a'], stock: ['stock', 'existencia', 'existencias'], proveedor: ['proveedor'] };
+const COLS = { codigo: ['cod barra', 'cod barras', 'codigo de barra', 'codigo de barras', 'codigo barra', 'codigo barras'],   // el código del producto es «Cod. barra»; la columna «Código» se ignora
+   nombre: ['articulo', 'nombre', 'descripcion', 'producto', 'detalle'], precio: ['lista 1', 'precio', 'price', 'importe', 'pvp', 'lista'], activo: ['activo', 'habilitado'], multiplo: ['unidad de venta', 'unidad', 'multiplo', 'multiple', 'se vende de a'], stock: ['stock', 'existencia', 'existencias'], proveedor: ['proveedor'] };   // columnas que se leen: Cod. barra (código), Artículo, Lista 1 y Proveedor, y como antes las opcionales (unidad de venta, stock, activo); el resto se ignora
 function leerHoja(rows) {
   rows = rows.filter(r => r.some(c => String(c ?? '').trim() !== ''));
   // el encabezado puede no estar en la primera fila (títulos arriba): se busca en las primeras filas la que tenga código y nombre/precio
-  const mapear = r => { const cab = r.map(x => norm(x).replace(/[^a-z0-9]+/g, ' ').trim()), m = {}; for (const [k, ks] of Object.entries(COLS)) { let i = -1; for (const w of ks) { i = cab.findIndex(x => x === w); if (i >= 0) break; } if (i < 0) i = cab.findIndex(x => x !== 'iva' && ks.some(w => x.startsWith(w))); if (i >= 0) m[k] = i; } return m; };   // primero el encabezado exacto (ej. «Lista 1» antes que «Lista 2»), después el que empieza igual
+  const mapear = r => { const cab = r.map(x => norm(x).replace(/[^a-z0-9]+/g, ' ').trim()), m = {}; for (const [k, ks] of Object.entries(COLS)) { let i = -1; for (const w of ks) { i = cab.findIndex(x => x === w); if (i >= 0) break; } for (const w of ks) { if (i >= 0) break; i = cab.findIndex(x => x !== 'iva' && x.startsWith(w)); } if (i >= 0) m[k] = i; } return m; };   // primero el encabezado exacto (ej. «Lista 1» antes que «Lista 2»), después el que empieza igual
   let h = -1, mapa = {};
   for (let i = 0; i < Math.min(rows.length, 25); i++) { const m = mapear(rows[i]); if (m.codigo !== undefined && (m.nombre !== undefined || m.precio !== undefined)) { h = i; mapa = m; break; } }
-  if (h < 0) { Object.assign(mapa, { codigo: 0, nombre: 1, precio: 2 }); }   // sin encabezados: A=código, B=nombre, C=precio
+  if (h < 0) throw new Error('Falta la columna «Cod. barra» (con Artículo y Lista 1) en el archivo');
   return rows.slice(h + 1).map(r => Object.fromEntries(Object.entries(mapa).map(([k, i]) => [k, r[i] ?? ''])));
 }
 /* PDF de lista de precios: cada línea "código  artículo  IVA  precio". Precio 0 = sin precio: queda desactivado. */
@@ -1544,7 +1545,7 @@ async function filasDePdf(file) {
 }
 function vImportar() {
   $('#main').innerHTML = `<div class="card"><h3 style="margin:0 0 6px">Importar lista</h3>
-    <p class="mut">Subí el <b>PDF de la lista de precios</b> del proveedor (código, artículo, IVA, precio; los de precio 0 quedan desactivados), o un archivo Excel (.xlsx) / CSV con columnas: <b>Código</b>, <b>Nombre</b>, <b>Precio</b> y, si querés, <b>Unidad de venta</b> (de a cuántas unidades se vende: 1, 5, 10…). Solo se carga en productos que todavía no la tienen definida: <b>nunca pisa una unidad ya configurada</b> y <b>Activo</b> (si/no). Si trae una columna <b>Stock</b>, los productos con valor pasan a trabajar con stock (los que la dejan vacía no cambian). Los productos se identifican por código: los existentes se actualizan (nombre, precio, unidad de venta) y los nuevos se crean. <b>No se borra nada</b> y las promos (de producto y combinadas) se conservan.</p>
+    <p class="mut">Subí el <b>PDF de la lista de precios</b> del proveedor (código, artículo, IVA, precio; los de precio 0 quedan desactivados), o un archivo Excel (.xlsx) / CSV con las columnas <b>Cod. barra</b>, <b>Artículo</b>, <b>Lista 1</b> y <b>Proveedor</b>; las demás se ignoran.</p>
     <input id="arch" type="file" accept=".pdf,.xlsx,.xls,.csv"><div id="prev"></div></div>
     <div class="card"><h3 style="margin:0 0 6px">Exportar</h3><p class="mut">Descarga el listado actual en Excel; podés editarlo y volver a importarlo.</p><button class="btn sec" data-act="exportarExcel">Descargar Excel</button></div>`;
   $('#arch').onchange = async e => {
@@ -1563,7 +1564,7 @@ function vImportar() {
         <div class="row" style="border:0"><div class="nm"><b>Reemplazar toda la lista</b><span class="mut">Borra los productos que no figuren en el archivo y carga la lista nueva. Las promos y la unidad de venta quedan guardadas por código: se conservan en los que figuran y se recuperan solas si un producto borrado vuelve a aparecer.</span></div><label class="sw" style="margin:0"><input type="checkbox" id="cat" checked><i></i></label></div>
         <button class="btn" id="btnImp" data-act="importarConfirmar">Importar</button><div id="listaImp"></div>`;
       resumenImportacion(); $('#cat').onchange = resumenImportacion;
-    } catch { toast('No se pudo leer el archivo'); }
+    } catch (e) { toast(/^Falta/.test(e.message) ? e.message : 'No se pudo leer el archivo'); }
   };
 }
 const codImp = r => String(r.codigo ?? '').trim().toLowerCase();
