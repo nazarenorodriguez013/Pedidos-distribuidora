@@ -895,7 +895,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     const visible = x => rec !== 'pedidos' || admin || x.vendedorId === yo.id;
     if (!id && req.method === 'GET') {
       const l = list.filter(visible);
-      return send(res, 200, { [rec]: rec === 'pedidos' ? [...l].reverse() : admin || rec !== 'productos' ? l : l.map(({ proveedor, ...p }) => p) });   // el proveedor del producto lo ve solo el administrador
+      return send(res, 200, { [rec]: rec === 'pedidos' ? [...l].reverse() : l });   // el proveedor del producto viaja con el producto (no se muestra: solo filtra el PDF)
     }
     if (rec === 'productos' && req.method !== 'GET') soloAdmin();
     if (!id && req.method === 'POST') {

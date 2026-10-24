@@ -1422,8 +1422,8 @@ function vFaltantes() {
 }
 async function exportarPdf() {
   if (!window.jspdf) return toast('No cargó el generador de PDF (revisá la conexión)');
-  const provsPdf = esAdmin() ? [...new Set(productos.map(p => p.proveedor).filter(Boolean))].sort((a, b) => norm(a).localeCompare(norm(b))) : [];
-  if (provsPdf.length) {   // el administrador elige de qué proveedores exportar (el proveedor no sale en el PDF, solo filtra)
+  const provsPdf = [...new Set(productos.map(p => p.proveedor).filter(Boolean))].sort((a, b) => norm(a).localeCompare(norm(b)));
+  if (provsPdf.length) {   // se elige de qué proveedores exportar (el proveedor no sale en el PDF, solo filtra)
     const sinProv = productos.some(p => !p.proveedor), cant = n => productos.filter(p => (p.proveedor || '') === n).length;
     const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px;flex:none"><b>Exportar lista de precios</b></p><p class="mut" style="margin:0 0 8px;flex:none">Elegí de qué proveedores querés la lista.</p><input id="pdfQ" type="search" placeholder="Buscar proveedor" autocomplete="off" style="flex:none;width:100%;margin-bottom:8px">
       <label style="display:flex;gap:10px;align-items:center;margin:0 0 6px;font-weight:700;flex:none"><input type="checkbox" id="pdfTodos" checked style="width:22px;min-height:22px;height:22px;margin:0">Todos</label>
