@@ -1449,7 +1449,8 @@ async function generarPdf(lista, nombreProv = '') {
   if (!l.length) return toast('No hay productos');
   const doc = new window.jspdf.jsPDF();
   const hoy = new Date().toLocaleDateString('es-AR');
-  const ultimo = productos.reduce((m, p) => p.cambioPrecio && p.cambioPrecio.en > m ? p.cambioPrecio.en : m, ''), cambiado = p => !!ultimo && !faltante(p) && !!p.cambioPrecio && p.cambioPrecio.en === ultimo;   // últimos cambios de precio: los de la última lista importada
+  const ultimo = productos.reduce((m, p) => [p.cambioPrecio && p.cambioPrecio.en, p.altaEn].reduce((a, x) => x && x > a ? x : a, m), '');   // la última lista importada: se resaltan sus altas (verde) y sus cambios de precio (amarillo)
+  const cambiado = p => !!ultimo && !faltante(p) && !!p.cambioPrecio && p.cambioPrecio.en === ultimo, esAlta = p => !!ultimo && !faltante(p) && p.altaEn === ultimo;
   // encabezado: logo, nombre y datos de contacto
   try {
     const blob = await (await fetch('/logo.png')).blob();
@@ -1462,12 +1463,13 @@ async function generarPdf(lista, nombreProv = '') {
   doc.setFontSize(10); doc.text(hoy, 196, 14, { align: 'right' });
   doc.setDrawColor(15, 118, 110); doc.setLineWidth(0.6); doc.line(14, 42, 196, 42);
   doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text('Lista de precios', 14, 51); doc.setFont('helvetica', 'normal');
-  if (l.some(cambiado)) { doc.setFillColor(255, 240, 170); doc.rect(140, 47.2, 5, 4.2, 'F'); doc.setFontSize(9); doc.text('Precio actualizado', 147, 50.6); }
+  const refs = [[l.some(esAlta), [205, 238, 208], 'Producto nuevo'], [l.some(cambiado), [255, 240, 170], 'Precio actualizado']].filter(x => x[0]); let rx = 196;   // referencias de color, de derecha a izquierda
+  doc.setFontSize(9); for (const [, col, txt] of refs.reverse()) { const w = doc.getTextWidth(txt); rx -= w; doc.setTextColor(0, 0, 0); doc.text(txt, rx, 50.6); doc.setFillColor(...col); doc.rect(rx - 7, 47.2, 5, 4.2, 'F'); rx -= 12; }
   doc.autoTable({
     startY: 55, head: [['Código', 'Producto', 'Precio']],
     body: l.map(p => [p.codigo, p.nombre + (!faltante(p) && hayPromo(p) ? '  (PROMO: ' + promoDesc(p) + ')' : ''), faltante(p) ? money(0) : money(efectivo(p))]),
     headStyles: { fillColor: [15, 118, 110] }, columnStyles: { 0: { cellWidth: 26 }, 2: { halign: 'right', cellWidth: 34, overflow: 'visible' } }, styles: { fontSize: 10 }, rowPageBreak: 'avoid',   // el precio tiene un ancho fijo para que no se corte en dos renglones
-    didParseCell: h => { if (h.section === 'body' && cambiado(l[h.row.index])) h.cell.styles.fillColor = [255, 240, 170]; if (h.column.index === 2) h.cell.styles.halign = 'right'; if (h.section === 'body' && !faltante(l[h.row.index]) && hayPromo(l[h.row.index])) h.cell.styles.fontStyle = 'bold'; },   // el título Precio también a la derecha, sobre los números
+    didParseCell: h => { if (h.section === 'body' && esAlta(l[h.row.index])) h.cell.styles.fillColor = [205, 238, 208]; else if (h.section === 'body' && cambiado(l[h.row.index])) h.cell.styles.fillColor = [255, 240, 170]; if (h.column.index === 2) h.cell.styles.halign = 'right'; if (h.section === 'body' && !faltante(l[h.row.index]) && hayPromo(l[h.row.index])) h.cell.styles.fontStyle = 'bold'; },   // el título Precio también a la derecha, sobre los números
     didDrawCell: h => {   // «faltante» chiquito y en rojo, a la izquierda del precio en 0
       if (h.section !== 'body' || h.column.index !== 2 || !faltante(l[h.row.index])) return;
       const ancho = doc.getTextWidth(h.cell.text.join('')), y = h.cell.y + h.cell.height / 2 + 1;
@@ -1571,9 +1573,7 @@ const pnImp = v => typeof v === 'number' ? v : (/,/.test(String(v)) ? parseFloat
 function pintarPrevImp() {
   importIgnoradas = importFilas.map(ignoradoImp).filter(Boolean); importFilas = importFilas.filter(f => !ignoradoImp(f));   // 9999 y 7040 ni se muestran
   if (!importFilas.length) return toast('No se encontraron productos en el archivo');
-  const sinPrecio = importFilas.filter(r => !(pnImp(r.precio) > 0)).length;
   $('#prev').innerHTML = `<p><b>${importFilas.length}</b> filas leídas. Ejemplo: ${esc(Object.values(importFilas[0] || {}).join(' | '))}</p>
-    ${sinPrecio ? `<p style="color:var(--bad)"><b>⚠ ${sinPrecio} de ${importFilas.length} filas tienen precio 0</b> (quedarían desactivadas, como faltantes).${sinPrecio === importFilas.length ? ' Ninguna tiene precio: revisá la columna de precio.' : ''}</p>` : ''}
     <p id="resumenImp"></p>
     <div class="row" style="border:0"><div class="nm"><b>Reemplazar toda la lista</b><span class="mut">Borra los productos que no figuren en el archivo y carga la lista nueva. Las promos y la unidad de venta quedan guardadas por código: se conservan en los que figuran y se recuperan solas si un producto borrado vuelve a aparecer.</span></div><label class="sw" style="margin:0"><input type="checkbox" id="cat" checked><span></span></label></div>
     <button class="btn" id="btnImp" data-act="importarConfirmar">Importar</button><div id="listaImp"></div>`;

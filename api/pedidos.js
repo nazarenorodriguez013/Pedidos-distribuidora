@@ -490,7 +490,7 @@ function importar(b) {
     if (!p) {
       const nombre = String(f.nombre ?? '').trim();
       if (!nombre || precio === null) return r.errores.push(`Fila ${fila} (${codigo}): producto nuevo necesita nombre y precio`);
-      const nuevoProd = { id: state.seq.p++, codigo, nombre, precio, ...(String(f.proveedor ?? '').trim() ? { proveedor: String(f.proveedor).trim().slice(0, 80) } : {}), multiplo: mult ? Math.floor(mult) : 1, multiploSet: !!mult, ...(stk !== null ? { usaStock: true, stock: Math.floor(stk) } : {}), activo: sinPrecio ? false : f.activo === undefined || f.activo === '' ? true : truthy(f.activo), promo: false, precioPromo: 0 };
+      const nuevoProd = { id: state.seq.p++, codigo, nombre, precio, altaEn: estampa, ...(String(f.proveedor ?? '').trim() ? { proveedor: String(f.proveedor).trim().slice(0, 80) } : {}), multiplo: mult ? Math.floor(mult) : 1, multiploSet: !!mult, ...(stk !== null ? { usaStock: true, stock: Math.floor(stk) } : {}), activo: sinPrecio ? false : f.activo === undefined || f.activo === '' ? true : truthy(f.activo), promo: false, precioPromo: 0 };
       state.productos.push(nuevoProd); restaurarProducto(nuevoProd);
       r.nuevos.push({ codigo, nombre, precio });
       return r.creados++;
@@ -498,6 +498,7 @@ function importar(b) {
     if (String(f.nombre ?? '').trim()) p.nombre = String(f.nombre).trim();
     if (String(f.proveedor ?? '').trim()) p.proveedor = String(f.proveedor).trim().slice(0, 80);   // solo sirve para filtrar al exportar; no se muestra
     if (precio !== null && p.precio > 0 && precio > 0 && Math.abs(precio - p.precio) >= 0.005) p.cambioPrecio = { en: estampa, de: p.precio };   // para resaltar en el PDF los últimos cambios de precio
+    if (precio !== null && !(p.precio > 0) && precio > 0) p.altaEn = estampa;   // estaba en $0 y vuelve a tener precio: cuenta como alta
     if (precio !== null) p.precio = precio;   // precio 0: queda en 0 (y desactivado)
     if (mult && !p.multiploSet) { p.multiplo = Math.floor(mult); p.multiploSet = true; }   // la unidad de venta solo se carga si todavía no estaba definida
     if (stk !== null) { p.usaStock = true; p.stock = Math.floor(stk); }   // la planilla trae stock: el producto pasa a controlar stock
