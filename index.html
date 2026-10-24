@@ -1575,6 +1575,7 @@ function pintarPrevImp() {
   if (!importFilas.length) return toast('No se encontraron productos en el archivo');
   $('#prev').innerHTML = `<p><b>${importFilas.length}</b> filas leídas. Ejemplo: ${esc(Object.values(importFilas[0] || {}).join(' | '))}</p>
     <p id="resumenImp"></p>
+    <p class="mut" style="margin:0 0 6px">📣 Después de tocar <b>Importar</b> aparece acá arriba la novedad armada con estos cambios, lista para enviar a los vendedores.</p>
     <div class="row" style="border:0"><div class="nm"><b>Reemplazar toda la lista</b><span class="mut">Borra los productos que no figuren en el archivo y carga la lista nueva. Las promos y la unidad de venta quedan guardadas por código: se conservan en los que figuran y se recuperan solas si un producto borrado vuelve a aparecer.</span></div><label class="sw" style="margin:0"><input type="checkbox" id="cat" checked><span></span></label></div>
     <button class="btn" id="btnImp" data-act="importarConfirmar">Importar</button><div id="listaImp"></div>`;
   resumenImportacion(); $('#cat').onchange = resumenImportacion;
@@ -1617,7 +1618,7 @@ function listaImportacion() {
 function armarNovedadImp() {
   const cod = r => codImp(r), existentes = new Map(productos.map(p => [p.codigo.toLowerCase(), p])), archivo = new Set(importFilas.map(cod).filter(Boolean)), visto = new Set();
   const altas = [], faltan = [], precios = [], pct = (n, v) => (n / v - 1) * 100, fp = x => (x > 0 ? '+' : '') + x.toLocaleString('es-AR', { maximumFractionDigits: 1 }) + '%';
-  const nom = (r, p) => String((p && p.nombre) || r.nombre || r.codigo).trim();
+  const nom = (r, p) => `${String((p && p.codigo) || r.codigo).trim()} · ${String((p && p.nombre) || r.nombre || r.codigo).trim()}`;   // el código va adelante de cada producto
   for (const r of importFilas) {
     const k = cod(r); if (!k || visto.has(k)) continue; visto.add(k);
     const p = existentes.get(k), nuevo = r.precio === undefined || r.precio === '' ? null : pnImp(r.precio);
@@ -1625,12 +1626,12 @@ function armarNovedadImp() {
     if (nuevo === null) continue;
     const vieja = p.precio || 0;
     if (vieja > 0 && nuevo === 0) faltan.push(`• ${nom(r, p)}`);
-    else if (vieja === 0 && nuevo > 0) altas.push(`• ${nom(r, p)} ${money(nuevo)} (vuelve a estar disponible)`);
-    else if (Math.abs(nuevo - vieja) >= 0.005) precios.push({ t: nuevo > vieja, linea: `• ${nom(r, p)}: ${money(vieja)} → ${money(nuevo)} (${fp(pct(nuevo, vieja))})` });
+    else if (vieja === 0 && nuevo > 0) altas.push(`• ${nom(r, p)} ${money(nuevo)}`);
+    else if (Math.abs(nuevo - vieja) >= 0.005) precios.push({ t: nuevo > vieja, linea: `• ${nom(r, p)} ${money(nuevo)}` });   // solo el precio nuevo
   }
-  if ($('#cat') && $('#cat').checked) for (const p of productos) if (!archivo.has(p.codigo.toLowerCase()) && p.precio > 0) faltan.push(`• ${p.nombre}`);   // salen de la lista: tampoco se pueden pedir
+  if ($('#cat') && $('#cat').checked) for (const p of productos) if (!archivo.has(p.codigo.toLowerCase()) && p.precio > 0) faltan.push(`• ${p.codigo} · ${p.nombre}`);   // salen de la lista: tampoco se pueden pedir
   const hoyTxt = new Date().toLocaleDateString('es-AR'), aum = precios.filter(x => x.t).length, baj = precios.length - aum;
-  const secciones = [['🆕 Productos nuevos (' + altas.length + ')', altas], ['⛔ Faltantes (' + faltan.length + ')', faltan], ['💲 Cambios de precio (' + precios.length + (precios.length ? `: ${aum} ${aum === 1 ? 'aumento' : 'aumentos'}, ${baj} ${baj === 1 ? 'baja' : 'bajas'}` : '') + ')', precios.map(x => x.linea)]].filter(([, l]) => l.length);
+  const secciones = [['🆕 ALTAS (' + altas.length + ')', altas], ['⛔ Faltantes (' + faltan.length + ')', faltan], ['💲 Cambios de precio (' + precios.length + (precios.length ? `: ${aum} ${aum === 1 ? 'aumento' : 'aumentos'}, ${baj} ${baj === 1 ? 'baja' : 'bajas'}` : '') + ')', precios.map(x => x.linea)]].filter(([, l]) => l.length);
   if (!secciones.length) return '';
   const cab = `📋 Lista de precios actualizada (${hoyTxt})`, LIM = 1990, aviso = n => `\n…y ${n} más (ver el Listado)`;   // el mensaje no puede pasar de 2000 caracteres: las secciones cortas se muestran enteras y el resto se reparte entre las largas
   let libre = LIM - cab.length - secciones.reduce((a, [t]) => a + t.length + 6, 0) - secciones.length * 40;
