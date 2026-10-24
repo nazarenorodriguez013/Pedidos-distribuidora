@@ -1463,7 +1463,7 @@ async function generarPdf(lista, nombreProv = '') {
   doc.setFontSize(10); doc.text(hoy, 196, 14, { align: 'right' });
   doc.setDrawColor(15, 118, 110); doc.setLineWidth(0.6); doc.line(14, 42, 196, 42);
   doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text('Lista de precios', 14, 51); doc.setFont('helvetica', 'normal');
-  const refs = [[l.some(esAlta), [205, 238, 208], 'Producto nuevo'], [l.some(cambiado), [255, 240, 170], 'Precio actualizado']].filter(x => x[0]); let rx = 196;   // referencias de color, de derecha a izquierda
+  const refs = [[l.some(esAlta), [205, 238, 208], 'Altas'], [l.some(cambiado), [255, 240, 170], 'Cambios de precios']].filter(x => x[0]); let rx = 196;   // referencias de color, de derecha a izquierda
   doc.setFontSize(9); for (const [, col, txt] of refs.reverse()) { const w = doc.getTextWidth(txt); rx -= w; doc.setTextColor(0, 0, 0); doc.text(txt, rx, 50.6); doc.setFillColor(...col); doc.rect(rx - 7, 47.2, 5, 4.2, 'F'); rx -= 12; }
   doc.autoTable({
     startY: 55, head: [['Código', 'Producto', 'Precio']],
