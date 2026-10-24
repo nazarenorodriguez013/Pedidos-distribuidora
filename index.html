@@ -1514,8 +1514,10 @@ function leerHoja(rows) {
   let h = -1, mapa = {};
   for (let i = 0; i < Math.min(rows.length, 25); i++) { const m = mapear(rows[i]); if (m.codigo !== undefined && (m.nombre !== undefined || m.precio !== undefined)) { h = i; mapa = m; break; } }
   if (h < 0) throw new Error('Falta la columna «Cod. barra» (con Artículo y Lista 1) en el archivo');
+  hojaImp = { cab: rows[h].map(x => String(x ?? '').trim()), datos: rows.slice(h + 1), mapa };   // para poder corregir a mano qué columna se lee
   return rows.slice(h + 1).map(r => Object.fromEntries(Object.entries(mapa).map(([k, i]) => [k, r[i] ?? ''])));
 }
+let hojaImp = null;
 /* PDF de lista de precios: cada línea "código  artículo  IVA  precio". Precio 0 = sin precio: queda desactivado. */
 const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
 async function cargarPdfjs() {
@@ -1557,15 +1559,32 @@ function vImportar() {
       const wb = /\.csv$/i.test(f.name) ? XLSX.read(await f.text(), { type: 'string', raw: true }) : XLSX.read(await f.arrayBuffer(), { type: 'array' });
       importFilas = leerHoja(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true }));
       }
-      importIgnoradas = importFilas.map(ignoradoImp).filter(Boolean); importFilas = importFilas.filter(f => !ignoradoImp(f));   // 9999 y 7040 ni se muestran
-      if (!importFilas.length) return toast('No se encontraron productos en el archivo');
-      $('#prev').innerHTML = `<p><b>${importFilas.length}</b> filas leídas${importFilas.some(r => r.activo === 'no') ? ` (${importFilas.filter(r => r.activo === 'no').length} sin precio, quedan desactivadas)` : ''}. Ejemplo: ${esc(Object.values(importFilas[0] || {}).join(' | '))}</p>
-        <p id="resumenImp"></p>
-        <div class="row" style="border:0"><div class="nm"><b>Reemplazar toda la lista</b><span class="mut">Borra los productos que no figuren en el archivo y carga la lista nueva. Las promos y la unidad de venta quedan guardadas por código: se conservan en los que figuran y se recuperan solas si un producto borrado vuelve a aparecer.</span></div><label class="sw" style="margin:0"><input type="checkbox" id="cat" checked><i></i></label></div>
-        <button class="btn" id="btnImp" data-act="importarConfirmar">Importar</button><div id="listaImp"></div>`;
-      resumenImportacion(); $('#cat').onchange = resumenImportacion;
+      if (/\.pdf$/i.test(f.name)) hojaImp = null;
+      pintarPrevImp();
     } catch (e) { toast(/^Falta/.test(e.message) ? e.message : 'No se pudo leer el archivo'); }
   };
+}
+const letraCol = i => { let s = '', n = i + 1; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+const pnImp = v => typeof v === 'number' ? v : (/,/.test(String(v)) ? parseFloat(String(v).replace(/\./g, '').replace(',', '.')) : parseFloat(v)) || 0;
+/* vista previa de la importación: muestra qué columna se lee para cada dato (se puede cambiar) y avisa si hay muchos precios en 0 */
+function pintarPrevImp(rearmar) {
+  if (rearmar && hojaImp) {
+    const s = k => { const v = $('#col_' + k).value; return v === '' ? -1 : +v; }, m = { codigo: s('codigo'), nombre: s('nombre'), precio: s('precio'), proveedor: s('proveedor') };
+    importFilas = hojaImp.datos.map(r => Object.fromEntries(Object.entries(m).filter(([, i]) => i >= 0).map(([k, i]) => [k, r[i] ?? '']))).filter(r => String(r.codigo ?? '').trim() !== '' || String(r.nombre ?? '').trim() !== '');
+    hojaImp.mapa = { ...m }; Object.keys(hojaImp.mapa).forEach(k => hojaImp.mapa[k] < 0 && delete hojaImp.mapa[k]);
+  }
+  importIgnoradas = importFilas.map(ignoradoImp).filter(Boolean); importFilas = importFilas.filter(f => !ignoradoImp(f));   // 9999 y 7040 ni se muestran
+  if (!importFilas.length) return toast('No se encontraron productos en el archivo');
+  const sinPrecio = importFilas.filter(r => !(pnImp(r.precio) > 0)).length, mapa = hojaImp ? hojaImp.mapa : {};
+  const sel = (k, nombre, vacio) => `<label style="margin:6px 0 0">${nombre}</label><select id="col_${k}" style="width:100%;min-height:40px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);padding:0 8px">${vacio ? `<option value="" ${mapa[k] === undefined ? 'selected' : ''}>— ninguna —</option>` : ''}${hojaImp ? hojaImp.cab.map((t, i) => `<option value="${i}" ${mapa[k] === i ? 'selected' : ''}>${letraCol(i)} · ${esc(t || '(sin título)')}</option>`).join('') : ''}</select>`;
+  $('#prev').innerHTML = `${hojaImp ? `<div class="card" style="background:var(--bg);margin:10px 0"><b>Columnas que se leen</b><span class="mut" style="display:block;font-size:13px">Si alguna no es la correcta, cambiala acá.</span>${sel('codigo', 'Código (Cod. barra)')}${sel('nombre', 'Artículo')}${sel('precio', 'Precio (Lista 1)')}${sel('proveedor', 'Proveedor', true)}</div>` : ''}
+    <p><b>${importFilas.length}</b> filas leídas. Ejemplo: ${esc(Object.values(importFilas[0] || {}).join(' | '))}</p>
+    ${sinPrecio ? `<p style="color:var(--bad)"><b>⚠ ${sinPrecio} de ${importFilas.length} filas tienen precio 0</b> (quedarían desactivadas, como faltantes).${sinPrecio === importFilas.length ? ' Ninguna tiene precio: revisá la columna de precio.' : ''}</p>` : ''}
+    <p id="resumenImp"></p>
+    <div class="row" style="border:0"><div class="nm"><b>Reemplazar toda la lista</b><span class="mut">Borra los productos que no figuren en el archivo y carga la lista nueva. Las promos y la unidad de venta quedan guardadas por código: se conservan en los que figuran y se recuperan solas si un producto borrado vuelve a aparecer.</span></div><label class="sw" style="margin:0"><input type="checkbox" id="cat" checked><span></span></label></div>
+    <button class="btn" id="btnImp" data-act="importarConfirmar">Importar</button><div id="listaImp"></div>`;
+  resumenImportacion(); $('#cat').onchange = resumenImportacion;
+  ['codigo', 'nombre', 'precio', 'proveedor'].forEach(k => { const e = $('#col_' + k); if (e) e.onchange = () => pintarPrevImp(true); });
 }
 const codImp = r => String(r.codigo ?? '').trim().toLowerCase();
 function conteoImportacion() {
