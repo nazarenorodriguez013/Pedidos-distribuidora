@@ -1449,6 +1449,7 @@ async function generarPdf(lista, nombreProv = '') {
   if (!l.length) return toast('No hay productos');
   const doc = new window.jspdf.jsPDF();
   const hoy = new Date().toLocaleDateString('es-AR');
+  const ultimo = productos.reduce((m, p) => p.cambioPrecio && p.cambioPrecio.en > m ? p.cambioPrecio.en : m, ''), cambiado = p => !!ultimo && !faltante(p) && !!p.cambioPrecio && p.cambioPrecio.en === ultimo;   // últimos cambios de precio: los de la última lista importada
   // encabezado: logo, nombre y datos de contacto
   try {
     const blob = await (await fetch('/logo.png')).blob();
@@ -1461,11 +1462,12 @@ async function generarPdf(lista, nombreProv = '') {
   doc.setFontSize(10); doc.text(hoy, 196, 14, { align: 'right' });
   doc.setDrawColor(15, 118, 110); doc.setLineWidth(0.6); doc.line(14, 42, 196, 42);
   doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text('Lista de precios', 14, 51); doc.setFont('helvetica', 'normal');
+  if (l.some(cambiado)) { doc.setFillColor(255, 240, 170); doc.rect(140, 47.2, 5, 4.2, 'F'); doc.setFontSize(9); doc.text('Precio actualizado', 147, 50.6); }
   doc.autoTable({
     startY: 55, head: [['Código', 'Producto', 'Precio']],
     body: l.map(p => [p.codigo, p.nombre + (!faltante(p) && hayPromo(p) ? '  (PROMO: ' + promoDesc(p) + ')' : ''), faltante(p) ? money(0) : money(efectivo(p))]),
     headStyles: { fillColor: [15, 118, 110] }, columnStyles: { 0: { cellWidth: 26 }, 2: { halign: 'right', cellWidth: 34, overflow: 'visible' } }, styles: { fontSize: 10 }, rowPageBreak: 'avoid',   // el precio tiene un ancho fijo para que no se corte en dos renglones
-    didParseCell: h => { if (h.column.index === 2) h.cell.styles.halign = 'right'; if (h.section === 'body' && !faltante(l[h.row.index]) && hayPromo(l[h.row.index])) h.cell.styles.fontStyle = 'bold'; },   // el título Precio también a la derecha, sobre los números
+    didParseCell: h => { if (h.section === 'body' && cambiado(l[h.row.index])) h.cell.styles.fillColor = [255, 240, 170]; if (h.column.index === 2) h.cell.styles.halign = 'right'; if (h.section === 'body' && !faltante(l[h.row.index]) && hayPromo(l[h.row.index])) h.cell.styles.fontStyle = 'bold'; },   // el título Precio también a la derecha, sobre los números
     didDrawCell: h => {   // «faltante» chiquito y en rojo, a la izquierda del precio en 0
       if (h.section !== 'body' || h.column.index !== 2 || !faltante(l[h.row.index])) return;
       const ancho = doc.getTextWidth(h.cell.text.join('')), y = h.cell.y + h.cell.height / 2 + 1;
@@ -1517,10 +1519,8 @@ function leerHoja(rows) {
   let h = -1, mapa = {};
   for (let i = 0; i < Math.min(rows.length, 25); i++) { const m = mapear(rows[i]); if (m.codigo !== undefined && (m.nombre !== undefined || m.precio !== undefined)) { h = i; mapa = m; break; } }
   if (h < 0) throw new Error('Falta la columna «Cod. barra» (con Artículo y Lista 1) en el archivo');
-  hojaImp = { cab: rows[h].map(x => String(x ?? '').trim()), datos: rows.slice(h + 1), mapa };   // para poder corregir a mano qué columna se lee
   return rows.slice(h + 1).map(r => Object.fromEntries(Object.entries(mapa).map(([k, i]) => [k, r[i] ?? ''])));
 }
-let hojaImp = null;
 /* PDF de lista de precios: cada línea "código  artículo  IVA  precio". Precio 0 = sin precio: queda desactivado. */
 const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
 async function cargarPdfjs() {
@@ -1562,32 +1562,22 @@ function vImportar() {
       const wb = /\.csv$/i.test(f.name) ? XLSX.read(await f.text(), { type: 'string', raw: true }) : XLSX.read(await f.arrayBuffer(), { type: 'array' });
       importFilas = leerHoja(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true }));
       }
-      if (/\.pdf$/i.test(f.name)) hojaImp = null;
       pintarPrevImp();
     } catch (e) { toast(/^Falta/.test(e.message) ? e.message : 'No se pudo leer el archivo'); }
   };
 }
-const letraCol = i => { let s = '', n = i + 1; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
 const pnImp = v => typeof v === 'number' ? v : (/,/.test(String(v)) ? parseFloat(String(v).replace(/\./g, '').replace(',', '.')) : parseFloat(v)) || 0;
 /* vista previa de la importación: muestra qué columna se lee para cada dato (se puede cambiar) y avisa si hay muchos precios en 0 */
-function pintarPrevImp(rearmar) {
-  if (rearmar && hojaImp) {
-    const s = k => { const v = $('#col_' + k).value; return v === '' ? -1 : +v; }, m = { codigo: s('codigo'), nombre: s('nombre'), precio: s('precio'), proveedor: s('proveedor') };
-    importFilas = hojaImp.datos.map(r => Object.fromEntries(Object.entries(m).filter(([, i]) => i >= 0).map(([k, i]) => [k, r[i] ?? '']))).filter(r => String(r.codigo ?? '').trim() !== '' || String(r.nombre ?? '').trim() !== '');
-    hojaImp.mapa = { ...m }; Object.keys(hojaImp.mapa).forEach(k => hojaImp.mapa[k] < 0 && delete hojaImp.mapa[k]);
-  }
+function pintarPrevImp() {
   importIgnoradas = importFilas.map(ignoradoImp).filter(Boolean); importFilas = importFilas.filter(f => !ignoradoImp(f));   // 9999 y 7040 ni se muestran
   if (!importFilas.length) return toast('No se encontraron productos en el archivo');
-  const sinPrecio = importFilas.filter(r => !(pnImp(r.precio) > 0)).length, mapa = hojaImp ? hojaImp.mapa : {};
-  const sel = (k, nombre, vacio) => `<label style="margin:6px 0 0">${nombre}</label><select id="col_${k}" style="width:100%;min-height:40px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);padding:0 8px">${vacio ? `<option value="" ${mapa[k] === undefined ? 'selected' : ''}>— ninguna —</option>` : ''}${hojaImp ? hojaImp.cab.map((t, i) => `<option value="${i}" ${mapa[k] === i ? 'selected' : ''}>${letraCol(i)} · ${esc(t || '(sin título)')}</option>`).join('') : ''}</select>`;
-  $('#prev').innerHTML = `${hojaImp ? `<div class="card" style="background:var(--bg);margin:10px 0"><b>Columnas que se leen</b><span class="mut" style="display:block;font-size:13px">Si alguna no es la correcta, cambiala acá.</span>${sel('codigo', 'Código (Cod. barra)')}${sel('nombre', 'Artículo')}${sel('precio', 'Precio (Lista 1)')}${sel('proveedor', 'Proveedor', true)}</div>` : ''}
-    <p><b>${importFilas.length}</b> filas leídas. Ejemplo: ${esc(Object.values(importFilas[0] || {}).join(' | '))}</p>
+  const sinPrecio = importFilas.filter(r => !(pnImp(r.precio) > 0)).length;
+  $('#prev').innerHTML = `<p><b>${importFilas.length}</b> filas leídas. Ejemplo: ${esc(Object.values(importFilas[0] || {}).join(' | '))}</p>
     ${sinPrecio ? `<p style="color:var(--bad)"><b>⚠ ${sinPrecio} de ${importFilas.length} filas tienen precio 0</b> (quedarían desactivadas, como faltantes).${sinPrecio === importFilas.length ? ' Ninguna tiene precio: revisá la columna de precio.' : ''}</p>` : ''}
     <p id="resumenImp"></p>
     <div class="row" style="border:0"><div class="nm"><b>Reemplazar toda la lista</b><span class="mut">Borra los productos que no figuren en el archivo y carga la lista nueva. Las promos y la unidad de venta quedan guardadas por código: se conservan en los que figuran y se recuperan solas si un producto borrado vuelve a aparecer.</span></div><label class="sw" style="margin:0"><input type="checkbox" id="cat" checked><span></span></label></div>
     <button class="btn" id="btnImp" data-act="importarConfirmar">Importar</button><div id="listaImp"></div>`;
   resumenImportacion(); $('#cat').onchange = resumenImportacion;
-  ['codigo', 'nombre', 'precio', 'proveedor'].forEach(k => { const e = $('#col_' + k); if (e) e.onchange = () => pintarPrevImp(true); });
 }
 const codImp = r => String(r.codigo ?? '').trim().toLowerCase();
 function conteoImportacion() {
@@ -1622,14 +1612,45 @@ function listaImportacion() {
   const bloqueCambios = cambios.length ? `<div class="card" style="margin:10px 0 0;border-color:var(--info)"><b style="color:var(--info)">💲 Cambios de precio (${cambios.length})</b>${resumenCambios}${cambios.slice(0, 300).map(c => `<div class="tfila"><span><b>${esc(c.pr.codigo)}</b> · ${esc(c.pr.nombre)}<br><small>${eti(c)}</small></span><b style="white-space:nowrap;text-align:right">${money(c.vieja)}<br>→ ${money(c.nueva)}</b></div>`).join('')}${cambios.length > 300 ? `<p class="mut">y ${cambios.length - 300} más</p>` : ''}</div>` : '';
   box.innerHTML = bloque('🆕 Se crean', 'var(--ok)', crear, r => fila(r.codigo, r.nombre, pn(r.precio), !(pn(r.precio) > 0))) + bloque('🗑️ Se borran', 'var(--bad)', borrar, p => fila(p.codigo, p.nombre, p.precio, !(p.precio > 0))) + bloqueCambios;
 }
+/* mensaje de novedades con lo que cambió la lista: altas, faltantes y cambios de precio (se arma ANTES de importar, comparando con la lista actual) */
+function armarNovedadImp() {
+  const cod = r => codImp(r), existentes = new Map(productos.map(p => [p.codigo.toLowerCase(), p])), archivo = new Set(importFilas.map(cod).filter(Boolean)), visto = new Set();
+  const altas = [], faltan = [], precios = [], pct = (n, v) => (n / v - 1) * 100, fp = x => (x > 0 ? '+' : '') + x.toLocaleString('es-AR', { maximumFractionDigits: 1 }) + '%';
+  const nom = (r, p) => String((p && p.nombre) || r.nombre || r.codigo).trim();
+  for (const r of importFilas) {
+    const k = cod(r); if (!k || visto.has(k)) continue; visto.add(k);
+    const p = existentes.get(k), nuevo = r.precio === undefined || r.precio === '' ? null : pnImp(r.precio);
+    if (!p) { if (nuevo > 0) altas.push(`• ${nom(r)} ${money(nuevo)}`); else faltan.push(`• ${nom(r)}`); continue; }
+    if (nuevo === null) continue;
+    const vieja = p.precio || 0;
+    if (vieja > 0 && nuevo === 0) faltan.push(`• ${nom(r, p)}`);
+    else if (vieja === 0 && nuevo > 0) altas.push(`• ${nom(r, p)} ${money(nuevo)} (vuelve a estar disponible)`);
+    else if (Math.abs(nuevo - vieja) >= 0.005) precios.push({ t: nuevo > vieja, linea: `• ${nom(r, p)}: ${money(vieja)} → ${money(nuevo)} (${fp(pct(nuevo, vieja))})` });
+  }
+  if ($('#cat') && $('#cat').checked) for (const p of productos) if (!archivo.has(p.codigo.toLowerCase()) && p.precio > 0) faltan.push(`• ${p.nombre}`);   // salen de la lista: tampoco se pueden pedir
+  const hoyTxt = new Date().toLocaleDateString('es-AR'), aum = precios.filter(x => x.t).length, baj = precios.length - aum;
+  const secciones = [['🆕 Productos nuevos (' + altas.length + ')', altas], ['⛔ Faltantes (' + faltan.length + ')', faltan], ['💲 Cambios de precio (' + precios.length + (precios.length ? `: ${aum} ${aum === 1 ? 'aumento' : 'aumentos'}, ${baj} ${baj === 1 ? 'baja' : 'bajas'}` : '') + ')', precios.map(x => x.linea)]].filter(([, l]) => l.length);
+  if (!secciones.length) return '';
+  const cab = `📋 Lista de precios actualizada (${hoyTxt})`, LIM = 1990, aviso = n => `\n…y ${n} más (ver el Listado)`;   // el mensaje no puede pasar de 2000 caracteres: las secciones cortas se muestran enteras y el resto se reparte entre las largas
+  let libre = LIM - cab.length - secciones.reduce((a, [t]) => a + t.length + 6, 0) - secciones.length * 40;
+  const cupo = new Map(), orden = [...secciones].sort((x, y) => x[1].join('\n').length - y[1].join('\n').length);
+  orden.forEach(([t, l], i) => { const need = l.join('\n').length + 1, parte = Math.max(0, Math.floor(libre / (orden.length - i))); cupo.set(t, Math.min(need, parte)); libre -= Math.min(need, parte); });
+  const cuerpo = secciones.map(([t, l]) => { let u = 0, out = []; for (const x of l) { if (u + x.length + 1 > cupo.get(t)) break; out.push(x); u += x.length + 1; } return `\n\n${t}\n${out.join('\n')}${out.length < l.length ? aviso(l.length - out.length) : ''}`; }).join('');
+  return cab + cuerpo;
+}
 async function importarConfirmar(btn) {
   const c = conteoImportacion();
   if (c.borrar && btn && !btn.dataset.seguro) { btn.dataset.seguro = 1; btn.textContent = `Tocá de nuevo para borrar ${c.borrar} productos e importar`; return; }   // confirmación antes de borrar
   try {
+    const textoNov = armarNovedadImp();
     const r = await api('POST', 'p/importar', { rows: importFilas, reemplazar: $('#cat').checked });
     await cargar();
-    $('#prev').innerHTML = `<p><b>Listo:</b> ${r.creados} creados, ${r.actualizados} actualizados${r.borrados ? `, <b>${r.borrados} borrados</b>` : ''}.</p>${(r.nuevos || []).length ? `<div class="card" style="margin:8px 0"><b>🆕 Productos nuevos (${r.nuevos.length})</b>${r.nuevos.slice(0, 200).map(x => `<div class="tfila"><span><b>${esc(x.codigo)}</b> · ${esc(x.nombre)}</span><b style="white-space:nowrap">${money(x.precio)}</b></div>`).join('')}${r.nuevos.length > 200 ? `<p class="mut">y ${r.nuevos.length - 200} más</p>` : ''}</div>` : ''}${r.errores.length ? `<p class="mut" style="color:var(--bad)">${r.errores.length} filas con error:<br>${r.errores.slice(0, 30).map(esc).join('<br>')}</p>` : ''}`;
+    $('#prev').innerHTML = `<p><b>Listo:</b> ${r.creados} creados, ${r.actualizados} actualizados${r.borrados ? `, <b>${r.borrados} borrados</b>` : ''}.</p>${(r.nuevos || []).length ? `<div class="card" style="margin:8px 0"><b>🆕 Productos nuevos (${r.nuevos.length})</b>${r.nuevos.slice(0, 200).map(x => `<div class="tfila"><span><b>${esc(x.codigo)}</b> · ${esc(x.nombre)}</span><b style="white-space:nowrap">${money(x.precio)}</b></div>`).join('')}${r.nuevos.length > 200 ? `<p class="mut">y ${r.nuevos.length - 200} más</p>` : ''}</div>` : ''}${r.errores.length ? `<p class="mut" style="color:var(--bad)">${r.errores.length} filas con error:<br>${r.errores.slice(0, 30).map(esc).join('<br>')}</p>` : ''}${textoNov ? `<div class="card" id="novImp" style="margin:10px 0;border-color:var(--info)"><b>📣 Novedad para los vendedores</b><span class="mut" style="display:block;font-size:13px;margin-bottom:6px">Armada con los cambios de la lista. Podés editarla antes de enviarla.</span><textarea id="novTxt" maxlength="2000" style="width:100%;min-height:220px;font:inherit;font-size:15px;border:1px solid var(--bd);border-radius:8px;padding:8px;background:var(--bg);color:var(--tx)">${esc(textoNov)}</textarea><div style="display:flex;gap:10px;margin-top:8px"><button class="btn" data-act="enviarNovImp" style="flex:2">📣 Enviar novedad</button><button class="btn sec" data-act="descartarNovImp" style="flex:1">No enviar</button></div></div>` : ''}`;
   } catch (e) { toast(e.message); }
+}
+async function enviarNovImp() {
+  const t = $('#novTxt'); if (!t || !t.value.trim()) return toast('Escribí la novedad');
+  try { await api('POST', 'p/novedades', { titulo: 'Lista de precios actualizada', texto: t.value, para: 'todos', fija: false }); novedades = (await api('GET', 'p/novedades')).novedades; cacheDatos(); $('#novImp').innerHTML = '<b>📣 Novedad enviada ✓</b><span class="mut" style="display:block">Los vendedores la ven en Novedades.</span>'; toast('Novedad enviada ✓'); } catch (e) { toast(e.message); }
 }
 /* restaurar una copia (admin): de un archivo descargado o de las copias automáticas. Usuarios y contraseñas no se tocan; antes se guarda lo actual */
 let restDatos = null;
@@ -2011,6 +2032,8 @@ document.addEventListener('click', async e => {
     lsSet('pd_cola', leerCola().filter(x => x.uid !== d.delcola)); cacheDatos(); render();
   }
   else if (d.act === 'importarConfirmar') importarConfirmar(t);
+  else if (d.act === 'enviarNovImp') enviarNovImp();
+  else if (d.act === 'descartarNovImp') { const n = $('#novImp'); if (n) n.remove(); }
   else if (d.act === 'exportarExcel') exportarExcel();
   else if (d.act === 'borrarPedido') borrarPedido();
   else if (d.act === 'hojaCargar') hojaCargar();

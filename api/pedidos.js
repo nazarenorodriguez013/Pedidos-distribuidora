@@ -471,7 +471,7 @@ const ignoradoPor = f => CODIGOS_IGNORADOS[sinCeros(f.codigo)] ? sinCeros(f.codi
 function importar(b) {
   const filas = Array.isArray(b.rows) ? b.rows : [];
   const r = { creados: 0, actualizados: 0, desactivados: 0, borrados: 0, ignorados: [], nuevos: [], errores: [] };
-  const vistos = new Set();
+  const vistos = new Set(), estampa = new Date().toISOString();   // la misma hora para todos los cambios de precio de esta lista
   filas.forEach((f, n) => {
     const codigo = String(f.codigo ?? '').trim();
     const fila = n + 1;
@@ -497,6 +497,7 @@ function importar(b) {
     }
     if (String(f.nombre ?? '').trim()) p.nombre = String(f.nombre).trim();
     if (String(f.proveedor ?? '').trim()) p.proveedor = String(f.proveedor).trim().slice(0, 80);   // solo sirve para filtrar al exportar; no se muestra
+    if (precio !== null && p.precio > 0 && precio > 0 && Math.abs(precio - p.precio) >= 0.005) p.cambioPrecio = { en: estampa, de: p.precio };   // para resaltar en el PDF los últimos cambios de precio
     if (precio !== null) p.precio = precio;   // precio 0: queda en 0 (y desactivado)
     if (mult && !p.multiploSet) { p.multiplo = Math.floor(mult); p.multiploSet = true; }   // la unidad de venta solo se carga si todavía no estaba definida
     if (stk !== null) { p.usaStock = true; p.stock = Math.floor(stk); }   // la planilla trae stock: el producto pasa a controlar stock
