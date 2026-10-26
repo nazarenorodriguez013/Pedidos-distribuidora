@@ -1449,8 +1449,9 @@ async function generarPdf(lista, nombreProv = '') {
   if (!l.length) return toast('No hay productos');
   const doc = new window.jspdf.jsPDF();
   const hoy = new Date().toLocaleDateString('es-AR');
-  const ultimo = productos.reduce((m, p) => [p.cambioPrecio && p.cambioPrecio.en, p.altaEn].reduce((a, x) => x && x > a ? x : a, m), '');   // la última lista importada: se resaltan sus altas (verde) y sus cambios de precio (amarillo)
-  const cambiado = p => !!ultimo && !faltante(p) && !!p.cambioPrecio && p.cambioPrecio.en === ultimo, esAlta = p => !!ultimo && !faltante(p) && p.altaEn === ultimo;
+  const diaDe = iso => { const f = new Date(iso); return f.getFullYear() + '-' + String(f.getMonth() + 1).padStart(2, '0') + '-' + String(f.getDate()).padStart(2, '0'); };
+  const ultimo = productos.reduce((m, p) => [p.cambioPrecio && p.cambioPrecio.en, p.altaEn].reduce((a, x) => x && diaDe(x) > a ? diaDe(x) : a, m), '');   // se resaltan los cambios de todo el día de la última importación: si se importan varias listas, se acumulan
+  const cambiado = p => !!ultimo && !faltante(p) && !!p.cambioPrecio && diaDe(p.cambioPrecio.en) === ultimo, esAlta = p => !!ultimo && !faltante(p) && !!p.altaEn && diaDe(p.altaEn) === ultimo;
   // encabezado: logo, nombre y datos de contacto
   try {
     const blob = await (await fetch('/logo.png')).blob();
