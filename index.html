@@ -40,6 +40,7 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .row:last-child{border:0}
 .row .nm{flex:1;min-width:0}
 .row .nm b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .nm b.largo{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}   /* el nombre entero, en varios renglones si hace falta */
 .mut{color:var(--mut);font-size:13px}
 .tag{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;font-weight:700;border:1px solid var(--bd)}
 .tag.promo{background:#fef3c7;color:#92400e;border-color:#fcd34d}
@@ -1046,7 +1047,7 @@ const filtrarC = l => { const n = norm(q); return l.filter(c => (!n || [c.nombre
 const fechaHora = iso => new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
 function listaClientes(l, attr, conPedido) {
   l = [...l].sort((a, b) => nombreC(a).localeCompare(nombreC(b), 'es', { sensitivity: 'base' }));   // orden alfabético
-  return l.length ? `<div class="card cols2">${l.map(c => `<div class="row" ${attr}="${c.id}"><div class="nm"><b>${esc(nombreC(c))}</b><span class="mut">${[c.codigo ? esc(c.codigo) : '', esc(c.direccion), esc(c.telefono), esAdmin() ? esc(vendNombre(c.vendedorId)) : ''].filter(Boolean).join(' · ')}${c.editadoEn ? `<br>✎ ${esc(fechaHora(c.editadoEn))} · ${esc(c.editadoPor || '')}` : ''}</span></div>${esAdmin() && !c.codigo ? '<span class="tag warn">Sin código</span>' : ''}${conPedido ? `<button class="btn" data-pedcli="${c.id}" style="flex:none;width:auto;min-height:40px;padding:0 12px;font-size:14px;margin-left:8px">🛒 Cargar pedido</button>` : '<span class="mut">›</span>'}</div>`).join('')}</div>` : vacio('No hay clientes');
+  return l.length ? `<div class="card cols2">${l.map(c => `<div class="row" ${attr}="${c.id}"><div class="nm"><b class="largo">${esc(nombreC(c))}</b><span class="mut">${[c.codigo ? esc(c.codigo) : '', esc(c.direccion), esc(c.telefono), esAdmin() ? esc(vendNombre(c.vendedorId)) : ''].filter(Boolean).join(' · ')}${c.editadoEn ? `<br>✎ ${esc(fechaHora(c.editadoEn))} · ${esc(c.editadoPor || '')}` : ''}</span></div>${esAdmin() && !c.codigo ? '<span class="tag warn">Sin código</span>' : ''}${conPedido ? `<button class="btn" data-pedcli="${c.id}" aria-label="Cargar pedido" title="Cargar pedido" style="flex:none;width:44px;min-height:40px;padding:0;font-size:19px;margin-left:6px;align-self:flex-start">🛒</button>` : '<span class="mut">›</span>'}</div>`).join('')}</div>` : vacio('No hay clientes');
 }
 const selVend = () => esAdmin() ? `<select id="vendc" style="width:100%;margin:8px 0;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Todos los vendedores</option>${usuarios.filter(u => clientes.some(c => c.vendedorId === u.id)).map(u => `<option value="${u.id}" ${String(u.id) === vendC ? 'selected' : ''}>${esc(u.nombre)}</option>`).join('')}</select>` : '';
 function conSelVend(pintar) { if (esAdmin()) $('#vendc').onchange = e => { vendC = e.target.value; pintar(); }; }
