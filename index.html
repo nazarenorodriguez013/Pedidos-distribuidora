@@ -40,6 +40,7 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .row:last-child{border:0}
 .row .nm{flex:1;min-width:0}
 .row .nm b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sgf{display:grid;grid-template-columns:1fr 72px 150px;gap:10px;align-items:center;padding:6px 8px;margin:0 -10px;overflow:hidden;border-top:1px solid var(--bd);font-size:14px;line-height:1.2;cursor:pointer}.sgf:first-child{border-top:0}.sgn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}.sgd{color:var(--mut);white-space:nowrap}.sgm{text-align:right;white-space:nowrap}@media (max-width:600px){.sgf{font-size:13px;gap:6px;grid-template-columns:1fr 58px 134px}}
 .vc0{color:#2563eb}.vc1{color:#c2410c}.vc2{color:#7e22ce}.vc3{color:#0f766e}.vc4{color:#be185d}.vc5{color:#a16207}.vc6{color:#4d7c0f}.vc7{color:#0e7490}
 @media (prefers-color-scheme:dark){.vc0{color:#7aa7ff}.vc1{color:#fb923c}.vc2{color:#c4a1ff}.vc3{color:#4fd1c0}.vc4{color:#f472b6}.vc5{color:#e0b341}.vc6{color:#a3d65c}.vc7{color:#5fc9e0}}
 .row .nm b.largo{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}   /* el nombre entero, en varios renglones si hace falta */
@@ -367,21 +368,21 @@ window.addEventListener('popstate', async e => {
 });
 
 /* ---------- vistas ---------- */
-const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', manual: 'Manual de uso', cambios: 'Registro de cambios', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', proveedores: 'Proveedores', proveedor: 'Proveedor', pedprov: 'Pedido al proveedor', pedhist: 'Historial de pedidos', novedades: 'Novedades', hoja: 'Pedidos sin cargar' };
+const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', manual: 'Manual de uso', cambios: 'Registro de cambios', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', seguimiento: 'Seguimiento', proveedores: 'Proveedores', proveedor: 'Proveedor', pedprov: 'Pedido al proveedor', pedhist: 'Historial de pedidos', novedades: 'Novedades', hoja: 'Pedidos sin cargar' };
 const escritorio = () => window.matchMedia('(min-width:900px)').matches;
 const TABS = ['menu', 'pedidos', 'clientes', 'precios', 'faltantes', 'config'];   // pantallas con barra de botones abajo
 function render() {
   document.body.classList.remove('login-pg');
   if (!token) return login();
-  if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc','hoja','manual','cambios','proveedores','proveedor','pedprov','pedhist'].includes(view)) view = 'menu';
+  if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc','hoja','manual','cambios','proveedores','proveedor','pedprov','pedhist','seguimiento'].includes(view)) view = 'menu';
   if (view !== 'pedido') document.body.classList.remove('bloq-ped');
   if (view !== 'hoja') hojaEd = null;
   if (view !== 'pedidos' && view !== 'pedido' && view !== 'hoja') { fdiaInit = false; selMode = false; selPeds = new Set(); }   // al volver a Pedidos desde otra sección arranca en el día de hoy
   const tab = TABS.includes(view), desk = escritorio();
   document.body.classList.toggle('hay-tabs', desk || tab);
-  $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1>${campana()}<span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab || desk ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ['precios', '📦', 'Listado'], ...(desk ? [['promos', '🏷️', 'Promociones'], ['novedades', '📣', 'Novedades' + (nNuevas() ? ' (' + nNuevas() + ')' : '')]] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk && esAdmin() ? [['proveedores', '🏭', 'Proveedores']] : []), ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v || (v === 'proveedores' && (view === 'proveedor' || view === 'pedprov' || view === 'pedhist')) ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo">${esAdmin() ? `<button data-go="manual" class="${view === 'manual' ? 'on' : ''}"><span>📖</span>Manual de uso</button>` : ''}<button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
+  $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1>${campana()}<span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab || desk ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ...(desk && esAdmin() ? [['seguimiento', '📈', 'Seguimiento']] : []), ['precios', '📦', 'Listado'], ...(desk ? [['promos', '🏷️', 'Promociones'], ['novedades', '📣', 'Novedades' + (nNuevas() ? ' (' + nNuevas() + ')' : '')]] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk && esAdmin() ? [['proveedores', '🏭', 'Proveedores']] : []), ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v || (v === 'proveedores' && (view === 'proveedor' || view === 'pedprov' || view === 'pedhist')) ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo">${esAdmin() ? `<button data-go="manual" class="${view === 'manual' ? 'on' : ''}"><span>📖</span>Manual de uso</button>` : ''}<button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
   estado();
-  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, manual: vManual, cambios: vCambios, novedades: vNovedades, hoja: vHoja, proveedores: vProveedores, proveedor: vProveedores, pedprov: vPedProv, pedhist: vPedHist })[view]();
+  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, manual: vManual, cambios: vCambios, novedades: vNovedades, hoja: vHoja, proveedores: vProveedores, proveedor: vProveedores, pedprov: vPedProv, pedhist: vPedHist, seguimiento: vSeguimiento })[view]();
 }
 function login() {
   document.body.classList.remove('hay-tabs'); document.body.classList.add('login-pg');
@@ -713,7 +714,7 @@ function vConfig() {
   const a = esAdmin(), fila = (v, i, t) => `<div class="row" data-go="${v}" style="cursor:pointer"><span style="font-size:22px">${i}</span><div class="nm"><b>${t}</b></div><span class="mut">›</span></div>`;
   $('#main').innerHTML = `<div class="card"><b>${esc(user.nombre)}</b><br><span class="mut">usuario: ${esc(user.usuario)} · ${a ? 'Administrador' : 'Vendedor'}</span></div>
     ${a ? `<div class="card"><h2>Mis datos</h2><form id="fp"><label>Nombre</label><input name="nombre" value="${esc(user.nombre)}" required><label>Usuario (para ingresar)</label><input name="usuario" value="${esc(user.usuario)}" autocapitalize="none" required><div style="height:14px"></div><button class="btn">Guardar mis datos</button></form></div>` : ''}
-    ${a ? `<div class="card">${fila('productos', '🗂️', `Productos (${productos.length})`)}${fila('importar', '📥', 'Importar / exportar Excel')}${fila('proveedores', '🏭', 'Proveedores')}${fila('usuarios', '👥', 'Usuarios')}${fila('manual', '📖', 'Manual de uso')}${fila('cambios', '📝', 'Registro de cambios en pedidos')}${fila('promos', '🏷️', 'Promociones')}</div>` : ''}
+    ${a ? `<div class="card">${fila('productos', '🗂️', `Productos (${productos.length})`)}${fila('importar', '📥', 'Importar / exportar Excel')}${fila('proveedores', '🏭', 'Proveedores')}${fila('seguimiento', '📈', 'Seguimiento de clientes')}${fila('usuarios', '👥', 'Usuarios')}${fila('manual', '📖', 'Manual de uso')}${fila('cambios', '📝', 'Registro de cambios en pedidos')}${fila('promos', '🏷️', 'Promociones')}</div>` : ''}
     ${a ? `<div class="card"><h2>Copia de seguridad</h2><p class="mut" style="margin:0 0 8px">Se guarda una copia automática por día (las últimas 14) dentro de la base de datos. Además podés bajar una copia a tu computadora o el detalle de los pedidos en Excel.</p>
       <button class="btn" data-act="respaldo">💾 Descargar copia completa</button><button class="btn sec" data-act="pedidosExcel" style="margin-top:8px">📊 Descargar pedidos en Excel</button><button class="btn sec" data-act="abrirRestaurar" style="margin-top:8px">♻️ Restaurar una copia</button></div>` : ''}
     <div class="card"><h2>Notificaciones</h2><div id="pushBox"></div></div>
@@ -1054,9 +1055,71 @@ function vendCol(nombre) {
 const vendNombre = id => { const u = usuarios.find(x => x.id === id); return u ? `${vendCol(u.nombre)} (ID ${u.id})` : '—'; };
 const filtrarC = l => { const n = norm(q); return l.filter(c => (!n || [c.nombre, c.apellido, c.codigo, c.telefono, c.direccion].some(x => norm(x).includes(n))) && (!vendC || String(c.vendedorId) === vendC)); };
 const fechaHora = iso => new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
+/* última compra de cada cliente (según sus pedidos, sin los rechazados) y seguimiento por meses sin comprar */
+function ultimasCompras() {
+  const m = new Map();
+  for (const p of pedidos) { if (!p.clienteId || !p.dia || (p.entrega && p.entrega.estado === 'rechazado')) continue; const cur = m.get(p.clienteId); if (!cur || p.dia > cur) m.set(p.clienteId, p.dia); }
+  return m;
+}
+const fechaCorta = dia => dia ? dia.slice(8, 10) + '/' + dia.slice(5, 7) + '/' + dia.slice(2, 4) : '';
+function mesesDesde(dia) {
+  const d = new Date(dia + 'T12:00:00'), h = new Date();
+  return Math.max(0, (h.getFullYear() - d.getFullYear()) * 12 + h.getMonth() - d.getMonth() - (h.getDate() < d.getDate() ? 1 : 0));
+}
+function tiempoDesde(dia) {   // «5 meses y 12 días»
+  const d = new Date(dia + 'T12:00:00'), h = new Date(); h.setHours(12, 0, 0, 0);
+  const m = mesesDesde(dia), base = new Date(d.getFullYear(), d.getMonth() + m, d.getDate(), 12), dias = Math.max(0, Math.round((h - base) / 86400000));
+  return [m ? `${m} ${m === 1 ? 'mes' : 'meses'}` : '', dias ? `${dias} ${dias === 1 ? 'día' : 'días'}` : ''].filter(Boolean).join(' y ') || 'hoy';
+}
+const NIVELES = [[4, 'rojo', '', '#dc2626', '🔴 4+ meses'], [3, 'naranja', '', '#ea580c', '🟠 3 meses'], [2, 'amarillo', '', '#ca8a04', '🟡 2 meses']];   // el color va solo en la fecha
+const nivelDe = m => NIVELES.find(n => m >= n[0]);
+function vSeguimiento() {
+  const ult = ultimasCompras(), vs = usuarios.filter(u => u.rol === 'vendedor'), grupos = [];
+  const todos = clientes.map(c => ({ c, dia: ult.get(c.id) || '', meses: ult.get(c.id) ? mesesDesde(ult.get(c.id)) : -1 }));
+  for (const v of vs) {
+    const l = todos.filter(x => x.c.vendedorId === v.id && x.meses >= 2).sort((a, b) => b.meses - a.meses || a.dia.localeCompare(b.dia) || nombreC(a.c).localeCompare(nombreC(b.c), 'es'));
+    if (l.length) grupos.push([v, l]);
+  }
+  const fila = ({ c, dia, meses }) => { const n = nivelDe(meses); return `<div class="sgf" data-editcli="${c.id}"><span class="sgn">${esc(nombreC(c))}${c.codigo ? ` <span class="mut">${esc(c.codigo)}</span>` : ''}</span><span class="sgd">${fechaCorta(dia)}</span><b class="sgm">${tiempoDesde(dia)}</b></div>`; };
+  sgGrupos = grupos;
+  $('#main').innerHTML = ''
+    + (grupos.length ? grupos.map(([v, l], i) => `<div style="margin-top:12px;padding:6px 2px;border-bottom:2px solid var(--bd);display:flex;align-items:center;gap:8px"><span style="flex:1 1 0;min-width:0"><b>👤 ${vendCol(v.nombre)}</b> <span class="mut">· <b>${l.length}</b> ${l.length === 1 ? 'cliente' : 'clientes'}</span></span><button class="btn sec" data-sgact="copiar" data-sg="${i}" style="flex:none;width:auto;min-height:36px;padding:0 10px;font-size:14px">📋 Copiar</button><button class="btn sec" data-sgact="pdf" data-sg="${i}" style="flex:none;width:auto;min-height:36px;padding:0 10px;font-size:14px">📄 Exportar</button></div><div class="card" style="margin-top:6px;padding:2px 10px">${l.map(fila).join('')}</div>`).join('') : vacio(clientes.length && !todos.some(x => x.meses >= 0) ? 'Todavía no hay compras registradas: el seguimiento se arma con los pedidos que se vayan cargando' : 'No hay clientes con 2 meses o más sin comprar'));
+  $('#main').onclick = e => {
+    const b = e.target.closest('[data-sgact]'); if (!b) return;
+    const g = sgGrupos[+b.dataset.sg]; if (!g) return;
+    if (b.dataset.sgact === 'copiar') copiarSeguimiento(g[0], g[1]); else pdfSeguimiento(g[0], g[1]);
+  };
+}
+let sgGrupos = [];
+const lineasSeguimiento = l => l.map(({ c, dia }) => `${nombreC(c)}${c.codigo ? ' (' + c.codigo + ')' : ''} - ${fechaCorta(dia)} - ${tiempoDesde(dia)}`);
+async function copiarSeguimiento(v, l) {
+  const txt = `Clientes sin comprar - ${v.nombre} (${new Date().toLocaleDateString('es-AR')})\n\n` + lineasSeguimiento(l).join('\n');
+  try { await navigator.clipboard.writeText(txt); } catch { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch {} ta.remove(); }
+  toast('Lista copiada ✓');
+}
+async function pdfSeguimiento(v, l) {
+  if (!window.jspdf) return toast('No cargó el generador de PDF (revisá la conexión)');
+  const doc = new window.jspdf.jsPDF(), hoyTxt = new Date().toLocaleDateString('es-AR');
+  try {
+    const blob = await (await fetch('/logo.png')).blob();
+    const img = await new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ko; r.readAsDataURL(blob); });
+    doc.addImage(img, 'PNG', 14, 10, 20, 20);
+  } catch {}
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.text('Distribuidora Don Luis', 40, 18);
+  doc.setFontSize(12); doc.text('Clientes sin comprar - ' + v.nombre, 40, 26); doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(hoyTxt, 196, 14, { align: 'right' });
+  doc.autoTable({
+    startY: 36, head: [['Cliente', 'Código', 'Última compra', 'Hace']],
+    body: l.map(({ c, dia }) => [nombreC(c), c.codigo || '', fechaCorta(dia), tiempoDesde(dia)]),
+    headStyles: { fillColor: [15, 118, 110] }, styles: { fontSize: 10 }, columnStyles: { 3: { halign: 'right' } },
+    didParseCell: h => { if (h.section === 'head' && h.column.index === 3) h.cell.styles.halign = 'right'; },
+  });
+  const f = new Date(), fecha = [f.getDate(), f.getMonth() + 1, f.getFullYear()].map((n, i) => String(n).padStart(i < 2 ? 2 : 4, '0')).join('.');
+  doc.save(('SEGUIMIENTO ' + v.nombre + ' ' + fecha).toUpperCase() + '.pdf');
+}
 function listaClientes(l, attr, conPedido) {
   l = [...l].sort((a, b) => nombreC(a).localeCompare(nombreC(b), 'es', { sensitivity: 'base' }));   // orden alfabético
-  return l.length ? `<div class="card cols2">${l.map(c => `<div class="row" ${attr}="${c.id}"><div class="nm"><b class="largo">${esc(nombreC(c))}</b><span class="mut">${[c.codigo ? esc(c.codigo) : '', esc(c.direccion), esc(c.telefono), esAdmin() ? vendNombre(c.vendedorId) : ''].filter(Boolean).join(' · ')}${c.editadoEn ? `<br>✎ ${esc(fechaHora(c.editadoEn))} · ${esc(c.editadoPor || '')}` : ''}</span></div>${esAdmin() && !c.codigo ? '<span class="tag warn">Sin código</span>' : ''}${conPedido ? `<button class="btn" data-pedcli="${c.id}" aria-label="Cargar pedido" title="Cargar pedido" style="flex:none;width:44px;min-height:40px;padding:0;font-size:19px;margin-left:6px;align-self:flex-start">🛒</button>` : '<span class="mut">›</span>'}</div>`).join('')}</div>` : vacio('No hay clientes');
+  const ult = ultimasCompras();
+  return l.length ? `<div class="card cols2">${l.map(c => `<div class="row" ${attr}="${c.id}"><div class="nm"><b class="largo">${esc(nombreC(c))}</b><span class="mut">${[c.codigo ? esc(c.codigo) : '', esc(c.direccion), esc(c.telefono), esAdmin() ? vendNombre(c.vendedorId) : ''].filter(Boolean).join(' · ')}${esAdmin() ? `<br>Última compra: <span style="font-weight:700">${ult.get(c.id) ? fechaCorta(ult.get(c.id)) : 'sin compras'}</span>` : ''}${c.editadoEn ? `<br>✎ ${esc(fechaHora(c.editadoEn))} · ${esc(c.editadoPor || '')}` : ''}</span></div>${esAdmin() && !c.codigo ? '<span class="tag warn">Sin código</span>' : ''}${conPedido ? `<button class="btn" data-pedcli="${c.id}" aria-label="Cargar pedido" title="Cargar pedido" style="flex:none;width:44px;min-height:40px;padding:0;font-size:19px;margin-left:6px;align-self:flex-start">🛒</button>` : '<span class="mut">›</span>'}</div>`).join('')}</div>` : vacio('No hay clientes');
 }
 const selVend = () => esAdmin() ? `<select id="vendc" style="width:100%;margin:8px 0;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Todos los vendedores</option>${usuarios.filter(u => clientes.some(c => c.vendedorId === u.id)).map(u => `<option value="${u.id}" ${String(u.id) === vendC ? 'selected' : ''}>${esc(u.nombre)}</option>`).join('')}</select>` : '';
 function conSelVend(pintar) { if (esAdmin()) $('#vendc').onchange = e => { vendC = e.target.value; pintar(); }; }
@@ -1118,6 +1181,7 @@ function vCliente() {
   const c = editC, a = esAdmin(), campo = (k, et, extra = '') => `<label>${et}</label><input name="${k}" value="${esc(c[k])}" ${extra}>`;
   $('#main').innerHTML = `<form id="f" autocomplete="off">
     ${c.id ? `<button type="button" class="btn" data-pedcli="${c.id}" style="margin-bottom:12px">🛒 Cargar pedido para este cliente</button>` : ''}
+    ${c.id && a ? `<p style="margin:0 0 6px">Última compra: <b>${ultimasCompras().get(c.id) ? fechaCorta(ultimasCompras().get(c.id)) : 'sin compras'}</b></p>` : ''}
     ${c.id ? `<p class="mut" style="margin:0 0 6px">✎ Última edición: <b>${c.editadoEn ? esc(fechaHora(c.editadoEn)) + ' · ' + esc(c.editadoPor || '') : 'sin registro'}</b></p>` : ''}
     ${a ? campo('codigo', 'Código (lo asigna el administrador)') : `<p class="mut">${c.codigo ? 'Código: ' + esc(c.codigo) : 'Sin código: lo asigna el administrador.'}<br>Este cliente queda asignado a vos.</p>`}
     ${a ? `<label>Vendedor</label><select name="vendedorId" required style="width:100%;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="">Elegir vendedor…</option>${usuarios.filter(u => u.activo || u.id === c.vendedorId).map(u => `<option value="${u.id}" ${u.id === c.vendedorId ? 'selected' : ''}>${esc(u.nombre)} (${u.rol === 'admin' ? 'admin' : 'vendedor'})</option>`).join('')}</select>` : ''}
