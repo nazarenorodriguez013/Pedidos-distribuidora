@@ -560,6 +560,9 @@ function importarClientes(b, quien) {
 }
 
 // Envía una notificación push a todos los dispositivos de los usuarios indicados; los dispositivos dados de baja se limpian solos.
+function avisarNota(p, yo, pool) {   // un vendedor puso una nota en un pedido: se avisa a los administradores
+  notificar(adminsActivos().map(u => u.id), { titulo: '📝 Nota en un pedido · Distribuidora Don Luis', cuerpo: `${yo.nombre} · #${p.id} ${p.cliente}: ${String(p.nota).slice(0, 120)}`, tag: 'nota-' + p.id }, pool);
+}
 function notificar(userIds, payload, pool) {
   if (!webpush || !state.vapid) return;
   const subs = state.pushSubs.filter(x => userIds.includes(x.u));
@@ -700,6 +703,12 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       throw { code: 405, msg: 'Método no permitido' };
     }
 
+    if (rec === 'notavista' && req.method === 'PUT') {   // el administrador vio la nota: sale de la campanita
+      soloAdmin();
+      const o = s.pedidos.find(x => x.id === id); if (!o) throw { code: 404, msg: 'No existe' };
+      if (o.notaNueva) { delete o.notaNueva; await save(pool); }
+      return send(res, 200, { ok: true });
+    }
     if (rec === 'cargar' && req.method === 'PUT') {   // el administrador marca el pedido como cargado / pendiente / agregados revisados
       soloAdmin();
       const o = s.pedidos.find(x => x.id === id);
@@ -918,11 +927,13 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         obj.id = s.seq.o++;
         obj.estado = 'pendiente';
         obj.creado = obj.editado = new Date().toISOString();
+        if (!admin && obj.nota) obj.notaNueva = true;   // nota sin leer por el administrador (queda en la campanita)
         ajustarStock(null, obj);
       }
       list.push(obj);
       if (rec === 'productos') restaurarProducto(obj);
       await save(pool);
+      if (rec === 'pedidos' && !admin && obj.nota) avisarNota(obj, yo, pool);
       return send(res, 200, obj);
     }
     const idx = list.findIndex(x => x.id === id && visible(x));
@@ -930,15 +941,16 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     if (req.method === 'GET') return send(res, 200, list[idx]);
     if (rec === 'pedidos' && !admin && list[idx].entrega && req.method !== 'GET') throw { code: 403, msg: 'El pedido ya fue cerrado por administración (en reparto, entregado, con devoluciones o rechazado)' };
     if (req.method === 'PUT') {
-      const b = await body(req); let antesAgregado;
+      const b = await body(req); let antesAgregado, notaAntes;
       if (rec === 'productos') {
         const obj = cleanProducto(b, list[idx]);
         if (list.some(p => p.id !== id && p.codigo.toLowerCase() === obj.codigo.toLowerCase())) throw { code: 409, msg: 'Ya existe un producto con ese código' };
         list[idx] = { ...list[idx], ...obj };
       } else {
-        const antes = list[idx]; antesAgregado = antes.agregadoEn;
+        const antes = list[idx]; antesAgregado = antes.agregadoEn; notaAntes = antes.nota || '';
         list[idx] = { ...antes, ...armarPedido(b, antes, yo, admin), editado: new Date().toISOString() };
         ajustarStock(antes, list[idx]);
+        if (rec === 'pedidos' && !admin && list[idx].nota && list[idx].nota !== notaAntes) list[idx].notaNueva = true;   // nota nueva o cambiada: queda en la campanita del administrador
         if (admin && rec === 'pedidos') {   // se anota qué cambió el administrador, en qué pedido y cuándo
           const items = difItems(antes.items, list[idx].items);
           if (items.length) {
@@ -949,6 +961,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       }
       await save(pool);
       const n = list[idx];
+      if (rec === 'pedidos' && !admin && n.nota && n.nota !== notaAntes) avisarNota(n, yo, pool);   // nota nueva o cambiada
       if (rec === 'pedidos' && !admin && n.estado === 'cargado' && n.agregar && n.agregadoEn !== antesAgregado) {   // el vendedor modificó un pedido ya cargado: se avisa a los administradores
         notificar(adminsActivos().map(u => u.id), { titulo: '⚠️ Pedido modificado · Distribuidora Don Luis', cuerpo: `${yo.nombre} modificó el pedido #${n.id} (${n.cliente}), que ya estaba cargado`, tag: 'agregar-' + n.id }, pool);
       }
