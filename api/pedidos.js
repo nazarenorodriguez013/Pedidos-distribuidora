@@ -606,8 +606,20 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     const admin = yo.rol === 'admin';
     const soloAdmin = () => { if (!admin) throw { code: 403, msg: 'Solo el administrador puede hacer esto' }; };
     const esStock = yo.rol === 'stock';   // usuario que solo ve y carga el stock: nada más
-    if (esStock && !['yo', 'productos', 'controles'].includes(rec)) throw { code: 403, msg: 'Este usuario solo puede ver el stock' };
+    if (esStock && !['yo', 'productos', 'controles', 'barras'].includes(rec)) throw { code: 403, msg: 'Este usuario solo puede ver el stock' };
     if (esStock && rec === 'productos' && req.method !== 'GET') throw { code: 403, msg: 'Este usuario solo puede ver el stock' };
+    if (rec === 'barras' && req.method === 'PUT') {   // asocia un código de barras a un producto (una sola vez; administrador y usuario de stock)
+      if (!admin && !esStock) throw { code: 403, msg: 'No autorizado' };
+      const p = s.productos.find(x => x.id === id); if (!p) throw { code: 404, msg: 'No existe' };
+      if (p.barras) throw { code: 409, msg: 'Este producto ya tiene un código de barras asociado' };
+      const cod = String((await body(req, 1e4)).codigo || '').replace(/\s+/g, '');
+      if (!/^[0-9A-Za-z._-]{4,40}$/.test(cod)) throw { code: 400, msg: 'El código de barras no es válido' };
+      const sc = v => /^\d+$/.test(v) ? v.replace(/^0+/, '') : v.toLowerCase();   // UPC-A (12) y EAN-13 con cero adelante son el mismo código
+      const otro = s.productos.find(x => x.id !== p.id && x.barras && sc(x.barras) === sc(cod));
+      if (otro) throw { code: 409, msg: `Ese código ya está asociado a «${otro.nombre}»` };
+      p.barras = cod; await save(pool);
+      return send(res, 200, { id: p.id, barras: p.barras });
+    }
     if (rec === 'controles') {   // controles de stock: cada vez que se guarda, queda registrado (administrador y usuario de stock)
       if (!admin && !esStock) throw { code: 403, msg: 'No autorizado' };
       if (esStock && req.method !== 'POST') throw { code: 403, msg: 'El usuario de stock solo puede cargar controles nuevos' };   // el historial lo ve el administrador
@@ -938,8 +950,8 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     const visible = x => rec !== 'pedidos' || admin || x.vendedorId === yo.id;
     if (!id && req.method === 'GET') {
       const l = list.filter(visible);
-      if (rec === 'productos' && esStock) return send(res, 200, { productos: l.map(p => ({ id: p.id, codigo: p.codigo, nombre: p.nombre, proveedor: p.proveedor || '', existencia: p.existencia ?? null, existenciaEn: p.existenciaEn || null })) });   // el usuario de stock no ve precios ni nada más
-      return send(res, 200, { [rec]: rec === 'pedidos' ? [...l].reverse() : rec === 'productos' && !admin ? l.map(({ existencia, existenciaEn, existenciaPor, ...p }) => p) : l });   // el proveedor del producto viaja con el producto (no se muestra: solo filtra el PDF); el stock lo ven el administrador y el usuario de stock
+      if (rec === 'productos' && esStock) return send(res, 200, { productos: l.map(p => ({ id: p.id, codigo: p.codigo, nombre: p.nombre, proveedor: p.proveedor || '', barras: p.barras || '', existencia: p.existencia ?? null, existenciaEn: p.existenciaEn || null })) });   // el usuario de stock no ve precios ni nada más
+      return send(res, 200, { [rec]: rec === 'pedidos' ? [...l].reverse() : rec === 'productos' && !admin ? l.map(({ existencia, existenciaEn, existenciaPor, barras, ...p }) => p) : l });   // el proveedor del producto viaja con el producto (no se muestra: solo filtra el PDF); el stock lo ven el administrador y el usuario de stock
     }
     if (rec === 'productos' && req.method !== 'GET') soloAdmin();
     if (!id && req.method === 'POST') {

@@ -41,6 +41,7 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .row .nm{flex:1;min-width:0}
 .row .nm b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .skl .pvn,.skl .pvc{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+.skb{width:auto;min-height:24px;height:24px;padding:0 8px;margin-top:3px;font-size:11px;font-weight:600;border-radius:6px}
 .skg{grid-template-columns:49px 1fr 66px!important;gap:5px}.skg .pvc{font-size:11px;letter-spacing:-.2px}.skg .skin{width:66px;min-width:0;padding:2px}
 @media (min-width:900px){.skg{grid-template-columns:84px 1fr 90px!important;gap:16px}.skg .pvc{font-size:13px}}
 .sgf{display:grid;grid-template-columns:1fr 72px 150px;gap:10px;align-items:center;padding:6px 8px;margin:0 -10px;overflow:hidden;border-top:1px solid var(--bd);font-size:14px;line-height:1.2;cursor:pointer}.sgf:first-child{border-top:0}.sgn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}.sgd{color:var(--mut);white-space:nowrap}.sgm{text-align:right;white-space:nowrap}@media (max-width:600px){.sgf{font-size:13px;gap:6px;grid-template-columns:1fr 58px 134px}}
@@ -703,20 +704,82 @@ function pedirResponsable() {   // el control lleva el nombre de quien lo hizo
     $('#skR').focus(); $('#skR').select();
   });
 }
+/* lector de códigos de barras con la cámara: el mismo que usa Quiosquito (ZXing). Solo acepta EAN-13, EAN-8 y UPC (llevan dígito verificador),
+   y el código tiene que leerse igual dos veces seguidas: así no se toma una lectura suelta o un código equivocado */
+const ICONO_BARRAS = '<svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor" aria-hidden="true" style="display:block;margin:0 auto"><rect x="2" y="4" width="2" height="16"/><rect x="5.5" y="4" width="1" height="16"/><rect x="8" y="4" width="3" height="16"/><rect x="12.5" y="4" width="1" height="16"/><rect x="15" y="4" width="2" height="16"/><rect x="18.5" y="4" width="1" height="16"/><rect x="20.5" y="4" width="1.5" height="16"/></svg>';   // rayitas verticales: código de barras
+const hayCamara = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+const CODIGO_PRODUCTO = /^(\d{8}|\d{12}|\d{13})$/;
+let zxingP = null;
+const cargarZXing = () => zxingP || (zxingP = new Promise((ok, ko) => {
+  if (window.ZXing) return ok(window.ZXing);
+  const el = document.createElement('script'); el.src = '/zxing.min.js';
+  el.onload = () => ok(window.ZXing); el.onerror = () => { zxingP = null; ko(new Error('zxing')); };
+  document.head.appendChild(el);
+}));
+const sinCeros = v => /^\d+$/.test(v) ? v.replace(/^0+/, '') : String(v).toLowerCase();   // UPC-A (12) y EAN-13 con cero adelante son el mismo código
+function escanearCamara(alLeer) {
+  const el = dlgProv(`<p style="font-size:18px;margin:0 0 8px"><b>Escanear código de barras</b></p><div style="position:relative;overflow:hidden;border-radius:12px;background:#000;aspect-ratio:4/3"><video id="camV" playsinline muted style="width:100%;height:100%;object-fit:cover"></video><div style="pointer-events:none;position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><div style="height:33%;width:80%;border:2px solid rgba(255,255,255,.85);border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.35)"></div></div><p id="camM" style="position:absolute;inset:0;margin:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:12px;color:rgba(255,255,255,.9);font-size:14px">Iniciando cámara…</p></div><p class="mut" style="margin:8px 0;text-align:center;font-size:13px">Apuntá la cámara al código de barras: se lee solo.</p><label>O escribí / escaneá con lector</label><div style="display:flex;gap:8px"><input id="camT" inputmode="numeric" autocomplete="off" placeholder="7790001000012" style="flex:1 1 0;min-width:0;font-family:monospace"><button class="btn" data-r="u" style="flex:none;width:auto;padding:0 16px">Usar</button></div><button class="btn sec" data-r="0" style="margin-top:10px">Cancelar</button>`);
+  let lector = null, hecho = false, cancelado = false, ult = { t: '', n: 0, en: 0 };
+  const cerrar = () => { cancelado = true; try { lector && lector.reset(); } catch {} el.remove(); };
+  const entregar = cod => { if (hecho) return; hecho = true; try { navigator.vibrate && navigator.vibrate(80); } catch {} cerrar(); alLeer(cod); };
+  el.addEventListener('click', e => { const b = e.target.closest('[data-r]'); if (e.target === el || (b && b.dataset.r === '0')) return cerrar(); if (b && b.dataset.r === 'u') { const v = $('#camT').value.trim(); if (v) entregar(v); } });
+  $('#camT').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); const v = $('#camT').value.trim(); if (v) entregar(v); } };
+  (async () => {
+    const msg = t => { const m = $('#camM'); if (m) m.textContent = t; };
+    try {
+      if (!hayCamara()) return msg('Este navegador no permite usar la cámara. Escribí el código abajo.');
+      const Z = await cargarZXing(); if (cancelado) return;
+      const hints = new Map(); hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.EAN_13, Z.BarcodeFormat.EAN_8, Z.BarcodeFormat.UPC_A, Z.BarcodeFormat.UPC_E]);   // no usar TRY_HARDER: con formatos restringidos no lee los EAN
+      lector = new Z.BrowserMultiFormatReader(hints, 150);
+      await lector.decodeFromConstraints({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 }, advanced: [{ focusMode: 'continuous' }] } }, $('#camV'), result => {
+        if (!result || hecho) return;
+        const t = result.getText().trim(); if (!CODIGO_PRODUCTO.test(t)) return;
+        const ahora = Date.now(), n = ult.t === t && ahora - ult.en <= 1500 ? ult.n + 1 : 1; ult = { t, n, en: ahora };
+        if (n >= 2) entregar(t);   // se acepta recién cuando se lee igual dos veces seguidas
+      });
+      if (!cancelado) msg('');
+    } catch (err) {
+      if (cancelado) return;
+      const nom = err && err.name;
+      msg(nom === 'NotAllowedError' || nom === 'SecurityError' ? 'No hay permiso para usar la cámara. Habilitalo en el navegador o escribí el código abajo.' : nom === 'NotFoundError' || nom === 'OverconstrainedError' ? 'No se encontró una cámara en este equipo. Escribí el código abajo.' : 'No se pudo iniciar la cámara. Escribí el código abajo.');
+    }
+  })();
+}
+function asociarBarras(p, alAsociar) {   // asocia un código de barras al producto (una sola vez)
+  const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px"><b>Asociar código de barras</b></p><p class="mut" style="margin:0 0 10px">${esc(p.nombre)}</p><label>Escaneá el código o escribilo</label><input id="bcIn" autocomplete="off" inputmode="text" style="width:100%;font-size:20px;font-weight:700;text-align:center">${hayCamara() ? `<button class="btn sec" data-r="cam" style="margin-top:10px;display:flex;align-items:center;justify-content:center;gap:10px"><span style="width:22px">${ICONO_BARRAS}</span>Escanear con la cámara</button>` : ''}<div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="0" style="flex:1">Cancelar</button><button class="btn" data-r="1" style="flex:1">Asociar</button></div>`);
+  const guardar = async () => {
+    const cod = $('#bcIn').value.replace(/\s+/g, ''); if (!cod) return toast('Escaneá o escribí el código');
+    try { const r = await api('PUT', 'p/barras/' + p.id, { codigo: cod }); p.barras = r.barras; el.remove(); toast('Código de barras asociado ✓'); if (alAsociar) alAsociar(); } catch (er) { toast(er.message); }
+  };
+  el.addEventListener('click', e => { const b = e.target.closest('[data-r]'); if (e.target === el || (b && b.dataset.r === '0')) return el.remove(); if (!b) return; if (b.dataset.r === 'cam') return escanearCamara(v => { $('#bcIn').value = v; guardar(); }); guardar(); });
+  $('#bcIn').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); guardar(); } };   // el lector de códigos escribe el número y manda Enter
+  $('#bcIn').focus();
+}
 let skProv = '';   // proveedor que se está controlando ('' = todos)
 function vStockNuevo() {
   const lista = () => productos.filter(p => !p.borrado && (skProv === '' || esDeProv(p, PROV_PDF[+skProv][1])));
   let borr = leerStockBorr();   // lo que se fue escribiendo y todavía no se guardó como control
-  $('#main').innerHTML = `<select id="skP" style="width:100%;min-height:44px;margin-bottom:8px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);padding:0 8px"><option value="">Todos los artículos</option>${[0, 3, 1, 2].map(i => `<option value="${i}" ${String(i) === skProv ? 'selected' : ''}>${PROV_PDF[i][0]}</option>`).join('')}</select><input id="skQ" type="search" placeholder="Buscar producto" value="${esc(stockQ)}" style="width:100%"><div id="skL" style="margin-top:8px"></div><div id="skBar"></div>`;
+  $('#main').innerHTML = `<select id="skP" style="width:100%;min-height:44px;margin-bottom:8px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);padding:0 8px"><option value="">Todos los artículos</option>${[0, 3, 1, 2].map(i => `<option value="${i}" ${String(i) === skProv ? 'selected' : ''}>${PROV_PDF[i][0]}</option>`).join('')}</select><div style="display:flex;gap:8px"><input id="skQ" type="search" placeholder="Escanear o buscar" value="${esc(stockQ)}" style="flex:1 1 0;min-width:0">${hayCamara() ? `<button class="btn sec" id="skCam" aria-label="Escanear código de barras" title="Escanear código de barras" style="flex:none;width:52px;padding:0">${ICONO_BARRAS}</button>` : ''}</div><div id="skL" style="margin-top:8px"></div><div id="skBar"></div>`;
   const valor = p => borr[p.id] !== undefined ? borr[p.id] : (p.existencia === null || p.existencia === undefined ? '' : String(p.existencia));
   const nCargados = () => lista().filter(p => String(valor(p)).trim() !== '').length;
   const barra = () => { const n = nCargados(); $('#skBar').innerHTML = `<div style="height:90px"></div><div class="bar sel"><div class="tot" style="font-size:15px;white-space:nowrap"><b>${n}</b> de ${lista().length}<br>con stock</div><button class="btn" data-skact="guardar" ${n ? '' : 'disabled'} style="padding:12px 22px">Guardar control</button></div>`; };
   const pintar = () => {
-    const t = norm(stockQ).split(/\s+/).filter(Boolean), l = lista().filter(p => t.every(w => norm(p.codigo + ' ' + p.nombre).includes(w)));
-    $('#skL').innerHTML = l.length ? `<div class="card skl" style="padding:2px 10px"><div class="pvf pvh skg"><span>Cód.</span><span>Descripción</span><span class="pvs" style="text-align:center">Stock</span></div>${l.map(p => `<div class="pvf skg" style="cursor:default"><span class="pvc">${esc(p.codigo)}</span><span class="pvn">${esc(p.nombre)}</span><input class="ppc skin" data-skid="${p.id}" inputmode="numeric" autocomplete="off" value="${esc(valor(p))}" placeholder="—"></div>`).join('')}</div>` : vacio('Sin resultados');
+    const t = norm(stockQ).split(/\s+/).filter(Boolean), l = lista().filter(p => t.every(w => norm(p.codigo + ' ' + p.nombre + ' ' + (p.barras || '')).includes(w)));
+    $('#skL').innerHTML = l.length ? `<div class="card skl" style="padding:2px 10px"><div class="pvf pvh skg"><span>Cód.</span><span>Descripción</span><span class="pvs" style="text-align:center">Stock</span></div>${l.map(p => `<div class="pvf skg" style="cursor:default"><span class="pvc">${esc(p.codigo)}</span><span class="pvn">${esc(p.nombre)}${p.barras ? '' : `<br><button class="btn sec skb" data-skbar="${p.id}" title="Asociar código de barras" aria-label="Asociar código de barras">▮▯ código de barras</button>`}</span><input class="ppc skin" data-skid="${p.id}" inputmode="numeric" autocomplete="off" value="${esc(valor(p))}" placeholder="—"></div>`).join('')}</div>` : vacio('Sin resultados');
     barra();
   };
+  const irA = p => {   // un código escaneado lleva al campo de stock de ese producto
+    if (skProv !== '' && !esDeProv(p, PROV_PDF[+skProv][1])) { skProv = ''; $('#skP').value = ''; }
+    stockQ = ''; $('#skQ').value = ''; pintar();
+    const i = document.querySelector(`.skin[data-skid="${p.id}"]`);
+    if (i) { i.scrollIntoView({ block: 'center' }); i.focus(); const f = i.closest('.pvf'); if (f) { f.style.backgroundImage = 'linear-gradient(rgba(26,136,112,.2),rgba(26,136,112,.2))'; setTimeout(() => { f.style.backgroundImage = ''; }, 1500); } }
+  };
+  const porCodigo = cod => { cod = sinCeros(String(cod).trim()); return cod ? productos.find(x => !x.borrado && x.barras && sinCeros(x.barras) === cod) : null; };
+  const leido = cod => { const p = porCodigo(cod); if (p) irA(p); else toast('Ese código no está asociado a ningún producto. Buscá el producto y tocá «código de barras».'); };
   $('#skQ').oninput = e => { stockQ = e.target.value; pintar(); };
+  $('#skQ').onkeydown = e => { if (e.key !== 'Enter') return; const p = porCodigo(e.target.value); if (p) { e.preventDefault(); irA(p); } else if (/^\d{8,}$/.test(e.target.value.trim())) { e.preventDefault(); leido(e.target.value); } };   // el lector escribe el número y manda Enter
+  if ($('#skCam')) $('#skCam').onclick = () => escanearCamara(leido);
+  $('#skL').addEventListener('click', e => { const b = e.target.closest('[data-skbar]'); if (!b) return; const p = productos.find(x => x.id === +b.dataset.skbar); if (p) asociarBarras(p, pintar); });
   $('#skP').onchange = e => { skProv = e.target.value; pintar(); };
   $('#skL').oninput = e => { const i = e.target.closest('.skin'); if (!i) return; const v = i.value.replace(/[^\d]/g, ''); if (v !== i.value) i.value = v; borr[i.dataset.skid] = v; guardarStockBorr(borr); barra(); };
   $('#skL').onfocusin = e => { if (e.target.classList.contains('skin')) setTimeout(() => e.target.select(), 0); };   // al tocar un campo se selecciona el número: lo que se escribe lo reemplaza
@@ -731,9 +794,11 @@ function vStockNuevo() {
     const responsable = await pedirResponsable(); if (!responsable) return;
     try {
       const r = await api('POST', 'p/controles', { items, responsable, proveedor: provNom });
-      try { planillaControl({ en: r.en, responsable, proveedor: provNom, items: items.map(it => { const p = productos.find(x => x.id === it.pid) || {}; return [it.pid, p.codigo, p.nombre, Number(it.existencia)]; }) }); } catch {}   // la planilla del control, con la fecha en el nombre
+      const ctl = { en: r.en, responsable, proveedor: provNom, items: items.map(it => { const p = productos.find(x => x.id === it.pid) || {}; return [it.pid, p.codigo, p.nombre, Number(it.existencia)]; }) };   // para la planilla (se descarga solo si se pide)
       items.forEach(it => { const p = productos.find(x => x.id === it.pid); if (p) p.existencia = Number(it.existencia); });
-      items.forEach(it => delete borr[it.pid]); guardarStockBorr(borr); toast(`Control guardado ✓ (${r.n} productos) · planilla descargada`); volverA('stock');
+      items.forEach(it => delete borr[it.pid]); guardarStockBorr(borr); 
+      const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px"><b>Control guardado ✓</b></p><p class="mut" style="margin:0 0 14px">${esc(fechaControl(r.en).txt)} · ${esc(responsable)}${provNom ? ' · ' + esc(provNom) : ''} · ${r.n} ${r.n === 1 ? 'producto' : 'productos'}</p><button class="btn" data-r="x">📊 Descargar planilla (Excel)</button><button class="btn sec" data-r="0" style="margin-top:10px">Cerrar</button>`);
+      el.addEventListener('click', ev => { const b = ev.target.closest('[data-r]'); if (b && b.dataset.r === 'x') return planillaControl(ctl); if (ev.target === el || b) { el.remove(); volverA('stock'); } });   // la planilla es una opción: no se descarga sola
     } catch (er) { toast(er.message); }
   };
   pintar();

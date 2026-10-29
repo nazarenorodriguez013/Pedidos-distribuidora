@@ -19,7 +19,7 @@ const pool = DB_URL ? new Pool({
 }) : null;
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.json': 'application/manifest+json', '.svg': 'image/svg+xml', '.png': 'image/png', '.js': 'text/javascript; charset=utf-8' };
-const FILES = ['index.html', 'manifest.json', 'sw.js', 'logo.png', 'logo-grande.png', 'logo-marca.png', 'icon-192.png', 'icon-512.png', 'icon-maskable.png', 'apple-touch-icon.png'];
+const FILES = ['index.html', 'manifest.json', 'sw.js', 'logo.png', 'logo-grande.png', 'logo-marca.png', 'icon-192.png', 'icon-512.png', 'icon-maskable.png', 'apple-touch-icon.png', 'zxing.min.js'];   // zxing: lector de códigos de barras con la cámara (el mismo que usa Quiosquito)
 
 const send = (res, code, obj) => { res.statusCode = code; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(obj)); };
 function body(req, limit = 1e6) {
@@ -41,7 +41,7 @@ http.createServer(async (req, res) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Strict-Transport-Security', 'max-age=31536000');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()');
   if (url.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
   try {
     if (url === '/api/version') return send(res, 200, { v: VERSION });
