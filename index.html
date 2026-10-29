@@ -795,7 +795,7 @@ function vStockNuevo() {
   const lista = () => productos.filter(p => !p.borrado && (skProv === '' || esDeProv(p, PROV_PDF[+skProv][1])));
   let borr = leerStockBorr();   // lo que se fue escribiendo y todavía no se guardó como control
   $('#main').innerHTML = `<select id="skP" style="width:100%;min-height:44px;margin-bottom:8px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);padding:0 8px"><option value="">Todos los artículos</option>${[0, 3, 1, 2].map(i => `<option value="${i}" ${String(i) === skProv ? 'selected' : ''}>${PROV_PDF[i][0]}</option>`).join('')}</select><div style="display:flex;gap:8px"><input id="skQ" type="search" placeholder="Escanear o buscar" value="${esc(stockQ)}" style="flex:1 1 0;min-width:0">${hayCamara() ? `<button class="btn sec" id="skCam" aria-label="Escanear código de barras" title="Escanear código de barras" style="flex:none;width:52px;padding:0">${ICONO_BARRAS}</button>` : ''}</div><div id="skL" style="margin-top:8px"></div><div id="skBar"></div>`;
-  const valor = p => borr[p.id] !== undefined ? borr[p.id] : (p.existencia === null || p.existencia === undefined ? '' : String(p.existencia));
+  const valor = p => borr[p.id] !== undefined ? borr[p.id] : '';   // cada control empieza vacío
   const nCargados = () => lista().filter(p => String(valor(p)).trim() !== '').length;
   const barra = () => { const n = nCargados(); $('#skBar').innerHTML = `<div style="height:90px"></div><div class="bar sel"><div class="tot" style="font-size:15px;white-space:nowrap"><b>${n}</b> de ${lista().length}<br>con stock</div><button class="btn" data-skact="guardar" ${n ? '' : 'disabled'} style="padding:12px 22px">Guardar control</button></div>`; };
   const pintar = () => {
@@ -831,7 +831,8 @@ function vStockNuevo() {
       const r = await api('POST', 'p/controles', { items, responsable, proveedor: provNom });
       const ctl = { en: r.en, responsable, proveedor: provNom, items: items.map(it => { const p = productos.find(x => x.id === it.pid) || {}; return [it.pid, p.codigo, p.nombre, Number(it.existencia)]; }) };   // para la planilla (se descarga solo si se pide)
       items.forEach(it => { const p = productos.find(x => x.id === it.pid); if (p) p.existencia = Number(it.existencia); });
-      items.forEach(it => delete borr[it.pid]); guardarStockBorr(borr); 
+      for (const k of Object.keys(borr)) delete borr[k]; guardarStockBorr(borr);   // el control quedó guardado: el próximo empieza de cero
+      
       const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px"><b>Control guardado ✓</b></p><p class="mut" style="margin:0 0 14px">${esc(fechaControl(r.en).txt)} · ${esc(responsable)}${provNom ? ' · ' + esc(provNom) : ''} · ${r.n} ${r.n === 1 ? 'producto' : 'productos'}</p><button class="btn" data-r="x">📊 Descargar planilla (Excel)</button><button class="btn sec" data-r="0" style="margin-top:10px">Cerrar</button>`);
       el.addEventListener('click', ev => { const b = ev.target.closest('[data-r]'); if (b && b.dataset.r === 'x') return planillaControl(ctl); if (ev.target === el || b) { el.remove(); volverA('stock'); } });   // la planilla es una opción: no se descarga sola
     } catch (er) { toast(er.message); }
