@@ -376,23 +376,23 @@ window.addEventListener('popstate', async e => {
 });
 
 /* ---------- vistas ---------- */
-const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', manual: 'Manual de uso', cambios: 'Registro de cambios', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', seguimiento: 'Seguimiento', avisos: 'Notificaciones', stock: 'Stock', stocknuevo: 'Nuevo control', proveedores: 'Proveedores', proveedor: 'Proveedor', pedprov: 'Pedido al proveedor', pedhist: 'Historial de pedidos', novedades: 'Novedades', hoja: 'Pedidos sin cargar' };
+const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', manual: 'Manual de uso', cambios: 'Registro de cambios', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', seguimiento: 'Seguimiento', avisos: 'Notificaciones', stock: 'Stock', stocknuevo: 'Nuevo control', stockctl: 'Controles guardados', proveedores: 'Proveedores', proveedor: 'Proveedor', pedprov: 'Pedido al proveedor', pedhist: 'Historial de pedidos', novedades: 'Novedades', hoja: 'Pedidos sin cargar' };
 const escritorio = () => window.matchMedia('(min-width:900px)').matches;
 const TABS = ['menu', 'pedidos', 'clientes', 'precios', 'faltantes', 'config'];   // pantallas con barra de botones abajo
 function render() {
   document.body.classList.remove('login-pg');
   if (!token) return login();
   if (esStock() && view !== 'stocknuevo') view = 'stock';   // el usuario de stock no ve otra cosa
-  if ((view === 'stock' || view === 'stocknuevo') && !esAdmin() && !esStock()) view = 'menu';
+  if ((view === 'stock' || view === 'stocknuevo' || view === 'stockctl') && !esAdmin() && !(esStock() && view !== 'stockctl')) view = 'menu';
   if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc','hoja','manual','cambios','proveedores','proveedor','pedprov','pedhist','seguimiento','avisos'].includes(view)) view = 'menu';
   if (view !== 'pedido') document.body.classList.remove('bloq-ped');
   if (view !== 'hoja') hojaEd = null;
   if (view !== 'pedidos' && view !== 'pedido' && view !== 'hoja') { fdiaInit = false; selMode = false; selPeds = new Set(); }   // al volver a Pedidos desde otra sección arranca en el día de hoy
   const tab = TABS.includes(view), desk = escritorio();
   document.body.classList.toggle('hay-tabs', !esStock() && (desk || tab));
-  $('#app').innerHTML = `<header>${!tab && (!esStock() || view === 'stocknuevo') ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1>${esStock() ? '<button class="campana" data-act="salir" aria-label="Cerrar sesión" title="Cerrar sesión">🚪</button>' : campana()}<span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : esStock() ? 'Stock' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${!esStock() && (tab || desk) ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ...(desk && esAdmin() ? [['seguimiento', '📈', 'Seguimiento']] : []), ['precios', '📦', 'Listado'], ...(desk && esAdmin() ? [['stock', '🗃️', 'Stock']] : []), ...(desk ? [['promos', '🏷️', 'Promociones'], ['novedades', '📣', 'Novedades' + (nNuevas() ? ' (' + nNuevas() + ')' : '')]] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk && esAdmin() ? [['proveedores', '🏭', 'Proveedores']] : []), ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v || (v === 'stock' && view === 'stocknuevo') || (v === 'proveedores' && (view === 'proveedor' || view === 'pedprov' || view === 'pedhist')) ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo">${esAdmin() ? `<button data-go="manual" class="${view === 'manual' ? 'on' : ''}"><span>📖</span>Manual de uso</button>` : ''}<button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
+  $('#app').innerHTML = `<header>${!tab && (!esStock() || view === 'stocknuevo') ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1>${esStock() ? '<button class="campana" data-act="salir" aria-label="Cerrar sesión" title="Cerrar sesión">🚪</button>' : campana()}<span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : esStock() ? 'Stock' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${!esStock() && (tab || desk) ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ...(desk && esAdmin() ? [['seguimiento', '📈', 'Seguimiento']] : []), ['precios', '📦', 'Listado'], ...(desk && esAdmin() ? [['stock', '🗃️', 'Stock']] : []), ...(desk ? [['promos', '🏷️', 'Promociones'], ['novedades', '📣', 'Novedades' + (nNuevas() ? ' (' + nNuevas() + ')' : '')]] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk && esAdmin() ? [['proveedores', '🏭', 'Proveedores']] : []), ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v || (v === 'stock' && (view === 'stocknuevo' || view === 'stockctl')) || (v === 'proveedores' && (view === 'proveedor' || view === 'pedprov' || view === 'pedhist')) ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo">${esAdmin() ? `<button data-go="manual" class="${view === 'manual' ? 'on' : ''}"><span>📖</span>Manual de uso</button>` : ''}<button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
   estado();
-  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, manual: vManual, cambios: vCambios, novedades: vNovedades, hoja: vHoja, proveedores: vProveedores, proveedor: vProveedores, pedprov: vPedProv, pedhist: vPedHist, seguimiento: vSeguimiento, avisos: vAvisos, stock: vStock, stocknuevo: vStockNuevo })[view]();
+  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, manual: vManual, cambios: vCambios, novedades: vNovedades, hoja: vHoja, proveedores: vProveedores, proveedor: vProveedores, pedprov: vPedProv, pedhist: vPedHist, seguimiento: vSeguimiento, avisos: vAvisos, stock: vStock, stocknuevo: vStockNuevo, stockctl: vStockCtl })[view]();
 }
 function login() {
   document.body.classList.remove('hay-tabs'); document.body.classList.add('login-pg');
@@ -745,17 +745,52 @@ function escanearCamara(alLeer) {
     }
   })();
 }
-function asociarBarras(p, alAsociar) {   // asocia un código de barras al producto (una sola vez)
-  const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px"><b>Asociar código de barras</b></p><p class="mut" style="margin:0 0 10px">${esc(p.nombre)}</p><label>Escaneá el código o escribilo</label><input id="bcIn" autocomplete="off" inputmode="text" style="width:100%;font-size:20px;font-weight:700;text-align:center">${hayCamara() ? `<button class="btn sec" data-r="cam" style="margin-top:10px;display:flex;align-items:center;justify-content:center;gap:10px"><span style="width:22px">${ICONO_BARRAS}</span>Escanear con la cámara</button>` : ''}<div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="0" style="flex:1">Cancelar</button><button class="btn" data-r="1" style="flex:1">Asociar</button></div>`);
-  const guardar = async () => {
-    const cod = $('#bcIn').value.replace(/\s+/g, ''); if (!cod) return toast('Escaneá o escribí el código');
-    try { const r = await api('PUT', 'p/barras/' + p.id, { codigo: cod }); p.barras = r.barras; el.remove(); toast('Código de barras asociado ✓'); if (alAsociar) alAsociar(); } catch (er) { toast(er.message); }
+function asociarBarras(p, alAsociar) {   // asocia un código de barras al producto (una sola vez): abre la cámara, muestra lo leído y pide confirmar
+  const confirmarCod = cod => {
+    const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px"><b>¿Es correcto?</b></p><p class="mut" style="margin:0 0 10px">${esc(p.nombre)}</p><p style="font-size:26px;font-weight:700;text-align:center;letter-spacing:1px;margin:10px 0 16px">${esc(cod)}</p><div style="display:flex;gap:10px"><button class="btn sec" data-r="0" style="flex:1">${hayCamara() ? 'Escanear de nuevo' : 'Corregir'}</button><button class="btn" data-r="1" style="flex:1">Confirmar</button></div>`);
+    el.addEventListener('click', async e => {
+      const b = e.target.closest('[data-r]'); if (e.target === el) return el.remove(); if (!b) return;
+      if (b.dataset.r === '0') { el.remove(); return pedir(); }
+      try { const r = await api('PUT', 'p/barras/' + p.id, { codigo: cod }); p.barras = r.barras; el.remove(); toast('Código de barras asociado ✓'); if (alAsociar) alAsociar(); } catch (er) { toast(er.message); }
+    });
   };
-  el.addEventListener('click', e => { const b = e.target.closest('[data-r]'); if (e.target === el || (b && b.dataset.r === '0')) return el.remove(); if (!b) return; if (b.dataset.r === 'cam') return escanearCamara(v => { $('#bcIn').value = v; guardar(); }); guardar(); });
-  $('#bcIn').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); guardar(); } };   // el lector de códigos escribe el número y manda Enter
-  $('#bcIn').focus();
+  const pedir = () => {
+    if (hayCamara()) return escanearCamara(confirmarCod);   // directo a la cámara (con el campo para escribirlo abajo)
+    const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px"><b>Asociar código de barras</b></p><p class="mut" style="margin:0 0 10px">${esc(p.nombre)}</p><label>Escaneá el código o escribilo</label><input id="bcIn" autocomplete="off" inputmode="text" style="width:100%;font-size:20px;font-weight:700;text-align:center"><div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="0" style="flex:1">Cancelar</button><button class="btn" data-r="1" style="flex:1">Continuar</button></div>`);
+    const seguir = () => { const cod = $('#bcIn').value.replace(/\s+/g, ''); if (!cod) return toast('Escaneá o escribí el código'); el.remove(); confirmarCod(cod); };
+    el.addEventListener('click', e => { const b = e.target.closest('[data-r]'); if (e.target === el || (b && b.dataset.r === '0')) return el.remove(); if (b) seguir(); });
+    $('#bcIn').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); seguir(); } };   // el lector de códigos escribe el número y manda Enter
+    $('#bcIn').focus();
+  };
+  pedir();
 }
 let skProv = '';   // proveedor que se está controlando ('' = todos)
+function vStock() {
+  if (esStock()) {   // el usuario de stock solo ve el botón
+    $('#main').innerHTML = '<button class="btn" data-skact="nuevo" style="min-height:64px">➕ Nuevo control</button>';
+    $('#main').onclick = e => { if (e.target.closest('[data-skact="nuevo"]')) go('stocknuevo'); };
+    return;
+  }
+  let ult = {}, q2 = '';
+  $('#main').innerHTML = `<div class="fgrid" style="margin:0 0 10px"><button class="btn" data-skact="nuevo">➕ Nuevo control</button><button class="btn sec" data-skact="ctl">🗂 Controles guardados</button></div><input id="skQ2" type="search" placeholder="Buscar producto" style="width:100%"><div id="skU" style="margin-top:8px"></div>`;
+  const pintar = () => {
+    const t = norm(q2).split(/\s+/).filter(Boolean), l = productos.filter(p => !p.borrado && t.every(w => norm(p.codigo + ' ' + p.nombre).includes(w)));
+    $('#skU').innerHTML = l.length ? `<div class="card skl" style="padding:2px 10px"><div class="pvf pvh skg" style="grid-template-columns:54px 1fr 84px!important"><span>Cód.</span><span>Descripción</span><span class="pvs">Últ. control</span></div>${l.map(p => { const u = ult[p.id]; return `<div class="pvf skg" data-skp="${p.id}" style="grid-template-columns:54px 1fr 84px!important;cursor:pointer"><span class="pvc">${esc(p.codigo)}</span><span class="pvn">${esc(p.nombre)}</span><span class="pvs" style="font-weight:600;${u ? '' : 'color:var(--mut);font-weight:400'}">${u ? fechaCorta(u[0].slice(0, 10)) : 'sin control'}</span></div>`; }).join('')}</div>` : vacio('Sin resultados');
+  };
+  $('#skQ2').oninput = e => { q2 = e.target.value; pintar(); };
+  $('#main').onclick = async e => {
+    const a = e.target.closest('[data-skact]');
+    if (a) return go(a.dataset.skact === 'nuevo' ? 'stocknuevo' : 'stockctl');
+    const r = e.target.closest('[data-skp]'); if (!r) return; const p = productos.find(x => x.id === +r.dataset.skp); if (!p) return;
+    try {
+      const h = (await api('GET', 'p/stockinfo/' + p.id)).historial;
+      const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px;flex:none"><b>${esc(p.nombre)}</b></p><p class="mut" style="margin:0 0 8px;flex:none">${esc(p.codigo)} · ${h.length} ${h.length === 1 ? 'control' : 'controles'}</p><div class="card" style="padding:2px 12px;margin:0;flex:1 1 auto;min-height:0;overflow:auto">${h.length ? h.map(x => `<div class="row" style="border-color:var(--bd)"><div class="nm"><b>${esc(fechaControl(x.en).txt)}</b><span class="mut">${esc(x.responsable)}${x.proveedor ? ' · ' + esc(x.proveedor) : ''}</span></div><b style="flex:none;font-size:18px">${x.cant}</b></div>`).join('') : '<p class="mut" style="margin:12px 0">Todavía no se controló este producto.</p>'}</div><button class="btn sec" data-r="0" style="margin-top:12px;flex:none">Cerrar</button>`, true);
+      el.addEventListener('click', ev => { if (ev.target === el || ev.target.closest('[data-r]')) el.remove(); });
+    } catch (er) { toast(er.message); }
+  };
+  pintar();
+  api('GET', 'p/stockinfo').then(r => { ult = r.ultimos || {}; pintar(); }).catch(() => {});
+}
 function vStockNuevo() {
   const lista = () => productos.filter(p => !p.borrado && (skProv === '' || esDeProv(p, PROV_PDF[+skProv][1])));
   let borr = leerStockBorr();   // lo que se fue escribiendo y todavía no se guardó como control
@@ -803,13 +838,12 @@ function vStockNuevo() {
   };
   pintar();
 }
-function vStock() {
-  $('#main').innerHTML = `<button class="btn" data-skact="nuevo" style="margin-bottom:10px;min-height:${esStock() ? 64 : 48}px">➕ Nuevo control</button>${esStock() ? '' : '<div id="skH"></div>'}`;
+function vStockCtl() {   // historial de controles guardados (administrador)
+  $('#main').innerHTML = '<div id="skH"></div>';
   if (esStock()) { $('#main').onclick = e => { if (e.target.closest('[data-skact="nuevo"]')) go('stocknuevo'); }; return; }   // el usuario de stock solo ve el botón; el historial lo ve el administrador
   const pintar = l => { $('#skH').innerHTML = l.length ? `<div class="card" style="padding:2px 12px">${l.map(c => `<div class="row" data-ctl="${c.id}" style="cursor:pointer"><div class="nm"><b>Control del ${esc(fechaControl(c.en).txt)}</b><span class="mut">Responsable: ${esc(c.responsable || c.por || '')}${c.proveedor ? ' · ' + esc(c.proveedor) : ''}</span></div><div style="flex:none;text-align:right"><b>${c.n}</b><br><span class="mut" style="font-size:13px">productos</span></div><span class="mut">›</span></div>`).join('')}</div>` : vacio('Todavía no hay controles guardados'); };
   api('GET', 'p/controles').then(r => pintar(r.controles)).catch(e => toast(e.message));
   $('#main').onclick = async e => {
-    if (e.target.closest('[data-skact="nuevo"]')) return go('stocknuevo');
     const r = e.target.closest('[data-ctl]'); if (!r) return;
     try {
       const c = await api('GET', 'p/controles/' + r.dataset.ctl);

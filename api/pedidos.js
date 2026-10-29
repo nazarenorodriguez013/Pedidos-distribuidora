@@ -620,6 +620,17 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       p.barras = cod; await save(pool);
       return send(res, 200, { id: p.id, barras: p.barras });
     }
+    if (rec === 'stockinfo' && req.method === 'GET') {   // administrador: último control de cada producto y su historial (cuándo y quién)
+      soloAdmin();
+      if (!id) {
+        const ultimos = {};
+        for (const c of s.controles) for (const [pid, , , cant] of c.items) ultimos[pid] = [c.en, c.responsable || c.por || '', cant];   // los controles están en orden: el último gana
+        return send(res, 200, { ultimos });
+      }
+      const historial = [];
+      for (const c of s.controles) { const it = c.items.find(x => x[0] === id); if (it) historial.push({ id: c.id, en: c.en, responsable: c.responsable || c.por || '', proveedor: c.proveedor || '', cant: it[3] }); }
+      return send(res, 200, { historial: historial.reverse() });
+    }
     if (rec === 'controles') {   // controles de stock: cada vez que se guarda, queda registrado (administrador y usuario de stock)
       if (!admin && !esStock) throw { code: 403, msg: 'No autorizado' };
       if (esStock && req.method !== 'POST') throw { code: 403, msg: 'El usuario de stock solo puede cargar controles nuevos' };   // el historial lo ve el administrador
