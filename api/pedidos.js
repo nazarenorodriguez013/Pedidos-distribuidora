@@ -26,10 +26,12 @@ async function load(pool) {
   state.provs = Array.isArray(state.provs) ? state.provs : [];   // lista de lo que se le compra a cada proveedor (solo la ve el administrador)
   state.provContacto = state.provContacto && typeof state.provContacto === 'object' ? state.provContacto : {};   // mail y WhatsApp de cada proveedor, por nombre en minúsculas
   state.provPedidos = Array.isArray(state.provPedidos) ? state.provPedidos : [];   // historial de pedidos hechos a cada proveedor
+  state.controles = Array.isArray(state.controles) ? state.controles : [];   // controles de stock guardados (fecha, quién y cantidades)
   state.provTextos = state.provTextos && typeof state.provTextos === 'object' ? state.provTextos : {};   // texto de arriba y de cierre del pedido a proveedores
   state.cambios = state.cambios || [];   // registro de lo que el administrador modifica en los pedidos (quitó, bajó, agregó, cambió el precio)
   state.seq.x = state.seq.x || 1;
   state.seq.w = state.seq.w || (state.provPedidos.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
+  state.seq.s = state.seq.s || (state.controles.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
   state.seq.v = state.seq.v || (state.provs.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
   state.pushSubs = state.pushSubs || [];
   if (webpush) {   // claves VAPID: de las variables de entorno o generadas una vez y guardadas junto con los datos
@@ -159,6 +161,7 @@ function restaurarDatos(d) {   // reemplaza pedidos, clientes, productos, promos
   state.productos = d.productos; state.pedidos = d.pedidos; state.clientes = d.clientes;
   state.combos = Array.isArray(d.combos) ? d.combos : []; state.novedades = Array.isArray(d.novedades) ? d.novedades : []; state.cambios = Array.isArray(d.cambios) ? d.cambios : []; state.seq.x = Math.max(state.seq.x || 1, state.cambios.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
   state.provPedidos = Array.isArray(d.provPedidos) ? d.provPedidos : state.provPedidos; state.seq.w = Math.max(state.seq.w || 1, state.provPedidos.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
+  state.controles = Array.isArray(d.controles) ? d.controles : state.controles; state.seq.s = Math.max(state.seq.s || 1, state.controles.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
   state.provTextos = d.provTextos && typeof d.provTextos === 'object' ? d.provTextos : state.provTextos; state.provContacto = d.provContacto && typeof d.provContacto === 'object' ? d.provContacto : state.provContacto; state.provs = Array.isArray(d.provs) ? d.provs : state.provs; state.seq.v = Math.max(state.seq.v || 1, state.provs.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
   state.configPorCodigo = d.configPorCodigo && typeof d.configPorCodigo === 'object' ? d.configPorCodigo : {};
   const mx = l => l.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1;
@@ -426,7 +429,7 @@ function cleanUsuario(b, prev) {
   if (!/^[a-z0-9._-]{3,30}$/.test(usuario)) throw { code: 400, msg: 'Usuario: 3 a 30 letras minúsculas, números, punto, guion' };
   if (state.usuarios.some(u => u.id !== prev?.id && u.usuario === usuario)) throw { code: 409, msg: 'Ese usuario ya existe' };
   const rol = b.rol === undefined ? prev?.rol || 'vendedor' : b.rol;
-  if (!['admin', 'vendedor'].includes(rol)) throw { code: 400, msg: 'Rol inválido' };
+  if (!['admin', 'vendedor', 'stock'].includes(rol)) throw { code: 400, msg: 'Rol inválido' };   // «stock»: solo ve y carga el stock
   const o = { usuario, nombre, rol, activo: b.activo === undefined ? prev?.activo ?? true : !!b.activo };
   if (b.password !== undefined && b.password !== '') {
     if (String(b.password).length < 4) throw { code: 400, msg: 'La contraseña debe tener al menos 4 caracteres' };
@@ -602,7 +605,32 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     if (!yo) throw { code: 401, msg: 'No autorizado' };
     const admin = yo.rol === 'admin';
     const soloAdmin = () => { if (!admin) throw { code: 403, msg: 'Solo el administrador puede hacer esto' }; };
-
+    const esStock = yo.rol === 'stock';   // usuario que solo ve y carga el stock: nada más
+    if (esStock && !['yo', 'productos', 'controles'].includes(rec)) throw { code: 403, msg: 'Este usuario solo puede ver el stock' };
+    if (esStock && rec === 'productos' && req.method !== 'GET') throw { code: 403, msg: 'Este usuario solo puede ver el stock' };
+    if (rec === 'controles') {   // controles de stock: cada vez que se guarda, queda registrado (administrador y usuario de stock)
+      if (!admin && !esStock) throw { code: 403, msg: 'No autorizado' };
+      if (!id && req.method === 'GET') return send(res, 200, { controles: [...s.controles].reverse().map(c => ({ id: c.id, en: c.en, por: c.por, responsable: c.responsable || '', n: c.items.length })) });
+      if (id && req.method === 'GET') { const c = s.controles.find(x => x.id === id); if (!c) throw { code: 404, msg: 'No existe' }; return send(res, 200, c); }
+      if (!id && req.method === 'POST') {
+        const b = await body(req, 5e6), ahora = new Date().toISOString(), items = [];
+        for (const it of Array.isArray(b.items) ? b.items : []) {
+          const p = s.productos.find(x => x.id === Number(it.pid)); if (!p) continue;
+          const v = it.existencia === '' || it.existencia === null || it.existencia === undefined ? null : parseNum(it.existencia);
+          if (v === null) continue; if (v < 0) throw { code: 400, msg: 'El stock no puede ser negativo' };
+          items.push([p.id, p.codigo, p.nombre, Math.floor(v)]);
+        }
+        const responsable = String(b.responsable || '').trim().slice(0, 80);
+        if (!responsable) throw { code: 400, msg: 'Poné el nombre del responsable del control' };
+        if (!items.length) throw { code: 400, msg: 'No hay cantidades para guardar' };
+        for (const [pid, , , cant] of items) { const p = s.productos.find(x => x.id === pid); p.existencia = cant; p.existenciaEn = ahora; }
+        const c = { id: s.seq.s++, en: ahora, por: yo.nombre, responsable, items };
+        s.controles.push(c); if (s.controles.length > 300) s.controles.splice(0, s.controles.length - 300);
+        await save(pool);
+        return send(res, 200, { id: c.id, en: c.en, n: items.length });
+      }
+      throw { code: 405, msg: 'Método no permitido' };
+    }
     if (rec === 'yo' && req.method === 'GET') return send(res, 200, { ...pub(yo), db: !!pool });
     if (rec === 'clave' && req.method === 'PUT') {
       const b = await body(req, 1e4);
@@ -779,7 +807,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     }
     if (rec === 'respaldo' && req.method === 'GET') {   // el administrador descarga todos los datos (sin contraseñas ni claves)
       soloAdmin();
-      return send(res, 200, { fecha: new Date().toISOString(), version: 1, productos: s.productos, pedidos: s.pedidos, clientes: s.clientes, combos: s.combos, novedades: s.novedades, cambios: s.cambios, provs: s.provs, provContacto: s.provContacto, provTextos: s.provTextos, provPedidos: s.provPedidos, seq: s.seq, configPorCodigo: s.configPorCodigo || {}, usuarios: s.usuarios.map(pub) });
+      return send(res, 200, { fecha: new Date().toISOString(), version: 1, productos: s.productos, pedidos: s.pedidos, clientes: s.clientes, combos: s.combos, novedades: s.novedades, cambios: s.cambios, provs: s.provs, provContacto: s.provContacto, provTextos: s.provTextos, provPedidos: s.provPedidos, controles: s.controles, seq: s.seq, configPorCodigo: s.configPorCodigo || {}, usuarios: s.usuarios.map(pub) });
     }
     if (rec === 'pushkey' && req.method === 'GET') return send(res, 200, { key: webpush && s.vapid ? s.vapid.publica : null });
     if (rec === 'pushsub') {   // el dispositivo se suscribe / se da de baja para recibir notificaciones
@@ -909,7 +937,8 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     const visible = x => rec !== 'pedidos' || admin || x.vendedorId === yo.id;
     if (!id && req.method === 'GET') {
       const l = list.filter(visible);
-      return send(res, 200, { [rec]: rec === 'pedidos' ? [...l].reverse() : l });   // el proveedor del producto viaja con el producto (no se muestra: solo filtra el PDF)
+      if (rec === 'productos' && esStock) return send(res, 200, { productos: l.map(p => ({ id: p.id, codigo: p.codigo, nombre: p.nombre, existencia: p.existencia ?? null, existenciaEn: p.existenciaEn || null })) });   // el usuario de stock no ve precios ni nada más
+      return send(res, 200, { [rec]: rec === 'pedidos' ? [...l].reverse() : rec === 'productos' && !admin ? l.map(({ existencia, existenciaEn, existenciaPor, ...p }) => p) : l });   // el proveedor del producto viaja con el producto (no se muestra: solo filtra el PDF); el stock lo ven el administrador y el usuario de stock
     }
     if (rec === 'productos' && req.method !== 'GET') soloAdmin();
     if (!id && req.method === 'POST') {

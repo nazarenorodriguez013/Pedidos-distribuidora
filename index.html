@@ -40,6 +40,7 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .row:last-child{border:0}
 .row .nm{flex:1;min-width:0}
 .row .nm b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.skl .pvn,.skl .pvc{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
 .sgf{display:grid;grid-template-columns:1fr 72px 150px;gap:10px;align-items:center;padding:6px 8px;margin:0 -10px;overflow:hidden;border-top:1px solid var(--bd);font-size:14px;line-height:1.2;cursor:pointer}.sgf:first-child{border-top:0}.sgn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}.sgd{color:var(--mut);white-space:nowrap}.sgm{text-align:right;white-space:nowrap}@media (max-width:600px){.sgf{font-size:13px;gap:6px;grid-template-columns:1fr 58px 134px}}
 .vc0{color:#2563eb}.vc1{color:#c2410c}.vc2{color:#7e22ce}.vc3{color:#0f766e}.vc4{color:#be185d}.vc5{color:#a16207}.vc6{color:#4d7c0f}.vc7{color:#0e7490}
 @media (prefers-color-scheme:dark){.vc0{color:#7aa7ff}.vc1{color:#fb923c}.vc2{color:#c4a1ff}.vc3{color:#4fd1c0}.vc4{color:#f472b6}.vc5{color:#e0b341}.vc6{color:#a3d65c}.vc7{color:#5fc9e0}}
@@ -174,6 +175,7 @@ body.login-pg .btn:not(.sec){color:#04231c}
   main{max-width:1200px;padding:20px 28px}
   body.hay-tabs main{width:calc(100% - 210px);max-width:none;margin:0 0 0 210px;box-sizing:border-box;padding:20px max(28px, calc((100vw - 210px - 1200px) / 2))}
   body.hay-tabs .estado{margin-left:210px}
+  body:not(.hay-tabs) .bar.sel{left:0!important}
   .bar.sel{position:fixed;bottom:0;left:210px;right:0;margin:0;border:0;border-top:1px solid var(--bd);border-radius:0}   /* en la computadora la barra de selección también queda fija abajo de la pantalla (la regla .bar de más abajo es para la pantalla del pedido) */
   .tabs{top:52px;bottom:0;left:0;right:auto;width:210px;flex-direction:column;justify-content:flex-start;border-top:0;border-right:1px solid var(--bd);padding:10px 0}
   .tabs button{flex:none;flex-direction:row;justify-content:flex-start;gap:12px;font-size:15px;padding:12px 20px;min-height:0;border-left:4px solid transparent;cursor:pointer}
@@ -240,6 +242,7 @@ if (esPC) window.addEventListener('beforeunload', e => { if (token) { e.preventD
 if (!user || !user.rol) token = null;
 let productos = [], pedidos = [], usuarios = [], clientes = [], combos = [], novedades = [], dbOk = true;
 const esAdmin = () => user && user.rol === 'admin';
+const esStock = () => user && user.rol === 'stock';   // usuario que solo ve y carga el stock
 let view = 'menu', draft = null, q = '', filtro = 'todos';
 
 function toast(t) { const el = $('#toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => el.style.display = 'none', 2800); }
@@ -289,6 +292,7 @@ window.addEventListener('offline', estado);
 setInterval(sincronizar, 30000);
 
 async function cargar() {
+  if (esStock()) { const r = await api('GET', 'p/productos'); productos = r.productos.sort((x, y) => x.nombre.localeCompare(y.nombre)); clientes = []; combos = []; novedades = []; pedidos = []; usuarios = []; dbOk = true; return; }
   const [a, b, c, y, cl, cb, nv] = await Promise.all([api('GET', 'p/productos'), api('GET', 'p/pedidos'), esAdmin() ? api('GET', 'p/usuarios') : { usuarios: [] }, api('GET', 'p/yo'), api('GET', 'p/clientes'), api('GET', 'p/combos'), api('GET', 'p/novedades')]);
   clientes = cl.clientes; combos = cb.combos; novedades = nv.novedades;
   dbOk = y.db;
@@ -368,21 +372,23 @@ window.addEventListener('popstate', async e => {
 });
 
 /* ---------- vistas ---------- */
-const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', manual: 'Manual de uso', cambios: 'Registro de cambios', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', seguimiento: 'Seguimiento', avisos: 'Notificaciones', proveedores: 'Proveedores', proveedor: 'Proveedor', pedprov: 'Pedido al proveedor', pedhist: 'Historial de pedidos', novedades: 'Novedades', hoja: 'Pedidos sin cargar' };
+const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', manual: 'Manual de uso', cambios: 'Registro de cambios', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', seguimiento: 'Seguimiento', avisos: 'Notificaciones', stock: 'Stock', stockhist: 'Controles de stock', proveedores: 'Proveedores', proveedor: 'Proveedor', pedprov: 'Pedido al proveedor', pedhist: 'Historial de pedidos', novedades: 'Novedades', hoja: 'Pedidos sin cargar' };
 const escritorio = () => window.matchMedia('(min-width:900px)').matches;
 const TABS = ['menu', 'pedidos', 'clientes', 'precios', 'faltantes', 'config'];   // pantallas con barra de botones abajo
 function render() {
   document.body.classList.remove('login-pg');
   if (!token) return login();
+  if (esStock() && view !== 'stockhist') view = 'stock';   // el usuario de stock no ve otra cosa
+  if ((view === 'stock' || view === 'stockhist') && !esAdmin() && !esStock()) view = 'menu';
   if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc','hoja','manual','cambios','proveedores','proveedor','pedprov','pedhist','seguimiento','avisos'].includes(view)) view = 'menu';
   if (view !== 'pedido') document.body.classList.remove('bloq-ped');
   if (view !== 'hoja') hojaEd = null;
   if (view !== 'pedidos' && view !== 'pedido' && view !== 'hoja') { fdiaInit = false; selMode = false; selPeds = new Set(); }   // al volver a Pedidos desde otra sección arranca en el día de hoy
   const tab = TABS.includes(view), desk = escritorio();
-  document.body.classList.toggle('hay-tabs', desk || tab);
-  $('#app').innerHTML = `<header>${!tab ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1>${campana()}<span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${tab || desk ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ...(desk && esAdmin() ? [['seguimiento', '📈', 'Seguimiento']] : []), ['precios', '📦', 'Listado'], ...(desk ? [['promos', '🏷️', 'Promociones'], ['novedades', '📣', 'Novedades' + (nNuevas() ? ' (' + nNuevas() + ')' : '')]] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk && esAdmin() ? [['proveedores', '🏭', 'Proveedores']] : []), ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v || (v === 'proveedores' && (view === 'proveedor' || view === 'pedprov' || view === 'pedhist')) ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo">${esAdmin() ? `<button data-go="manual" class="${view === 'manual' ? 'on' : ''}"><span>📖</span>Manual de uso</button>` : ''}<button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
+  document.body.classList.toggle('hay-tabs', !esStock() && (desk || tab));
+  $('#app').innerHTML = `<header>${!tab && (!esStock() || view === 'stockhist') ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1>${esStock() ? '<button class="campana" data-act="salir" aria-label="Cerrar sesión" title="Cerrar sesión">🚪</button>' : campana()}<span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : esStock() ? 'Stock' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${!esStock() && (tab || desk) ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ...(desk && esAdmin() ? [['seguimiento', '📈', 'Seguimiento']] : []), ['precios', '📦', 'Listado'], ...(desk && esAdmin() ? [['stock', '🗃️', 'Stock']] : []), ...(desk ? [['promos', '🏷️', 'Promociones'], ['novedades', '📣', 'Novedades' + (nNuevas() ? ' (' + nNuevas() + ')' : '')]] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk && esAdmin() ? [['proveedores', '🏭', 'Proveedores']] : []), ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v || (v === 'proveedores' && (view === 'proveedor' || view === 'pedprov' || view === 'pedhist')) ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo">${esAdmin() ? `<button data-go="manual" class="${view === 'manual' ? 'on' : ''}"><span>📖</span>Manual de uso</button>` : ''}<button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
   estado();
-  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, manual: vManual, cambios: vCambios, novedades: vNovedades, hoja: vHoja, proveedores: vProveedores, proveedor: vProveedores, pedprov: vPedProv, pedhist: vPedHist, seguimiento: vSeguimiento, avisos: vAvisos })[view]();
+  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, manual: vManual, cambios: vCambios, novedades: vNovedades, hoja: vHoja, proveedores: vProveedores, proveedor: vProveedores, pedprov: vPedProv, pedhist: vPedHist, seguimiento: vSeguimiento, avisos: vAvisos, stock: vStock, stockhist: vStockHist })[view]();
 }
 function login() {
   document.body.classList.remove('hay-tabs'); document.body.classList.add('login-pg');
@@ -670,6 +676,77 @@ async function pintarPush() {
 
 /* ---------- novedades: las escribe el administrador y las ven los vendedores ---------- */
 const nNuevas = () => esAdmin() ? 0 : novedades.filter(n => !n.leida).length;
+/* stock: se cuentan todos los productos (también los faltantes) y cada control queda guardado. Lo usan el administrador y el usuario de stock */
+let stockQ = '';
+const claveStock = () => 'pd_stock_' + (user ? user.id : '');
+const leerStockBorr = () => { try { return JSON.parse(localStorage.getItem(claveStock()) || '{}') || {}; } catch { return {}; } };
+const guardarStockBorr = o => { try { Object.keys(o).length ? localStorage.setItem(claveStock(), JSON.stringify(o)) : localStorage.removeItem(claveStock()); } catch {} };
+const fechaControl = iso => { const f = new Date(iso), p = n => String(n).padStart(2, '0'); return { txt: `${p(f.getDate())}/${p(f.getMonth() + 1)}/${f.getFullYear()} ${p(f.getHours())}:${p(f.getMinutes())}`, arch: `${p(f.getDate())}.${p(f.getMonth() + 1)}.${f.getFullYear()} ${p(f.getHours())}.${p(f.getMinutes())}` }; };
+/* planilla de un control de stock, con la fecha en el nombre del archivo */
+function planillaControl(c) {
+  if (!window.XLSX) return toast('No cargó el generador de Excel (revisá la conexión)');
+  const f = fechaControl(c.en);
+  const filas = [['Control de stock'], ['Fecha', f.txt], ['Responsable', c.responsable || c.por || ''], [], ['Código', 'Descripción', 'Stock'], ...c.items.map(([, cod, nom, cant]) => [cod, nom, cant])];
+  const ws = XLSX.utils.aoa_to_sheet(filas); ws['!cols'] = [{ wch: 16 }, { wch: 60 }, { wch: 10 }];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Control');
+  XLSX.writeFile(wb, ('CONTROL DE STOCK ' + f.arch).toUpperCase() + '.xlsx');
+}
+function pedirResponsable() {   // el control lleva el nombre de quien lo hizo
+  return new Promise(res => {
+    const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px"><b>Guardar control de stock</b></p><p class="mut" style="margin:0 0 10px">Se guarda con la fecha de hoy y se arma la planilla.</p><label>Nombre del responsable</label><input id="skR" autocomplete="off" value="${esc((() => { try { return localStorage.getItem('pd_stock_resp') || ''; } catch { return ''; } })())}" style="width:100%;font-size:18px"><div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="0" style="flex:1">Cancelar</button><button class="btn" data-r="1" style="flex:1">Guardar</button></div>`);
+    const fin = v => { el.remove(); res(v); };
+    el.addEventListener('click', e => { const b = e.target.closest('[data-r]'); if (e.target === el || (b && b.dataset.r === '0')) return fin(null); if (!b) return; const v = $('#skR').value.trim(); if (!v) return toast('Escribí el nombre del responsable'); try { localStorage.setItem('pd_stock_resp', v); } catch {} fin(v); });
+    $('#skR').onkeydown = e => { if (e.key === 'Enter') el.querySelector('[data-r="1"]').click(); };
+    $('#skR').focus(); $('#skR').select();
+  });
+}
+function vStock() {
+  const lista = () => productos.filter(p => !p.borrado);
+  let borr = leerStockBorr();   // lo que se fue escribiendo y todavía no se guardó como control
+  $('#main').innerHTML = `<input id="skQ" type="search" placeholder="Buscar producto" value="${esc(stockQ)}" style="width:100%"><div id="skL" style="margin-top:8px"></div><div id="skBar"></div>`;
+  const valor = p => borr[p.id] !== undefined ? borr[p.id] : (p.existencia === null || p.existencia === undefined ? '' : String(p.existencia));
+  const nCargados = () => lista().filter(p => String(valor(p)).trim() !== '').length;
+  const barra = () => { const n = nCargados(); $('#skBar').innerHTML = `<div style="height:90px"></div><div class="bar sel"><div class="tot" style="font-size:15px;white-space:nowrap"><b>${n}</b> de ${lista().length}<br>con stock</div><button class="btn sec" data-skact="hist" style="padding:12px 12px">🗂 Controles</button><button class="btn" data-skact="guardar" ${n ? '' : 'disabled'} style="padding:12px 16px">Guardar control</button></div>`; };
+  const pintar = () => {
+    const t = norm(stockQ).split(/\s+/).filter(Boolean), l = lista().filter(p => t.every(w => norm(p.codigo + ' ' + p.nombre).includes(w)));
+    $('#skL').innerHTML = l.length ? `<div class="card skl" style="padding:2px 10px"><div class="pvf pvh" style="grid-template-columns:minmax(70px,110px) 1fr 80px"><span>Código</span><span>Descripción</span><span class="pvs" style="text-align:center">Stock</span></div>${l.map(p => `<div class="pvf" style="grid-template-columns:minmax(70px,110px) 1fr 80px;cursor:default"><span class="pvc">${esc(p.codigo)}</span><span class="pvn">${esc(p.nombre)}</span><input class="ppc skin" data-skid="${p.id}" inputmode="numeric" autocomplete="off" value="${esc(valor(p))}" placeholder="—"></div>`).join('')}</div>` : vacio('Sin resultados');
+    barra();
+  };
+  $('#skQ').oninput = e => { stockQ = e.target.value; pintar(); };
+  $('#skL').oninput = e => { const i = e.target.closest('.skin'); if (!i) return; const v = i.value.replace(/[^\d]/g, ''); if (v !== i.value) i.value = v; borr[i.dataset.skid] = v; guardarStockBorr(borr); barra(); };
+  $('#skL').onfocusin = e => { if (e.target.classList.contains('skin')) setTimeout(() => e.target.select(), 0); };   // al tocar un campo se selecciona el número: lo que se escribe lo reemplaza
+  $('#skL').onkeydown = e => {   // Enter o flecha abajo pasan al siguiente producto; flecha arriba, al anterior
+    const i = e.target.closest('.skin'); if (!i || !['Enter', 'ArrowDown', 'ArrowUp'].includes(e.key)) return;
+    e.preventDefault(); const l = [...$('#skL').querySelectorAll('.skin')], n = l[l.indexOf(i) + (e.key === 'ArrowUp' ? -1 : 1)];
+    if (n) { n.focus(); n.select(); } else if (e.key === 'Enter') i.blur();
+  };
+  $('#skBar').onclick = async e => {
+    const b = e.target.closest('[data-skact]'); if (!b || b.disabled) return;
+    if (b.dataset.skact === 'hist') return go('stockhist');
+    const items = lista().filter(p => String(valor(p)).trim() !== '').map(p => ({ pid: p.id, existencia: valor(p) }));
+    const responsable = await pedirResponsable(); if (!responsable) return;
+    try {
+      const r = await api('POST', 'p/controles', { items, responsable });
+      try { planillaControl(await api('GET', 'p/controles/' + r.id)); } catch {}   // la planilla del control, con la fecha en el nombre
+      items.forEach(it => { const p = productos.find(x => x.id === it.pid); if (p) p.existencia = Number(it.existencia); });
+      borr = {}; guardarStockBorr(borr); pintar(); toast(`Control guardado ✓ (${r.n} productos) · planilla descargada`);
+    } catch (er) { toast(er.message); }
+  };
+  pintar();
+}
+function vStockHist() {
+  $('#main').innerHTML = '<div id="skH"></div>';
+  const pintar = l => { $('#skH').innerHTML = l.length ? `<div class="card" style="padding:2px 12px">${l.map(c => `<div class="row" data-ctl="${c.id}" style="cursor:pointer"><div class="nm"><b>Control del ${esc(fechaControl(c.en).txt)}</b><span class="mut">Responsable: ${esc(c.responsable || c.por || '')}</span></div><div style="flex:none;text-align:right"><b>${c.n}</b><br><span class="mut" style="font-size:13px">productos</span></div><span class="mut">›</span></div>`).join('')}</div>` : vacio('Todavía no hay controles guardados'); };
+  api('GET', 'p/controles').then(r => pintar(r.controles)).catch(e => toast(e.message));
+  $('#skH').onclick = async e => {
+    const r = e.target.closest('[data-ctl]'); if (!r) return;
+    try {
+      const c = await api('GET', 'p/controles/' + r.dataset.ctl);
+      const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px;flex:none"><b>Control del ${esc(fechaControl(c.en).txt)}</b></p><p class="mut" style="margin:0 0 8px;flex:none">Responsable: ${esc(c.responsable || c.por || '')} · ${c.items.length} productos</p><div class="card skl" style="padding:2px 12px;margin:0;flex:1 1 auto;min-height:0;overflow:auto"><div class="pvf pvh" style="grid-template-columns:minmax(70px,110px) 1fr 60px"><span>Código</span><span>Descripción</span><span class="pvs">Stock</span></div>${c.items.map(([, cod, nom, cant]) => `<div class="pvf" style="grid-template-columns:minmax(70px,110px) 1fr 60px;cursor:default"><span class="pvc">${esc(cod)}</span><span class="pvn">${esc(nom)}</span><span class="pvs">${cant}</span></div>`).join('')}</div><div style="display:flex;gap:10px;margin-top:12px;flex:none"><button class="btn" data-r="x" style="flex:2">📊 Descargar planilla</button><button class="btn sec" data-r="0" style="flex:1">Volver</button></div>`, true);
+      el.addEventListener('click', ev => { const b = ev.target.closest('[data-r]'); if (b && b.dataset.r === 'x') return planillaControl(c); if (ev.target === el || b) el.remove(); });
+    } catch (er) { toast(er.message); }
+  };
+}
 /* notificaciones del administrador: notas nuevas de los vendedores y pedidos que modificaron después de cargados */
 function vAvisos() {
   const notas = pedidos.filter(p => p.notaNueva), mods = pedidos.filter(hayAgregados);
@@ -723,7 +800,7 @@ function vConfig() {
   const a = esAdmin(), fila = (v, i, t) => `<div class="row" data-go="${v}" style="cursor:pointer"><span style="font-size:22px">${i}</span><div class="nm"><b>${t}</b></div><span class="mut">›</span></div>`;
   $('#main').innerHTML = `<div class="card"><b>${esc(user.nombre)}</b><br><span class="mut">usuario: ${esc(user.usuario)} · ${a ? 'Administrador' : 'Vendedor'}</span></div>
     ${a ? `<div class="card"><h2>Mis datos</h2><form id="fp"><label>Nombre</label><input name="nombre" value="${esc(user.nombre)}" required><label>Usuario (para ingresar)</label><input name="usuario" value="${esc(user.usuario)}" autocapitalize="none" required><div style="height:14px"></div><button class="btn">Guardar mis datos</button></form></div>` : ''}
-    ${a ? `<div class="card">${fila('productos', '🗂️', `Productos (${productos.length})`)}${fila('importar', '📥', 'Importar / exportar Excel')}${fila('proveedores', '🏭', 'Proveedores')}${fila('seguimiento', '📈', 'Seguimiento de clientes')}${fila('usuarios', '👥', 'Usuarios')}${fila('manual', '📖', 'Manual de uso')}${fila('cambios', '📝', 'Registro de cambios en pedidos')}${fila('promos', '🏷️', 'Promociones')}</div>` : ''}
+    ${a ? `<div class="card">${fila('productos', '🗂️', `Productos (${productos.length})`)}${fila('importar', '📥', 'Importar / exportar Excel')}${fila('proveedores', '🏭', 'Proveedores')}${fila('seguimiento', '📈', 'Seguimiento de clientes')}${fila('stock', '🗃️', 'Stock')}${fila('usuarios', '👥', 'Usuarios')}${fila('manual', '📖', 'Manual de uso')}${fila('cambios', '📝', 'Registro de cambios en pedidos')}${fila('promos', '🏷️', 'Promociones')}</div>` : ''}
     ${a ? `<div class="card"><h2>Copia de seguridad</h2><p class="mut" style="margin:0 0 8px">Se guarda una copia automática por día (las últimas 14) dentro de la base de datos. Además podés bajar una copia a tu computadora o el detalle de los pedidos en Excel.</p>
       <button class="btn" data-act="respaldo">💾 Descargar copia completa</button><button class="btn sec" data-act="pedidosExcel" style="margin-top:8px">📊 Descargar pedidos en Excel</button><button class="btn sec" data-act="abrirRestaurar" style="margin-top:8px">♻️ Restaurar una copia</button></div>` : ''}
     <div class="card"><h2>Notificaciones</h2><div id="pushBox"></div></div>
@@ -1570,7 +1647,7 @@ async function generarPdf(lista, nombreProv = '') {
 /* ---------- usuarios (admin) ---------- */
 let editU = null;
 function vUsuarios() {
-  $('#main').innerHTML = `<button class="btn" data-act="nuevoUsuario" style="margin-bottom:10px">+ Nuevo usuario</button><div class="card cols2">${usuarios.map(u => `<div class="row ${u.activo ? '' : 'off'}" data-edituser="${u.id}"><div class="nm"><b>${u.rol === 'vendedor' ? vendCol(u.nombre) : esc(u.nombre)}</b><span class="mut">${esc(u.usuario)} · ${u.rol === 'admin' ? 'Administrador' : 'Vendedor'}${u.activo ? '' : ' · desactivado'}</span></div><span class="tag">ID ${u.id}</span><span class="mut">›</span></div>`).join('')}</div>`;
+  $('#main').innerHTML = `<button class="btn" data-act="nuevoUsuario" style="margin-bottom:10px">+ Nuevo usuario</button><div class="card cols2">${usuarios.map(u => `<div class="row ${u.activo ? '' : 'off'}" data-edituser="${u.id}"><div class="nm"><b>${u.rol === 'vendedor' ? vendCol(u.nombre) : esc(u.nombre)}</b><span class="mut">${esc(u.usuario)} · ${u.rol === 'admin' ? 'Administrador' : u.rol === 'stock' ? 'Solo stock' : 'Vendedor'}${u.activo ? '' : ' · desactivado'}</span></div><span class="tag">ID ${u.id}</span><span class="mut">›</span></div>`).join('')}</div>`;
 }
 function vUsuario() {
   const u = editU, nuevo = !u.id;
@@ -1579,7 +1656,7 @@ function vUsuario() {
     <label>Nombre</label><input name="nombre" value="${esc(u.nombre)}" required>
     <label>Usuario (para ingresar)</label><input name="usuario" value="${esc(u.usuario)}" autocapitalize="none" required>
     <label>${nuevo ? 'Contraseña' : 'Nueva contraseña (dejar vacío para no cambiarla)'}</label><input name="password" type="text" autocomplete="off" ${nuevo ? 'required' : ''}>
-    <label>Rol</label><select name="rol" style="width:100%;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="vendedor" ${u.rol === 'vendedor' ? 'selected' : ''}>Vendedor</option><option value="admin" ${u.rol === 'admin' ? 'selected' : ''}>Administrador</option></select>
+    <label>Rol</label><select name="rol" style="width:100%;padding:10px;min-height:46px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx)"><option value="vendedor" ${u.rol === 'vendedor' ? 'selected' : ''}>Vendedor</option><option value="admin" ${u.rol === 'admin' ? 'selected' : ''}>Administrador</option><option value="stock" ${u.rol === 'stock' ? 'selected' : ''}>Solo stock</option></select>
     <div class="row" style="border:0"><div class="nm"><b>Activo</b><span class="mut">Si se desactiva no puede ingresar</span></div><label class="sw" style="margin:0"><input type="checkbox" name="activo" ${u.activo ? 'checked' : ''}><i></i></label></div>
     <div style="height:14px"></div><button class="btn">Guardar</button>
     ${nuevo ? '' : '<div style="height:10px"></div><button type="button" class="btn bad" data-act="borrarUsuario">Eliminar usuario</button>'}</form>`;
