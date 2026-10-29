@@ -803,17 +803,23 @@ function vStockNuevo() {
     $('#skL').innerHTML = l.length ? `<div class="card skl" style="padding:2px 10px"><div class="pvf pvh skg"><span>Cód.</span><span>Descripción</span><span class="pvs" style="text-align:center">Stock</span></div>${l.map(p => `<div class="pvf skg" style="cursor:default"><span class="pvc">${esc(p.codigo)}</span><span class="pvn">${esc(p.nombre)}${p.barras ? '' : `<br><button class="btn sec skb" data-skbar="${p.id}" title="Asociar código de barras" aria-label="Asociar código de barras">▮▯ código de barras</button>`}</span><input class="ppc skin" data-skid="${p.id}" inputmode="numeric" autocomplete="off" value="${esc(valor(p))}" placeholder="—"></div>`).join('')}</div>` : vacio('Sin resultados');
     barra();
   };
-  const irA = p => {   // un código escaneado lleva al campo de stock de ese producto
-    if (skProv !== '' && !esDeProv(p, PROV_PDF[+skProv][1])) { skProv = ''; $('#skP').value = ''; }
-    stockQ = ''; $('#skQ').value = ''; pintar();
-    const i = document.querySelector(`.skin[data-skid="${p.id}"]`);
-    if (i) { i.scrollIntoView({ block: 'center' }); i.focus(); const f = i.closest('.pvf'); if (f) { f.style.backgroundImage = 'linear-gradient(rgba(26,136,112,.2),rgba(26,136,112,.2))'; setTimeout(() => { f.style.backgroundImage = ''; }, 1500); } }
-  };
   const porCodigo = cod => { cod = sinCeros(String(cod).trim()); return cod ? productos.find(x => !x.borrado && x.barras && sinCeros(x.barras) === cod) : null; };
-  const leido = cod => { const p = porCodigo(cod); if (p) irA(p); else toast('Ese código no está asociado a ningún producto. Buscá el producto y tocá «código de barras».'); };
+  const pedirCant = (p, seguir) => {   // ventanita con la descripción para poner la cantidad del producto escaneado
+    const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px"><b>${esc(p.nombre)}</b></p><p class="mut" style="margin:0 0 12px">${esc(p.codigo)}</p><label>Cantidad</label><input id="skC" inputmode="numeric" autocomplete="off" value="${esc(valor(p))}" style="width:100%;font-size:28px;font-weight:700;text-align:center"><div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="0" style="flex:1">Cancelar</button><button class="btn" data-r="1" style="flex:1">Aceptar</button></div>`);
+    const inp = $('#skC'), ok = () => { const v = inp.value.trim(); if (v === '') return toast('Poné la cantidad'); borr[p.id] = v; guardarStockBorr(borr); el.remove(); pintar(); if (seguir) seguir(); };
+    inp.oninput = () => { const v = inp.value.replace(/[^\d]/g, ''); if (v !== inp.value) inp.value = v; };
+    inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); ok(); } };
+    el.addEventListener('click', e => { const b = e.target.closest('[data-r]'); if (e.target === el || (b && b.dataset.r === '0')) return el.remove(); if (b) ok(); });
+    inp.focus(); inp.select();
+  };
+  const escanear = () => escanearCamara(cod => {   // tras cargar la cantidad vuelve a abrir la cámara para el siguiente producto
+    const p = porCodigo(cod);
+    if (p) pedirCant(p, escanear); else { toast('Ese código no está asociado a ningún producto. Buscá el producto y tocá «código de barras».'); escanear(); }
+  });
+  const leido = cod => { const p = porCodigo(cod); if (p) pedirCant(p); else toast('Ese código no está asociado a ningún producto. Buscá el producto y tocá «código de barras».'); };   // lector USB
   $('#skQ').oninput = e => { stockQ = e.target.value; pintar(); };
-  $('#skQ').onkeydown = e => { if (e.key !== 'Enter') return; const p = porCodigo(e.target.value); if (p) { e.preventDefault(); irA(p); } else if (/^\d{8,}$/.test(e.target.value.trim())) { e.preventDefault(); leido(e.target.value); } };   // el lector escribe el número y manda Enter
-  if ($('#skCam')) $('#skCam').onclick = () => escanearCamara(leido);
+  $('#skQ').onkeydown = e => { if (e.key !== 'Enter') return; const p = porCodigo(e.target.value); if (p) { e.preventDefault(); pedirCant(p); } else if (/^\d{8,}$/.test(e.target.value.trim())) { e.preventDefault(); leido(e.target.value); } };   // el lector escribe el número y manda Enter
+  if ($('#skCam')) $('#skCam').onclick = escanear;
   $('#skL').addEventListener('click', e => { const b = e.target.closest('[data-skbar]'); if (!b) return; const p = productos.find(x => x.id === +b.dataset.skbar); if (p) asociarBarras(p, pintar); });
   $('#skP').onchange = e => { skProv = e.target.value; pintar(); };
   $('#skL').oninput = e => { const i = e.target.closest('.skin'); if (!i) return; const v = i.value.replace(/[^\d]/g, ''); if (v !== i.value) i.value = v; borr[i.dataset.skid] = v; guardarStockBorr(borr); barra(); };
