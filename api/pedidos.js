@@ -610,6 +610,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     if (esStock && rec === 'productos' && req.method !== 'GET') throw { code: 403, msg: 'Este usuario solo puede ver el stock' };
     if (rec === 'controles') {   // controles de stock: cada vez que se guarda, queda registrado (administrador y usuario de stock)
       if (!admin && !esStock) throw { code: 403, msg: 'No autorizado' };
+      if (esStock && req.method !== 'POST') throw { code: 403, msg: 'El usuario de stock solo puede cargar controles nuevos' };   // el historial lo ve el administrador
       if (!id && req.method === 'GET') return send(res, 200, { controles: [...s.controles].reverse().map(c => ({ id: c.id, en: c.en, por: c.por, responsable: c.responsable || '', n: c.items.length })) });
       if (id && req.method === 'GET') { const c = s.controles.find(x => x.id === id); if (!c) throw { code: 404, msg: 'No existe' }; return send(res, 200, c); }
       if (!id && req.method === 'POST') {
