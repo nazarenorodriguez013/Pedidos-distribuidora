@@ -688,10 +688,10 @@ const fechaControl = iso => { const f = new Date(iso), p = n => String(n).padSta
 function planillaControl(c) {
   if (!window.XLSX) return toast('No cargó el generador de Excel (revisá la conexión)');
   const f = fechaControl(c.en);
-  const filas = [['Control de stock'], ['Fecha', f.txt], ['Responsable', c.responsable || c.por || ''], [], ['Código', 'Descripción', 'Stock'], ...c.items.map(([, cod, nom, cant]) => [cod, nom, cant])];
+  const filas = [['Control de stock'], ['Fecha', f.txt], ['Responsable', c.responsable || c.por || ''], ...(c.proveedor ? [['Proveedor', c.proveedor]] : []), [], ['Código', 'Descripción', 'Stock'], ...c.items.map(([, cod, nom, cant]) => [cod, nom, cant])];
   const ws = XLSX.utils.aoa_to_sheet(filas); ws['!cols'] = [{ wch: 16 }, { wch: 60 }, { wch: 10 }];
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Control');
-  XLSX.writeFile(wb, ('CONTROL DE STOCK ' + f.arch).toUpperCase() + '.xlsx');
+  XLSX.writeFile(wb, ('CONTROL DE STOCK ' + (c.proveedor ? c.proveedor + ' ' : '') + f.arch).toUpperCase() + '.xlsx');
 }
 function pedirResponsable() {   // el control lleva el nombre de quien lo hizo
   return new Promise(res => {
@@ -702,10 +702,11 @@ function pedirResponsable() {   // el control lleva el nombre de quien lo hizo
     $('#skR').focus(); $('#skR').select();
   });
 }
+let skProv = '';   // proveedor que se está controlando ('' = todos)
 function vStockNuevo() {
-  const lista = () => productos.filter(p => !p.borrado);
+  const lista = () => productos.filter(p => !p.borrado && (skProv === '' || esDeProv(p, PROV_PDF[+skProv][1])));
   let borr = leerStockBorr();   // lo que se fue escribiendo y todavía no se guardó como control
-  $('#main').innerHTML = `<input id="skQ" type="search" placeholder="Buscar producto" value="${esc(stockQ)}" style="width:100%"><div id="skL" style="margin-top:8px"></div><div id="skBar"></div>`;
+  $('#main').innerHTML = `<select id="skP" style="width:100%;min-height:44px;margin-bottom:8px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);padding:0 8px"><option value="">Todos los artículos</option>${[0, 3, 1, 2].map(i => `<option value="${i}" ${String(i) === skProv ? 'selected' : ''}>${PROV_PDF[i][0]}</option>`).join('')}</select><input id="skQ" type="search" placeholder="Buscar producto" value="${esc(stockQ)}" style="width:100%"><div id="skL" style="margin-top:8px"></div><div id="skBar"></div>`;
   const valor = p => borr[p.id] !== undefined ? borr[p.id] : (p.existencia === null || p.existencia === undefined ? '' : String(p.existencia));
   const nCargados = () => lista().filter(p => String(valor(p)).trim() !== '').length;
   const barra = () => { const n = nCargados(); $('#skBar').innerHTML = `<div style="height:90px"></div><div class="bar sel"><div class="tot" style="font-size:15px;white-space:nowrap"><b>${n}</b> de ${lista().length}<br>con stock</div><button class="btn" data-skact="guardar" ${n ? '' : 'disabled'} style="padding:12px 22px">Guardar control</button></div>`; };
@@ -715,6 +716,7 @@ function vStockNuevo() {
     barra();
   };
   $('#skQ').oninput = e => { stockQ = e.target.value; pintar(); };
+  $('#skP').onchange = e => { skProv = e.target.value; pintar(); };
   $('#skL').oninput = e => { const i = e.target.closest('.skin'); if (!i) return; const v = i.value.replace(/[^\d]/g, ''); if (v !== i.value) i.value = v; borr[i.dataset.skid] = v; guardarStockBorr(borr); barra(); };
   $('#skL').onfocusin = e => { if (e.target.classList.contains('skin')) setTimeout(() => e.target.select(), 0); };   // al tocar un campo se selecciona el número: lo que se escribe lo reemplaza
   $('#skL').onkeydown = e => {   // Enter o flecha abajo pasan al siguiente producto; flecha arriba, al anterior
@@ -724,13 +726,13 @@ function vStockNuevo() {
   };
   $('#skBar').onclick = async e => {
     const b = e.target.closest('[data-skact]'); if (!b || b.disabled) return;
-    const items = lista().filter(p => String(valor(p)).trim() !== '').map(p => ({ pid: p.id, existencia: valor(p) }));
+    const items = lista().filter(p => String(valor(p)).trim() !== '').map(p => ({ pid: p.id, existencia: valor(p) })), provNom = skProv === '' ? '' : PROV_PDF[+skProv][0];
     const responsable = await pedirResponsable(); if (!responsable) return;
     try {
-      const r = await api('POST', 'p/controles', { items, responsable });
-      try { planillaControl({ en: r.en, responsable, items: items.map(it => { const p = productos.find(x => x.id === it.pid) || {}; return [it.pid, p.codigo, p.nombre, Number(it.existencia)]; }) }); } catch {}   // la planilla del control, con la fecha en el nombre
+      const r = await api('POST', 'p/controles', { items, responsable, proveedor: provNom });
+      try { planillaControl({ en: r.en, responsable, proveedor: provNom, items: items.map(it => { const p = productos.find(x => x.id === it.pid) || {}; return [it.pid, p.codigo, p.nombre, Number(it.existencia)]; }) }); } catch {}   // la planilla del control, con la fecha en el nombre
       items.forEach(it => { const p = productos.find(x => x.id === it.pid); if (p) p.existencia = Number(it.existencia); });
-      borr = {}; guardarStockBorr(borr); toast(`Control guardado ✓ (${r.n} productos) · planilla descargada`); volverA('stock');
+      items.forEach(it => delete borr[it.pid]); guardarStockBorr(borr); toast(`Control guardado ✓ (${r.n} productos) · planilla descargada`); volverA('stock');
     } catch (er) { toast(er.message); }
   };
   pintar();
@@ -738,14 +740,14 @@ function vStockNuevo() {
 function vStock() {
   $('#main').innerHTML = `<button class="btn" data-skact="nuevo" style="margin-bottom:10px;min-height:${esStock() ? 64 : 48}px">➕ Nuevo control</button>${esStock() ? '' : '<div id="skH"></div>'}`;
   if (esStock()) { $('#main').onclick = e => { if (e.target.closest('[data-skact="nuevo"]')) go('stocknuevo'); }; return; }   // el usuario de stock solo ve el botón; el historial lo ve el administrador
-  const pintar = l => { $('#skH').innerHTML = l.length ? `<div class="card" style="padding:2px 12px">${l.map(c => `<div class="row" data-ctl="${c.id}" style="cursor:pointer"><div class="nm"><b>Control del ${esc(fechaControl(c.en).txt)}</b><span class="mut">Responsable: ${esc(c.responsable || c.por || '')}</span></div><div style="flex:none;text-align:right"><b>${c.n}</b><br><span class="mut" style="font-size:13px">productos</span></div><span class="mut">›</span></div>`).join('')}</div>` : vacio('Todavía no hay controles guardados'); };
+  const pintar = l => { $('#skH').innerHTML = l.length ? `<div class="card" style="padding:2px 12px">${l.map(c => `<div class="row" data-ctl="${c.id}" style="cursor:pointer"><div class="nm"><b>Control del ${esc(fechaControl(c.en).txt)}</b><span class="mut">Responsable: ${esc(c.responsable || c.por || '')}${c.proveedor ? ' · ' + esc(c.proveedor) : ''}</span></div><div style="flex:none;text-align:right"><b>${c.n}</b><br><span class="mut" style="font-size:13px">productos</span></div><span class="mut">›</span></div>`).join('')}</div>` : vacio('Todavía no hay controles guardados'); };
   api('GET', 'p/controles').then(r => pintar(r.controles)).catch(e => toast(e.message));
   $('#main').onclick = async e => {
     if (e.target.closest('[data-skact="nuevo"]')) return go('stocknuevo');
     const r = e.target.closest('[data-ctl]'); if (!r) return;
     try {
       const c = await api('GET', 'p/controles/' + r.dataset.ctl);
-      const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px;flex:none"><b>Control del ${esc(fechaControl(c.en).txt)}</b></p><p class="mut" style="margin:0 0 8px;flex:none">Responsable: ${esc(c.responsable || c.por || '')} · ${c.items.length} productos</p><div class="card skl" style="padding:2px 12px;margin:0;flex:1 1 auto;min-height:0;overflow:auto"><div class="pvf pvh skg"><span>Cód.</span><span>Descripción</span><span class="pvs">Stock</span></div>${c.items.map(([, cod, nom, cant]) => `<div class="pvf skg" style="cursor:default"><span class="pvc">${esc(cod)}</span><span class="pvn">${esc(nom)}</span><span class="pvs">${cant}</span></div>`).join('')}</div><div style="display:flex;gap:10px;margin-top:12px;flex:none"><button class="btn" data-r="x" style="flex:2">📊 Descargar planilla</button><button class="btn sec" data-r="0" style="flex:1">Volver</button></div>`, true);
+      const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px;flex:none"><b>Control del ${esc(fechaControl(c.en).txt)}</b></p><p class="mut" style="margin:0 0 8px;flex:none">Responsable: ${esc(c.responsable || c.por || '')}${c.proveedor ? ' · ' + esc(c.proveedor) : ''} · ${c.items.length} productos</p><div class="card skl" style="padding:2px 12px;margin:0;flex:1 1 auto;min-height:0;overflow:auto"><div class="pvf pvh skg"><span>Cód.</span><span>Descripción</span><span class="pvs">Stock</span></div>${c.items.map(([, cod, nom, cant]) => `<div class="pvf skg" style="cursor:default"><span class="pvc">${esc(cod)}</span><span class="pvn">${esc(nom)}</span><span class="pvs">${cant}</span></div>`).join('')}</div><div style="display:flex;gap:10px;margin-top:12px;flex:none"><button class="btn" data-r="x" style="flex:2">📊 Descargar planilla</button><button class="btn sec" data-r="0" style="flex:1">Volver</button></div>`, true);
       el.addEventListener('click', ev => { const b = ev.target.closest('[data-r]'); if (b && b.dataset.r === 'x') return planillaControl(c); if (ev.target === el || b) el.remove(); });
     } catch (er) { toast(er.message); }
   };

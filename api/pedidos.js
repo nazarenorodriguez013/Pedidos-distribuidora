@@ -611,7 +611,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     if (rec === 'controles') {   // controles de stock: cada vez que se guarda, queda registrado (administrador y usuario de stock)
       if (!admin && !esStock) throw { code: 403, msg: 'No autorizado' };
       if (esStock && req.method !== 'POST') throw { code: 403, msg: 'El usuario de stock solo puede cargar controles nuevos' };   // el historial lo ve el administrador
-      if (!id && req.method === 'GET') return send(res, 200, { controles: [...s.controles].reverse().map(c => ({ id: c.id, en: c.en, por: c.por, responsable: c.responsable || '', n: c.items.length })) });
+      if (!id && req.method === 'GET') return send(res, 200, { controles: [...s.controles].reverse().map(c => ({ id: c.id, en: c.en, por: c.por, responsable: c.responsable || '', proveedor: c.proveedor || '', n: c.items.length })) });
       if (id && req.method === 'GET') { const c = s.controles.find(x => x.id === id); if (!c) throw { code: 404, msg: 'No existe' }; return send(res, 200, c); }
       if (!id && req.method === 'POST') {
         const b = await body(req, 5e6), ahora = new Date().toISOString(), items = [];
@@ -625,7 +625,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         if (!responsable) throw { code: 400, msg: 'Poné el nombre del responsable del control' };
         if (!items.length) throw { code: 400, msg: 'No hay cantidades para guardar' };
         for (const [pid, , , cant] of items) { const p = s.productos.find(x => x.id === pid); p.existencia = cant; p.existenciaEn = ahora; }
-        const c = { id: s.seq.s++, en: ahora, por: yo.nombre, responsable, items };
+        const c = { id: s.seq.s++, en: ahora, por: yo.nombre, responsable, proveedor: String(b.proveedor || '').trim().slice(0, 60), items };
         s.controles.push(c); if (s.controles.length > 300) s.controles.splice(0, s.controles.length - 300);
         await save(pool);
         return send(res, 200, { id: c.id, en: c.en, n: items.length });
@@ -938,7 +938,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     const visible = x => rec !== 'pedidos' || admin || x.vendedorId === yo.id;
     if (!id && req.method === 'GET') {
       const l = list.filter(visible);
-      if (rec === 'productos' && esStock) return send(res, 200, { productos: l.map(p => ({ id: p.id, codigo: p.codigo, nombre: p.nombre, existencia: p.existencia ?? null, existenciaEn: p.existenciaEn || null })) });   // el usuario de stock no ve precios ni nada más
+      if (rec === 'productos' && esStock) return send(res, 200, { productos: l.map(p => ({ id: p.id, codigo: p.codigo, nombre: p.nombre, proveedor: p.proveedor || '', existencia: p.existencia ?? null, existenciaEn: p.existenciaEn || null })) });   // el usuario de stock no ve precios ni nada más
       return send(res, 200, { [rec]: rec === 'pedidos' ? [...l].reverse() : rec === 'productos' && !admin ? l.map(({ existencia, existenciaEn, existenciaPor, ...p }) => p) : l });   // el proveedor del producto viaja con el producto (no se muestra: solo filtra el PDF); el stock lo ven el administrador y el usuario de stock
     }
     if (rec === 'productos' && req.method !== 'GET') soloAdmin();
