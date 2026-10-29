@@ -747,7 +747,7 @@ function escanearCamara(alLeer) {
 }
 function asociarBarras(p, alAsociar) {   // asocia un código de barras al producto (una sola vez): abre la cámara, muestra lo leído y pide confirmar
   const confirmarCod = cod => {
-    const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px"><b>¿Es correcto?</b></p><p class="mut" style="margin:0 0 10px">${esc(p.nombre)}</p><p style="font-size:26px;font-weight:700;text-align:center;letter-spacing:1px;margin:10px 0 16px">${esc(cod)}</p><div style="display:flex;gap:10px"><button class="btn sec" data-r="0" style="flex:1">${hayCamara() ? 'Escanear de nuevo' : 'Corregir'}</button><button class="btn" data-r="1" style="flex:1">Confirmar</button></div>`);
+    const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px"><b>¿Es correcto?</b></p><p class="mut" style="margin:0 0 10px">${esc(p.nombre)}${p.barras ? `<br>Antes: ${esc(p.barras)}` : ''}</p><p style="font-size:26px;font-weight:700;text-align:center;letter-spacing:1px;margin:10px 0 16px">${esc(cod)}</p><div style="display:flex;gap:10px"><button class="btn sec" data-r="0" style="flex:1">${hayCamara() ? 'Escanear de nuevo' : 'Corregir'}</button><button class="btn" data-r="1" style="flex:1">Confirmar</button></div>`);
     el.addEventListener('click', async e => {
       const b = e.target.closest('[data-r]'); if (e.target === el) return el.remove(); if (!b) return;
       if (b.dataset.r === '0') { el.remove(); return pedir(); }
@@ -756,7 +756,7 @@ function asociarBarras(p, alAsociar) {   // asocia un código de barras al produ
   };
   const pedir = () => {
     if (hayCamara()) return escanearCamara(confirmarCod);   // directo a la cámara (con el campo para escribirlo abajo)
-    const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px"><b>Asociar código de barras</b></p><p class="mut" style="margin:0 0 10px">${esc(p.nombre)}</p><label>Escaneá el código o escribilo</label><input id="bcIn" autocomplete="off" inputmode="text" style="width:100%;font-size:20px;font-weight:700;text-align:center"><div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="0" style="flex:1">Cancelar</button><button class="btn" data-r="1" style="flex:1">Continuar</button></div>`);
+    const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px"><b>${p.barras ? 'Cambiar' : 'Asociar'} código de barras</b></p><p class="mut" style="margin:0 0 10px">${esc(p.nombre)}</p><label>Escaneá el código o escribilo</label><input id="bcIn" autocomplete="off" inputmode="text" style="width:100%;font-size:20px;font-weight:700;text-align:center"><div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="0" style="flex:1">Cancelar</button><button class="btn" data-r="1" style="flex:1">Continuar</button></div>`);
     const seguir = () => { const cod = $('#bcIn').value.replace(/\s+/g, ''); if (!cod) return toast('Escaneá o escribí el código'); el.remove(); confirmarCod(cod); };
     el.addEventListener('click', e => { const b = e.target.closest('[data-r]'); if (e.target === el || (b && b.dataset.r === '0')) return el.remove(); if (b) seguir(); });
     $('#bcIn').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); seguir(); } };   // el lector de códigos escribe el número y manda Enter
@@ -800,10 +800,10 @@ function vStockNuevo() {
   const barra = () => { const n = nCargados(); $('#skBar').innerHTML = `<div style="height:90px"></div><div class="bar sel"><div class="tot" style="font-size:15px;white-space:nowrap"><b>${n}</b> de ${lista().length}<br>con stock</div><button class="btn" data-skact="guardar" ${n ? '' : 'disabled'} style="padding:12px 22px">Guardar control</button></div>`; };
   const pintar = () => {
     const t = norm(stockQ).split(/\s+/).filter(Boolean), l = lista().filter(p => t.every(w => norm(p.codigo + ' ' + p.nombre + ' ' + (p.barras || '')).includes(w)));
-    $('#skL').innerHTML = l.length ? `<div class="card skl" style="padding:2px 10px"><div class="pvf pvh skg"><span>Cód.</span><span>Descripción</span><span class="pvs" style="text-align:center">Stock</span></div>${l.map(p => `<div class="pvf skg" style="cursor:default"><span class="pvc">${esc(p.codigo)}</span><span class="pvn">${esc(p.nombre)}${p.barras ? '' : `<br><button class="btn sec skb" data-skbar="${p.id}" title="Asociar código de barras" aria-label="Asociar código de barras">▮▯ código de barras</button>`}</span><input class="ppc skin" data-skid="${p.id}" inputmode="numeric" autocomplete="off" value="${esc(valor(p))}" placeholder="—"></div>`).join('')}</div>` : vacio('Sin resultados');
+    $('#skL').innerHTML = l.length ? `<div class="card skl" style="padding:2px 10px"><div class="pvf pvh skg"><span>Cód.</span><span>Descripción</span><span class="pvs" style="text-align:center">Stock</span></div>${l.map(p => `<div class="pvf skg" style="cursor:default"><span class="pvc">${esc(p.codigo)}</span><span class="pvn">${esc(p.nombre)}<br><button class="btn sec skb" data-skbar="${p.id}" title="${p.barras ? 'Cambiar código de barras' : 'Asociar código de barras'}" aria-label="${p.barras ? 'Cambiar código de barras' : 'Asociar código de barras'}">▮▯ ${p.barras ? esc(p.barras) : 'código de barras'}</button></span><input class="ppc skin" data-skid="${p.id}" inputmode="numeric" autocomplete="off" value="${esc(valor(p))}" placeholder="—"></div>`).join('')}</div>` : vacio('Sin resultados');
     barra();
   };
-  const porCodigo = cod => { cod = sinCeros(String(cod).trim()); return cod ? productos.find(x => !x.borrado && x.barras && sinCeros(x.barras) === cod) : null; };
+  const porCodigo = cod => { cod = sinCeros(String(cod).trim()); return cod ? productos.filter(x => !x.borrado && x.barras && sinCeros(x.barras) === cod) : []; };   // puede haber varios productos con el mismo código
   const pedirCant = (p, seguir) => {   // ventanita con la descripción para poner la cantidad del producto escaneado
     const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px"><b>${esc(p.nombre)}</b></p><p class="mut" style="margin:0 0 12px">${esc(p.codigo)}</p><label>Cantidad</label><input id="skC" inputmode="numeric" autocomplete="off" value="${esc(valor(p))}" style="width:100%;font-size:28px;font-weight:700;text-align:center"><div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="0" style="flex:1">Cancelar</button><button class="btn" data-r="1" style="flex:1">Aceptar</button></div>`);
     const inp = $('#skC'), ok = () => { const v = inp.value.trim(); if (v === '') return toast('Poné la cantidad'); borr[p.id] = v; guardarStockBorr(borr); el.remove(); pintar(); if (seguir) seguir(); };
@@ -812,13 +812,15 @@ function vStockNuevo() {
     el.addEventListener('click', e => { const b = e.target.closest('[data-r]'); if (e.target === el || (b && b.dataset.r === '0')) return el.remove(); if (b) ok(); });
     inp.focus(); inp.select();
   };
-  const escanear = () => escanearCamara(cod => {   // tras cargar la cantidad vuelve a abrir la cámara para el siguiente producto
-    const p = porCodigo(cod);
-    if (p) pedirCant(p, escanear); else { toast('Ese código no está asociado a ningún producto. Buscá el producto y tocá «código de barras».'); escanear(); }
-  });
-  const leido = cod => { const p = porCodigo(cod); if (p) pedirCant(p); else toast('Ese código no está asociado a ningún producto. Buscá el producto y tocá «código de barras».'); };   // lector USB
+  const elegir = (ps, seguir) => {   // código repetido: se pregunta cuál es
+    const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px"><b>Este código está en ${ps.length} productos</b></p><p class="mut" style="margin:0 0 10px">¿Cuál es?</p>${ps.map(p => `<button class="btn sec" data-pid="${p.id}" style="text-align:left;margin-bottom:8px"><b>${esc(p.codigo)}</b> · ${esc(p.nombre)}</button>`).join('')}<button class="btn sec" data-r="0" style="margin-top:4px">Cancelar</button>`);
+    el.addEventListener('click', e => { const b = e.target.closest('[data-pid]'); if (b) { el.remove(); return pedirCant(ps.find(x => x.id === +b.dataset.pid), seguir); } if (e.target === el || e.target.closest('[data-r]')) el.remove(); });
+  };
+  const atender = (cod, seguir) => { const ps = porCodigo(cod); if (ps.length === 1) pedirCant(ps[0], seguir); else if (ps.length) elegir(ps, seguir); else { toast('Ese código no está asociado a ningún producto. Buscá el producto y tocá «código de barras».'); if (seguir) seguir(); } };
+  const escanear = () => escanearCamara(cod => atender(cod, escanear));   // tras cargar la cantidad vuelve a abrir la cámara para el siguiente producto
+  const leido = cod => atender(cod);   // lector USB
   $('#skQ').oninput = e => { stockQ = e.target.value; pintar(); };
-  $('#skQ').onkeydown = e => { if (e.key !== 'Enter') return; const p = porCodigo(e.target.value); if (p) { e.preventDefault(); pedirCant(p); } else if (/^\d{8,}$/.test(e.target.value.trim())) { e.preventDefault(); leido(e.target.value); } };   // el lector escribe el número y manda Enter
+  $('#skQ').onkeydown = e => { if (e.key !== 'Enter') return; if (porCodigo(e.target.value).length || /^\d{8,}$/.test(e.target.value.trim())) { e.preventDefault(); leido(e.target.value); } };   // el lector escribe el número y manda Enter
   if ($('#skCam')) $('#skCam').onclick = escanear;
   $('#skL').addEventListener('click', e => { const b = e.target.closest('[data-skbar]'); if (!b) return; const p = productos.find(x => x.id === +b.dataset.skbar); if (p) asociarBarras(p, pintar); });
   $('#skP').onchange = e => { skProv = e.target.value; pintar(); };

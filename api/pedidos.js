@@ -608,15 +608,12 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     const esStock = yo.rol === 'stock';   // usuario que solo ve y carga el stock: nada más
     if (esStock && !['yo', 'productos', 'controles', 'barras'].includes(rec)) throw { code: 403, msg: 'Este usuario solo puede ver el stock' };
     if (esStock && rec === 'productos' && req.method !== 'GET') throw { code: 403, msg: 'Este usuario solo puede ver el stock' };
-    if (rec === 'barras' && req.method === 'PUT') {   // asocia un código de barras a un producto (una sola vez; administrador y usuario de stock)
+    if (rec === 'barras' && req.method === 'PUT') {   // asocia o cambia el código de barras de un producto (administrador y usuario de stock)
       if (!admin && !esStock) throw { code: 403, msg: 'No autorizado' };
       const p = s.productos.find(x => x.id === id); if (!p) throw { code: 404, msg: 'No existe' };
-      if (p.barras) throw { code: 409, msg: 'Este producto ya tiene un código de barras asociado' };
       const cod = String((await body(req, 1e4)).codigo || '').replace(/\s+/g, '');
       if (!/^[0-9A-Za-z._-]{4,40}$/.test(cod)) throw { code: 400, msg: 'El código de barras no es válido' };
-      const sc = v => /^\d+$/.test(v) ? v.replace(/^0+/, '') : v.toLowerCase();   // UPC-A (12) y EAN-13 con cero adelante son el mismo código
-      const otro = s.productos.find(x => x.id !== p.id && x.barras && sc(x.barras) === sc(cod));
-      if (otro) throw { code: 409, msg: `Ese código ya está asociado a «${otro.nombre}»` };
+      // un mismo código puede estar en varios productos: al escanear en un control se elige cuál es
       p.barras = cod; await save(pool);
       return send(res, 200, { id: p.id, barras: p.barras });
     }
