@@ -376,7 +376,7 @@ window.addEventListener('popstate', async e => {
 });
 
 /* ---------- vistas ---------- */
-const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', manual: 'Manual de uso', cambios: 'Registro de cambios', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', seguimiento: 'Seguimiento', avisos: 'Notificaciones', stock: 'Stock', stocknuevo: 'Nuevo control', stockctl: 'Controles guardados', proveedores: 'Proveedores', proveedor: 'Proveedor', pedprov: 'Pedido al proveedor', pedhist: 'Historial de pedidos', novedades: 'Novedades', hoja: 'Pedidos sin cargar' };
+const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', manual: 'Manual de uso', cambios: 'Registro de cambios', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', seguimiento: 'Seguimiento', comisiones: 'Comisiones', comision: 'Comisión', avisos: 'Notificaciones', stock: 'Stock', stocknuevo: 'Nuevo control', stockctl: 'Controles guardados', proveedores: 'Proveedores', proveedor: 'Proveedor', pedprov: 'Pedido al proveedor', pedhist: 'Historial de pedidos', novedades: 'Novedades', hoja: 'Pedidos sin cargar' };
 const escritorio = () => window.matchMedia('(min-width:900px)').matches;
 const TABS = ['menu', 'pedidos', 'clientes', 'precios', 'faltantes', 'config'];   // pantallas con barra de botones abajo
 let vistaPrev = '';
@@ -387,7 +387,7 @@ function render() {
   if (esStock() && view !== 'stocknuevo') view = 'stock';   // el usuario de stock no ve otra cosa
   if ((view === 'stock' || view === 'stocknuevo' || view === 'stockctl') && !esAdmin() && !(esStock() && view !== 'stockctl')) view = 'menu';
   vistaPrev = view;
-  if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc','hoja','manual','cambios','proveedores','proveedor','pedprov','pedhist','seguimiento','avisos'].includes(view)) view = 'menu';
+  if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc','hoja','manual','cambios','proveedores','proveedor','pedprov','pedhist','seguimiento','comisiones','comision','avisos'].includes(view)) view = 'menu';
   if (view !== 'pedido') document.body.classList.remove('bloq-ped');
   if (view !== 'hoja') hojaEd = null;
   if (view !== 'pedidos' && view !== 'pedido' && view !== 'hoja') { fdiaInit = false; selMode = false; selPeds = new Set(); }   // al volver a Pedidos desde otra sección arranca en el día de hoy
@@ -395,7 +395,7 @@ function render() {
   document.body.classList.toggle('hay-tabs', !esStock() && (desk || tab));
   $('#app').innerHTML = `<header>${!tab && (!esStock() || view === 'stocknuevo') ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1>${esStock() ? '<button class="campana" data-act="salir" aria-label="Cerrar sesión" title="Cerrar sesión">🚪</button>' : campana()}<span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : esStock() ? 'Stock' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${!esStock() && (tab || desk) ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ...(desk && esAdmin() ? [['seguimiento', '📈', 'Seguimiento']] : []), ['precios', '📦', 'Listado'], ...(desk && esAdmin() ? [['stock', '🗃️', 'Stock']] : []), ...(desk ? [['promos', '🏷️', 'Promociones'], ['novedades', '📣', 'Novedades' + (nNuevas() ? ' (' + nNuevas() + ')' : '')]] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk && esAdmin() ? [['proveedores', '🏭', 'Proveedores']] : []), ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v || (v === 'stock' && (view === 'stocknuevo' || view === 'stockctl')) || (v === 'proveedores' && (view === 'proveedor' || view === 'pedprov' || view === 'pedhist')) ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo">${esAdmin() ? `<button data-go="manual" class="${view === 'manual' ? 'on' : ''}"><span>📖</span>Manual de uso</button>` : ''}<button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
   estado();
-  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, manual: vManual, cambios: vCambios, novedades: vNovedades, hoja: vHoja, proveedores: vProveedores, proveedor: vProveedores, pedprov: vPedProv, pedhist: vPedHist, seguimiento: vSeguimiento, avisos: vAvisos, stock: vStock, stocknuevo: vStockNuevo, stockctl: vStockCtl })[view]();
+  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, manual: vManual, cambios: vCambios, novedades: vNovedades, hoja: vHoja, proveedores: vProveedores, proveedor: vProveedores, pedprov: vPedProv, pedhist: vPedHist, seguimiento: vSeguimiento, comisiones: vComisiones, comision: vComision, avisos: vAvisos, stock: vStock, stocknuevo: vStockNuevo, stockctl: vStockCtl })[view]();
   avisoNovedades();
 }
 function login() {
@@ -927,7 +927,7 @@ function vConfig() {
   const a = esAdmin(), fila = (v, i, t) => `<div class="row" data-go="${v}" style="cursor:pointer"><span style="font-size:22px">${i}</span><div class="nm"><b>${t}</b></div><span class="mut">›</span></div>`;
   $('#main').innerHTML = `<div class="card"><b>${esc(user.nombre)}</b><br><span class="mut">usuario: ${esc(user.usuario)} · ${a ? 'Administrador' : 'Vendedor'}</span></div>
     ${a ? `<div class="card"><h2>Mis datos</h2><form id="fp"><label>Nombre</label><input name="nombre" value="${esc(user.nombre)}" required><label>Usuario (para ingresar)</label><input name="usuario" value="${esc(user.usuario)}" autocapitalize="none" required><div style="height:14px"></div><button class="btn">Guardar mis datos</button></form></div>` : ''}
-    ${a ? `<div class="card">${fila('productos', '🗂️', `Productos (${productos.length})`)}${fila('importar', '📥', 'Importar / exportar Excel')}${fila('proveedores', '🏭', 'Proveedores')}${fila('seguimiento', '📈', 'Seguimiento de clientes')}${fila('stock', '🗃️', 'Stock')}${fila('usuarios', '👥', 'Usuarios')}${fila('manual', '📖', 'Manual de uso')}${fila('cambios', '📝', 'Registro de cambios en pedidos')}${fila('promos', '🏷️', 'Promociones')}</div>` : ''}
+    ${a ? `<div class="card">${fila('productos', '🗂️', `Productos (${productos.length})`)}${fila('importar', '📥', 'Importar / exportar Excel')}${fila('proveedores', '🏭', 'Proveedores')}${fila('seguimiento', '📈', 'Seguimiento de clientes')}${fila('comisiones', '💰', 'Comisiones')}${fila('stock', '🗃️', 'Stock')}${fila('usuarios', '👥', 'Usuarios')}${fila('manual', '📖', 'Manual de uso')}${fila('cambios', '📝', 'Registro de cambios en pedidos')}${fila('promos', '🏷️', 'Promociones')}</div>` : ''}
     ${a ? `<div class="card"><h2>Copia de seguridad</h2><p class="mut" style="margin:0 0 8px">Se guarda una copia automática por día (las últimas 14) dentro de la base de datos. Además podés bajar una copia a tu computadora o el detalle de los pedidos en Excel.</p>
       <button class="btn" data-act="respaldo">💾 Descargar copia completa</button><button class="btn sec" data-act="pedidosExcel" style="margin-top:8px">📊 Descargar pedidos en Excel</button><button class="btn sec" data-act="abrirRestaurar" style="margin-top:8px">♻️ Restaurar una copia</button></div>` : ''}
     <div class="card"><h2>Notificaciones</h2><div id="pushBox"></div></div>
@@ -1302,6 +1302,41 @@ function vSeguimiento() {
     const g = sgGrupos[+b.dataset.sg]; if (!g) return;
     if (b.dataset.sgact === 'copiar') copiarSeguimiento(g[0], g[1]); else pdfSeguimiento(g[0], g[1]);
   };
+}
+/* comisiones: ventas de cada vendedor entre dos fechas (pedidos cargados, sin los rechazados y descontando las notas de crédito) */
+let cmD = '', cmH = '', cmV = 0;
+const cmPct = id => { try { return localStorage.getItem('pd_cmpct_' + id) || ''; } catch { return ''; } };   // el porcentaje de cada vendedor queda guardado en este dispositivo
+const cmPctSet = (id, v) => { try { v ? localStorage.setItem('pd_cmpct_' + id, v) : localStorage.removeItem('pd_cmpct_' + id); } catch {} };
+const pctNum = v => { const n = Number(String(v).replace(',', '.')); return n > 0 ? n : 0; };
+const comisionDe = (t, v) => Math.round(t * pctNum(v)) / 100;
+function rangoCom() {
+  if (!cmH) cmH = hoy(); if (!cmD) cmD = cmH.slice(0, 8) + '01';
+  if (cmD > cmH) [cmD, cmH] = [cmH, cmD];
+}
+const ventasDe = id => pedidos.filter(p => p.vendedorId === id && p.estado === 'cargado' && p.dia && p.dia >= cmD && p.dia <= cmH && !(p.entrega && p.entrega.estado === 'rechazado')).sort((a, b) => b.dia.localeCompare(a.dia) || b.id - a.id);
+const netoVenta = p => p.total - ((p.notaCredito && p.notaCredito.monto) || 0);
+const filtroFechas = () => `<div class="card" style="padding:10px 12px"><div style="display:flex;gap:10px"><div style="flex:1 1 0;min-width:0"><label style="margin-top:0">Desde</label><input id="cmD" type="date" value="${cmD}" style="width:100%"></div><div style="flex:1 1 0;min-width:0"><label style="margin-top:0">Hasta</label><input id="cmH" type="date" value="${cmH}" style="width:100%"></div></div></div>`;
+function vComisiones() {
+  rangoCom();
+  const vs = usuarios.filter(u => u.rol === 'vendedor').sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  const dat = vs.map(v => { const l = ventasDe(v.id); return { v, n: l.length, t: l.reduce((a, p) => a + netoVenta(p), 0) }; });
+  const total = dat.reduce((a, x) => a + x.t, 0), cant = dat.reduce((a, x) => a + x.n, 0);
+  $('#main').innerHTML = filtroFechas() + (vs.length ? `<div class="card" style="padding:2px 12px">${dat.map(({ v, n, t }) => `<div class="row" data-cmv="${v.id}" style="cursor:pointer"><div class="nm"><b>${vendCol(v.nombre)}</b><span class="mut">${n} ${n === 1 ? 'pedido' : 'pedidos'}${pctNum(cmPct(v.id)) ? ` · comisión ${cmPct(v.id)}%: <b>${money(comisionDe(t, cmPct(v.id)))}</b>` : ''}</span></div><b style="flex:none;font-size:17px">${money(t)}</b><span class="mut" style="flex:none;margin-left:8px">›</span></div>`).join('')}</div><div class="card" style="display:flex;justify-content:space-between;align-items:center"><span><b>TOTAL</b> <span class="mut">· ${cant} ${cant === 1 ? 'pedido' : 'pedidos'}</span></span><b style="font-size:19px">${money(total)}</b></div>` : vacio('Todavía no hay vendedores'));
+  const f = () => { cmD = $('#cmD').value || cmD; cmH = $('#cmH').value || cmH; vComisiones(); };
+  $('#cmD').onchange = f; $('#cmH').onchange = f;
+  $('#main').onclick = e => { const r = e.target.closest('[data-cmv]'); if (r) { cmV = +r.dataset.cmv; go('comision'); } };
+}
+function vComision() {
+  rangoCom();
+  const v = usuarios.find(u => u.id === cmV); if (!v) return go('comisiones', true);
+  const l = ventasDe(v.id), total = l.reduce((a, p) => a + netoVenta(p), 0);
+  $('#main').innerHTML = `<div class="card"><b style="font-size:18px">${vendCol(v.nombre)}</b></div>` + filtroFechas()
+    + `<div class="card" style="display:flex;justify-content:space-between;align-items:center"><span><b>Total vendido</b><br><span class="mut">${l.length} ${l.length === 1 ? 'pedido' : 'pedidos'} · ${fechaCorta(cmD)} al ${fechaCorta(cmH)}</span></span><b style="font-size:22px">${money(total)}</b></div>`
+    + `<div class="card"><div style="display:flex;align-items:center;gap:10px"><label style="margin:0;flex:none">Comisión</label><input id="cmP" inputmode="decimal" placeholder="0" value="${esc(cmPct(v.id))}" autocomplete="off" style="width:80px;text-align:center;flex:none"><b style="flex:none">%</b><span style="flex:1 1 auto"></span><b id="cmM" style="font-size:22px;flex:none">${money(comisionDe(total, cmPct(v.id)))}</b></div></div>`
+    + (l.length ? `<div class="card" style="padding:2px 12px">${l.map(p => { const nc = (p.notaCredito && p.notaCredito.monto) || 0; return `<div class="row" data-ped="${p.id}" style="cursor:pointer"><div class="nm"><b>#${p.id} · ${p.clienteCodigo ? esc(p.clienteCodigo) + ' · ' : ''}${esc(p.cliente)}</b><span class="mut">${fechaCorta(p.dia)}${nc ? ` · nota de crédito − ${money(nc)}` : ''}</span></div><b style="flex:none">${money(netoVenta(p))}</b></div>`; }).join('')}</div>` : vacio('Sin ventas entre esas fechas'));
+  $('#cmP').oninput = e => { const v = e.target.value.replace(/[^\d.,]/g, ''); if (v !== e.target.value) e.target.value = v; cmPctSet(cmV, pctNum(v) ? v : ''); $('#cmM').textContent = money(comisionDe(total, v)); };
+  const f = () => { cmD = $('#cmD').value || cmD; cmH = $('#cmH').value || cmH; vComision(); };
+  $('#cmD').onchange = f; $('#cmH').onchange = f;
 }
 let sgGrupos = [];
 const lineasSeguimiento = l => l.map(({ c, dia }) => `${nombreC(c)}${c.codigo ? ' (' + c.codigo + ')' : ''} - ${fechaCorta(dia)} - ${tiempoDesde(dia)}`);
