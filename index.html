@@ -1310,7 +1310,11 @@ const cmPctSet = (id, v) => { try { v ? localStorage.setItem('pd_cmpct_' + id, v
 const pctNum = v => { const n = Number(String(v).replace(',', '.')); return n > 0 ? n : 0; };
 const comisionDe = (t, v) => Math.round(t * pctNum(v)) / 100;
 function rangoCom() {
-  if (!cmH) cmH = hoy(); if (!cmD) cmD = cmH.slice(0, 8) + '01';
+  if (!cmD || !cmH) {   // por defecto, la quincena que ya terminó: del 8 al 22 → 1 al 15 de este mes; del 23 al fin de mes → 16 al fin de este mes; del 1 al 7 → 16 al fin del mes anterior
+    const h = hoy(), dia = +h.slice(8), a = +h.slice(0, 4), m = +h.slice(5, 7), f = (y, mm, d) => `${y + Math.floor((mm - 1) / 12)}-${String(((mm - 1) % 12 + 12) % 12 + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    if (dia >= 8 && dia <= 22) { cmD = f(a, m, 1); cmH = f(a, m, 15); }
+    else { const mm = dia >= 23 ? m : m - 1; cmD = f(a, mm, 16); cmH = f(a, mm, new Date(a, mm, 0).getDate()); }
+  }
   if (cmD > cmH) [cmD, cmH] = [cmH, cmD];
 }
 const ventasDe = id => pedidos.filter(p => p.vendedorId === id && p.estado === 'cargado' && p.dia && p.dia >= cmD && p.dia <= cmH && !(p.entrega && p.entrega.estado === 'rechazado')).sort((a, b) => b.dia.localeCompare(a.dia) || b.id - a.id);
