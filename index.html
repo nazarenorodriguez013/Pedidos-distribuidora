@@ -1477,18 +1477,18 @@ function abrirOpcionesPedido(p) {   // botón ⋮ de un pedido cargado: entrega 
   const el = dlgProv(`<p style="font-size:18px;margin:0 0 2px"><b>#${p.id} · ${esc(p.cliente)}</b></p><p class="mut" style="margin:0 0 10px">${money(p.total)}${actual ? ' · ' + ENTREGAS[actual][0] : ''}</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap">${bt('reparto', '🚚 En reparto')}${bt('entregado', '✓ Entregado')}${bt('devoluciones', '↩ Con devoluciones')}${bt('rechazado', '✕ Rechazado')}${actual ? bt('limpiar', 'Quitar etiqueta') : ''}</div>
     <div id="opMot" hidden><label>Motivo</label><textarea id="opMotivo" placeholder="Ej: faltaron 2 cajas / el cliente no lo quiso" style="min-height:70px;width:100%"></textarea></div>
-    <div class="card" style="margin:12px 0 0"><b>📄 Nota de crédito</b><div style="display:flex;gap:8px;padding-top:8px"><input id="ncNum" placeholder="Número (opcional)" value="${esc(nc ? nc.numero : '')}" autocomplete="off" style="flex:1 1 0;min-width:0"><input id="ncMonto" inputmode="decimal" placeholder="Importe a descontar" value="${nc && nc.monto ? String(nc.monto).replace('.', ',') : ''}" autocomplete="off" style="flex:1 1 0;min-width:0"></div>${nc ? '<button type="button" class="btn sec" data-r="q" style="margin-top:8px;color:var(--bad)">Quitar la nota de crédito</button>' : ''}</div>
+    <div class="card" id="opNc" ${actual === 'devoluciones' || nc ? '' : 'hidden'} style="margin:12px 0 0"><b>📄 Nota de crédito</b><div style="display:flex;gap:8px;padding-top:8px"><input id="ncNum" placeholder="Número (opcional)" value="${esc(nc ? nc.numero : '')}" autocomplete="off" style="flex:1 1 0;min-width:0"><input id="ncMonto" inputmode="decimal" placeholder="Importe a descontar" value="${nc && nc.monto ? String(nc.monto).replace('.', ',') : ''}" autocomplete="off" style="flex:1 1 0;min-width:0"></div>${nc ? '<button type="button" class="btn sec" data-r="q" style="margin-top:8px;color:var(--bad)">Quitar la nota de crédito</button>' : ''}</div>
     <div style="display:flex;gap:10px;margin-top:14px"><button class="btn sec" data-r="0" style="flex:1">Cancelar</button><button class="btn" data-r="1" style="flex:1">Guardar</button></div>`);
   el.addEventListener('click', async e => {
     const bE = e.target.closest('[data-e]');
-    if (bE) { sel = bE.dataset.e; el.querySelectorAll('[data-e]').forEach(x => { const on = x.dataset.e === sel; x.style.borderColor = on ? 'var(--pri)' : ''; x.style.color = on ? 'var(--pri)' : ''; }); $('#opMot').hidden = !(sel === 'devoluciones' || sel === 'rechazado'); return; }
+    if (bE) { sel = bE.dataset.e; el.querySelectorAll('[data-e]').forEach(x => { const on = x.dataset.e === sel; x.style.borderColor = on ? 'var(--pri)' : ''; x.style.color = on ? 'var(--pri)' : ''; }); $('#opMot').hidden = !(sel === 'devoluciones' || sel === 'rechazado'); $('#opNc').hidden = sel !== 'devoluciones'; return; }   // la nota de crédito solo va con devoluciones
     const b = e.target.closest('[data-r]'); if (e.target === el || (b && b.dataset.r === '0')) return el.remove(); if (!b) return;
     const numero = $('#ncNum').value.trim(), monto = $('#ncMonto').value, motivo = $('#opMotivo').value, pasos = [];
     if (b.dataset.r === 'q') pasos.push({ accion: 'quitarCredito' });
     else {
       if (sel) { if ((sel === 'devoluciones' || sel === 'rechazado') && !motivo.trim()) return toast('Indicá el motivo'); pasos.push({ accion: sel, motivo }); }
-      if (numero || Number(String(monto).replace(',', '.')) > 0) pasos.push({ accion: 'credito', numero, monto });
-      if (!pasos.length) return toast('Elegí una opción o cargá la nota de crédito');
+      if (!$('#opNc').hidden && (numero || Number(String(monto).replace(',', '.')) > 0)) pasos.push({ accion: 'credito', numero, monto });
+      if (!pasos.length) return toast('Elegí una opción');
     }
     selPeds = new Set([p.id]);
     if (await enviarEntrega(pasos)) { el.remove(); toast('Guardado ✓'); if (repintarPeds) repintarPeds(); }
