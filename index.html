@@ -257,7 +257,7 @@ async function api(method, url, data) {
   catch { throw Object.assign(new Error('Sin señal'), { offline: true }); }
   const j = await r.json().catch(() => ({}));
   if (r.status === 401 && url !== 'p/login') { salir(); throw new Error('Sesión vencida'); }
-  if (!r.ok) throw new Error(j.error || 'Error');
+  if (!r.ok) throw Object.assign(new Error(j.error || 'Error'), j.cambio ? { cambio: true } : {});
   return j;
 }
 /* ---------- sin señal: datos en el teléfono y cola de pedidos pendientes ---------- */
@@ -557,7 +557,7 @@ function hojaMover(d) { if (hojaEd) return; const i = hojaI + d; if (i < 0 || i 
 async function hojaCargar() {
   const id = hojaIds[hojaI]; if (!id) return;
   try {
-    await api('PUT', 'p/cargar/' + id, { accion: 'cargado' });
+    await api('PUT', 'p/cargar/' + id, { accion: 'cargado', version: (pedidos.find(x => x.id === id) || {}).editado });
     const f = await api('GET', 'p/pedidos/' + id); const k = pedidos.findIndex(x => x.id === id); if (k >= 0) pedidos[k] = f; cacheDatos();
     // el pedido cargado queda en la lista (con un aviso y la opción de editarlo); se pasa al siguiente
     if (hojaI < hojaIds.length - 1) hojaI++;
@@ -565,7 +565,14 @@ async function hojaCargar() {
     if (!terminaste) toast('Pedido cargado ✓');
     render(); window.scrollTo(0, 0);
     if (terminaste) avisoFinHoja();
-  } catch (e) { toast(e.message); }
+  } catch (e) { if (e.cambio) { await pedidoActualizado(id); avisoCambio(id); } else toast(e.message); }
+}
+function avisoCambio(id) {   // ventanita que solo se cierra con el botón: hay que leerla
+  const p = pedidos.find(x => x.id === id) || {}, el = dlgProv(`<p style="font-size:19px;margin:0 0 6px"><b>⚠ El pedido cambió</b></p><p class="mut" style="margin:0 0 10px">#${id}${p.cliente ? ' · ' + esc(p.cliente) : ''}</p><p style="font-size:16px;line-height:1.4;margin:0 0 16px">El vendedor modificó este pedido mientras lo cargabas. Ya se actualizó con la versión nueva: revisalo y volvé a marcarlo como cargado. <b>No quedó cargado.</b></p><button class="btn" data-r="1">Entendido</button>`);
+  el.addEventListener('click', e => { if (e.target.closest('[data-r]')) el.remove(); });   // solo el botón la cierra
+}
+async function pedidoActualizado(id) {   // el vendedor lo modificó mientras se cargaba: se trae la versión nueva y se vuelve a mostrar
+  try { const f = await api('GET', 'p/pedidos/' + id); const k = pedidos.findIndex(x => x.id === id); if (k >= 0) pedidos[k] = f; cacheDatos(); render(); window.scrollTo(0, 0); } catch {}
 }
 
 /* ---------- registro de cambios que el administrador hace en los pedidos ---------- */
@@ -1224,7 +1231,7 @@ function cambiarCant(pid, d, fijo) {
   const y = window.scrollY; pintarPedido(); window.scrollTo(0, y);
 }
 async function cargarPedido() {   // el administrador da el pedido por cargado
-  try { await api('PUT', 'p/cargar/' + draft.id, { accion: 'cargado' }); await cargar(); nuevoDraft(pedidos.find(x => x.id === draft.id)); render(); toast('Pedido cargado ✓'); } catch (e) { toast(e.message); }
+  try { await api('PUT', 'p/cargar/' + draft.id, { accion: 'cargado', version: (pedidos.find(x => x.id === draft.id) || {}).editado }); await cargar(); nuevoDraft(pedidos.find(x => x.id === draft.id)); render(); toast('Pedido cargado ✓'); } catch (e) { if (e.cambio) { try { await cargar(); nuevoDraft(pedidos.find(x => x.id === draft.id)); render(); } catch {} avisoCambio(draft.id); } else toast(e.message); }
 }
 async function guardarPedido() {
   if (esAdmin() && draft.id && !hayCambios()) { if (draft.estado === 'cargado' && !draft.agregar) return; return cargarPedido(); }   // sin cambios: el botón dice "Cargar"

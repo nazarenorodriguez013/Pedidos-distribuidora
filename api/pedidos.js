@@ -763,8 +763,9 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       soloAdmin();
       const o = s.pedidos.find(x => x.id === id);
       if (!o) throw { code: 404, msg: 'No existe' };
-      const { accion } = await body(req, 1e4), ahora = new Date().toISOString();
+      const { accion, version } = await body(req, 1e4), ahora = new Date().toISOString();
       if (accion === 'cargado') {
+        if (version && o.estado !== 'cargado' && o.editado !== version) throw { code: 409, msg: 'El vendedor modificó este pedido mientras lo cargabas. Se actualizó: revisalo y volvé a marcarlo como cargado.', extra: { cambio: true } };   // lo que se veía en pantalla ya no es lo que hay guardado
         if (o.estado !== 'cargado') o.cargadoEn = ahora;
         const sum = sumarDe(o); if (sum) o.sumar = sum;
         o.estado = 'cargado'; o.cargadoPor = yo.nombre; o.agregar = false;
@@ -1026,7 +1027,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     }
     send(res, 405, { error: 'Método no permitido' });
   } catch (e) {
-    if (e && e.code) return send(res, e.code, { error: e.msg });
+    if (e && e.code) return send(res, e.code, { error: e.msg, ...(e.extra || {}) });
     throw e;
   }
 };
