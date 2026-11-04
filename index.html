@@ -613,7 +613,7 @@ const MANUAL = [
     <p>Podés filtrar por <b>vendedor</b> y <b>turno</b>, o buscar escribiendo el nombre del cliente o el número de pedido. Tocá un pedido para abrirlo.</p>
     <p>Al final de la lista está el <b>total por turno</b>, el <b>total de pedidos</b> y el <b>TOTAL NETO</b> (ya descontados los rechazados y las notas de crédito).</p>`],
   ['🛒', 'Cargar un pedido nuevo', `<ol><li>Tocá <b>🛒 Cargar pedido</b>.</li><li>Elegí el <b>cliente</b>, el <b>día de entrega</b> y el <b>turno</b>.</li><li>Buscá los productos por nombre o código y tocá <b>+</b>. Si escribís un código y apretás <b>Enter</b>, se agrega el primero de la lista (el código exacto sale primero).</li><li>Cambiá las cantidades en el <b>Detalle del pedido</b>. Podés agregar una <b>nota</b>.</li><li>Tocá <b>Guardar pedido</b>.</li></ol>
-    <p>El total se redondea solo a múltiplos de $50: si sobran $5 o menos baja al múltiplo anterior, y si sobra más sube al siguiente. El redondeo se ve en el detalle.</p>
+    <p>El total se redondea solo a múltiplos de $50: si sobran $10 o menos baja al múltiplo anterior, y si sobra más sube al siguiente. El redondeo se ve en el detalle.</p>
     <p>Si salís sin guardar, el pedido queda como borrador y en Inicio aparece <b>Continuar</b>.</p>`],
   ['✅', 'Cargar los pedidos al sistema', `<p>Cuando vos pasás los pedidos a tu sistema de facturación, los marcás como <b>cargados</b> para no perder la cuenta.</p>
     <ol><li>En <b>Pedidos</b> tocá <b>☑ Sin cargar</b>.</li><li>Tildá los pedidos que querés (por ejemplo, solo los de la mañana) o tocá <b>Seleccionar todos</b>.</li><li>Tocá <b>📄 Abrir</b>: se ven de a uno, en limpio, con el código del cliente arriba, los artículos, el redondeo y el total.</li><li>Pasá de uno a otro <b>deslizando</b> o con <b>‹ Anterior / Siguiente ›</b>.</li><li>Cuando cargaste uno, tocá <b>✓ Marcar como cargado</b>: pasa al siguiente y vuelve arriba.</li></ol>
@@ -1079,7 +1079,7 @@ function totalLinea(p) {
   const up = unidadesPromo(p); return up * pl + (ex - up) * precioNormal(p);
 }
 const REDONDEO = 50;   // el total de cada pedido se redondea a múltiplo de 50
-const redondear50 = x => { const c = Math.round(x * 100), r = REDONDEO * 100, resto = c % r; return (resto === 0 ? c : resto <= 500 && c > r ? c - resto : c + r - resto) / 100; };   // a múltiplo de 50: si sobran $5 o menos baja, si sobra más sube
+const redondear50 = x => { const c = Math.round(x * 100), r = REDONDEO * 100, resto = c % r; return (resto === 0 ? c : resto <= 1000 && c > r ? c - resto : c + r - resto) / 100; };   // a múltiplo de 50: si sobran $10 o menos baja, si sobra más sube
 const multiploDe = p => p.multiplo || 1;
 function subtotalDraft() { return Math.round(productos.reduce((s, p) => s + totalLinea(p), 0) * 100) / 100; }
 function totalDraft() { return redondear50(subtotalDraft()); }

@@ -292,7 +292,7 @@ function cleanCombo(b) {
 }
 
 const REDONDEO = 50;   // el total de cada pedido se redondea a múltiplo de 50
-const redondear = x => { const c = Math.round(x * 100), r = REDONDEO * 100, resto = c % r; return (resto === 0 ? c : resto <= 500 && c > r ? c - resto : c + r - resto) / 100; };   // a múltiplo de 50: si sobran $5 o menos baja, si sobra más sube
+const redondear = x => { const c = Math.round(x * 100), r = REDONDEO * 100, resto = c % r; return (resto === 0 ? c : resto <= 1000 && c > r ? c - resto : c + r - resto) / 100; };   // a múltiplo de 50: si sobran $10 o menos baja, si sobra más sube
 const nombreCliente = c => [c.nombre, c.apellido].filter(Boolean).join(' ');
 function cleanCliente(b, prev, admin, yo) {
   const t = k => String(b[k] ?? prev?.[k] ?? '').trim();
