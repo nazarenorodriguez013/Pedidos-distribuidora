@@ -653,25 +653,29 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         await save(pool);
         return send(res, 200, { id: c.id, en: c.en, n: items.length });
       }
-      if (id && req.method === 'PUT') {   // descontar cargados: se resta del stock de este control lo que traen uno o varios archivos (código y cantidad); solo administrador
+      if (id && req.method === 'PUT') {   // descontar cargados: se resta del stock de este control lo que llevan los pedidos ya cargados de un día; solo administrador
         const c = s.controles.find(x => x.id === id); if (!c) throw { code: 404, msg: 'No existe' };
-        const b = await body(req, 2e7), sc = v => String(v ?? '').trim().toLowerCase().replace(/^0+(?=\d)/, ''), total = new Map(), firmas = [], nombres = [], repetidos = [];
-        for (const a of Array.isArray(b.archivos) ? b.archivos : []) {
-          const m = new Map();
-          for (const f of Array.isArray(a.filas) ? a.filas : []) { const k = sc(f.codigo), n = Math.floor(Number(String(f.cant).replace(',', '.'))); if (k && n > 0) m.set(k, (m.get(k) || 0) + n); }
-          if (!m.size) continue;
-          const firma = [...m.entries()].sort().map(([k, n]) => k + ':' + n).join('|'), nombre = String(a.nombre || '').slice(0, 120);
-          if ((c.descuentos || []).some(d => (d.firmas || [d.firma]).includes(firma)) || firmas.includes(firma)) { repetidos.push(nombre || 'archivo'); continue; }   // el mismo archivo no se descuenta dos veces
-          firmas.push(firma); nombres.push(nombre); for (const [k, n] of m) total.set(k, (total.get(k) || 0) + n);
-        }
-        if (repetidos.length) throw { code: 409, msg: `Ya se descontó de este control: ${repetidos.join(', ')}` };
-        if (!total.size) throw { code: 400, msg: 'Los archivos no traen cantidades para descontar' };
-        let n = 0, unidades = 0;
-        for (const it of c.items) { const k = sc(it[1]), q = total.get(k); if (!q) continue; it[3] = Math.max(0, it[3] - q); n++; unidades += q; const p = s.productos.find(x => x.id === it[0]); if (p && p.existenciaEn === c.en) p.existencia = it[3]; }   // la existencia del producto solo cambia si este es su último control
-        if (!n) throw { code: 400, msg: 'Ningún código está en este control' };
-        c.descuentos = [...(c.descuentos || []), { en: new Date().toISOString(), por: yo.nombre, archivo: nombres.join(', '), firmas, n, unidades }];
+        const b = await body(req, 1e5);
+        if (b.accion === 'pedidos') {
+        const dia = String(b.dia || ''), turno = ['manana', 'tarde'].includes(b.turno) ? b.turno : '';   // '' = todos los turnos
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) throw { code: 400, msg: 'Elegí el día' };
+        const aplicados = c.pedAplicados || {}, total = new Map(), nuevos = {};
+        const peds = s.pedidos.filter(o => o.dia === dia && (!turno || o.turno === turno) && o.estado === 'cargado' && !(o.entrega && o.entrega.estado === 'rechazado'));
+        for (const o of peds) for (const i of o.items) { const ya = (aplicados[o.id] || {})[i.pid] || 0, d = i.cant - ya; if (d > 0) { total.set(i.pid, (total.get(i.pid) || 0) + d); (nuevos[o.id] = nuevos[o.id] || { ...(aplicados[o.id] || {}) })[i.pid] = i.cant; } }   // solo lo que todavía no se descontó (un pedido que crece o uno nuevo del mismo día)
+        if (!peds.length) throw { code: 400, msg: 'No hay pedidos cargados para ese día' };
+        if (!total.size) throw { code: 409, msg: 'Todo lo cargado de ese día ya está descontado de este control' };
+        const lineas = []; let unidades = 0; const enControl = new Set(c.items.map(it => it[0]));
+        for (const it of c.items) { const q = total.get(it[0]); if (!q) continue; lineas.push({ cod: it[1], nom: it[2], antes: it[3], desp: Math.max(0, it[3] - q), n: q }); unidades += q; }
+        const fuera = [...total.keys()].filter(pid => !enControl.has(pid)).length;
+        if (!lineas.length) throw { code: 400, msg: 'Ningún producto de esos pedidos está en este control' };
+        if (b.simular) return send(res, 200, { pedidos: peds.length, n: lineas.length, unidades, fuera, lineas });
+        for (const it of c.items) { const q = total.get(it[0]); if (!q) continue; it[3] = Math.max(0, it[3] - q); const p = s.productos.find(x => x.id === it[0]); if (p && p.existenciaEn === c.en) p.existencia = it[3]; }   // la existencia del producto solo cambia si este es su último control
+        c.pedAplicados = { ...aplicados, ...nuevos };
+        c.descuentos = [...(c.descuentos || []), { en: new Date().toISOString(), por: yo.nombre, dia, ...(turno ? { turno } : {}), pedidos: peds.length, n: lineas.length, unidades }];
         await save(pool);
-        return send(res, 200, { id: c.id, n, unidades });
+        return send(res, 200, { id: c.id, n: lineas.length, unidades });
+        }
+        throw { code: 400, msg: 'Acción inválida' };
       }
       throw { code: 405, msg: 'Método no permitido' };
     }

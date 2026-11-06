@@ -904,71 +904,25 @@ function vStockNuevo() {
   };
   pintar();
 }
-/* descontar cargados: se importa un Excel/CSV con código y cantidad y se resta del stock de ese control */
-const scod = v => String(v ?? '').trim().toLowerCase().replace(/^0+(?=\d)/, '');
-function leerDescuento(rows) {
-  rows = rows.filter(r => r.some(x => String(x ?? '').trim() !== ''));
-  const cab = r => r.map(x => norm(x).replace(/[^a-z0-9]+/g, ' ').trim());
-  const CODS = ['cod barra', 'cod barras', 'codigo de barra', 'codigo de barras', 'codigo barra', 'codigo', 'cod'], CANTS = ['cantidad', 'cant', 'unidades', 'cargados', 'cargado', 'total'];
-  const buscar = (h, ks) => { for (const k of ks) { const i = h.findIndex(x => x === k); if (i >= 0) return i; } return -1; };   // primero «Cod. barra» (el código del sistema) y después «Código»
-  for (let i = 0; i < Math.min(rows.length, 25); i++) {
-    const h = cab(rows[i]), ic = buscar(h, CODS), iq = buscar(h, CANTS);
-    if (ic >= 0 && iq >= 0 && ic !== iq) return rows.slice(i + 1).map(r => ({ codigo: String(r[ic] ?? '').trim(), cant: r[iq] })).filter(f => f.codigo !== '');
-  }
-  throw new Error('El archivo necesita las columnas Código y Cantidad');
-}
-async function lineasDePdf(file) {   // texto del PDF, una línea por renglón (de arriba hacia abajo)
-  const lib = await cargarPdfjs(), pdf = await lib.getDocument({ data: await file.arrayBuffer() }).promise, out = [];
-  for (let n = 1; n <= pdf.numPages; n++) {
-    const items = (await (await pdf.getPage(n)).getTextContent()).items.filter(i => i.str.trim()), lineas = [];
-    for (const i of items.sort((a, b) => b.transform[5] - a.transform[5])) { const l = lineas.find(x => Math.abs(x.y - i.transform[5]) < 2); l ? l.it.push(i) : lineas.push({ y: i.transform[5], it: [i] }); }
-    for (const l of lineas) out.push(l.it.sort((a, b) => a.transform[4] - b.transform[4]).map(i => i.str.trim()).join(' ').replace(/\s+/g, ' ').trim());
-  }
-  return out;
-}
-function filasDescuentoPdf(lineas) {   // renglón con código al principio y cantidad entera al final (los importes con decimales no se toman como cantidad)
-  const filas = [];
-  for (const t of lineas) {
-    const p = t.split(' '); if (p.length < 2) continue;
-    const cod = p[0]; if (!/^[A-Za-z0-9._-]{1,20}$/.test(cod) || !/\d/.test(cod)) continue;
-    let q = null; for (let i = p.length - 1; i >= 1; i--) if (/^\d{1,6}$/.test(p[i])) { q = p[i]; break; }
-    if (q !== null) filas.push({ codigo: cod, cant: q });
-  }
-  return filas;
-}
-async function filasDeArchivo(f) {
-  if (/\.pdf$/i.test(f.name)) { const filas = filasDescuentoPdf(await lineasDePdf(f)); if (!filas.length) throw new Error('No encontré renglones con código y cantidad'); return filas; }
-  if (!window.XLSX) throw new Error('No cargó el lector de Excel (revisá la conexión)');
-  const wb = /\.csv$/i.test(f.name) ? XLSX.read(await f.text(), { type: 'string', raw: true }) : XLSX.read(await f.arrayBuffer(), { type: 'array' });
-  return leerDescuento(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true }));
-}
-function descontarCargados(c, alTerminar) {   // uno o varios archivos (Excel, CSV o PDF); las cantidades de todos se suman
-  const inp = document.createElement('input'); inp.type = 'file'; inp.multiple = true; inp.accept = '.xlsx,.xls,.csv,.pdf';
-  inp.onchange = async () => {
-    const fs = [...inp.files]; if (!fs.length) return;
-    toast('Leyendo ' + (fs.length === 1 ? 'el archivo…' : fs.length + ' archivos…'));
-    const leidos = [];   // { nombre, filas, error }
-    for (const f of fs) { try { leidos.push({ nombre: f.name, filas: await filasDeArchivo(f) }); } catch (er) { leidos.push({ nombre: f.name, filas: [], error: /^(El archivo|No encontré|No cargó)/.test(er.message) ? er.message : 'No se pudo leer' }); } }
-    const buenos = leidos.filter(x => !x.error);
-    if (!buenos.length) return toast(leidos.length === 1 ? leidos[0].error : 'No se pudo leer ningún archivo');
-    const total = new Map(); let invalidas = 0;
-    for (const a of buenos) {
-      a.m = new Map();
-      for (const x of a.filas) { const n = Math.floor(Number(String(x.cant).replace(',', '.'))), k = scod(x.codigo); if (!(n > 0)) { invalidas++; continue; } a.m.set(k, (a.m.get(k) || 0) + n); total.set(k, (total.get(k) || 0) + n); }
-      a.coinciden = c.items.filter(it => a.m.has(scod(it[1]))).length;
-    }
-    const aplicar = [], vistos = new Set();
-    for (const [, cod, nom, cant] of c.items) { const k = scod(cod), n = total.get(k); if (n) { aplicar.push({ cod, nom, antes: cant, desp: Math.max(0, cant - n), n }); vistos.add(k); } }
-    const fuera = [...total.keys()].filter(k => !vistos.has(k));
-    if (!aplicar.length) return toast('Ningún código de ' + (buenos.length === 1 ? 'el archivo' : 'los archivos') + ' está en este control');
-    const unid = aplicar.reduce((a, x) => a + x.n, 0);
-    const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px;flex:none"><b>Descontar cargados</b></p><p class="mut" style="margin:0 0 6px;flex:none">${aplicar.length} ${aplicar.length === 1 ? 'producto' : 'productos'} del control · ${unid} u. a descontar</p><div style="flex:none;font-size:13px;margin:0 0 8px">${leidos.map(a => a.error ? `<div style="color:var(--bad)">⚠ ${esc(a.nombre)} — ${esc(a.error)} (no se usa)</div>` : `<div class="mut">📄 ${esc(a.nombre)} — ${a.filas.length} ${a.filas.length === 1 ? 'renglón' : 'renglones'}, ${a.coinciden} ${a.coinciden === 1 ? 'coincide' : 'coinciden'} con el control</div>`).join('')}</div><div class="card skl" style="padding:2px 12px;margin:0;flex:1 1 auto;min-height:0;overflow:auto"><div class="pvf pvh skg"><span>Cód.</span><span>Descripción</span><span class="pvs">Stock</span></div>${aplicar.map(x => `<div class="pvf skg" style="cursor:default"><span class="pvc">${esc(x.cod)}</span><span class="pvn">${esc(x.nom)}</span><span class="pvs">${x.antes} → <b>${x.desp}</b></span></div>`).join('')}</div>${fuera.length || invalidas ? `<p class="mut" style="margin:8px 0 0;flex:none;font-size:13px">${fuera.length ? `${fuera.length} ${fuera.length === 1 ? 'código no está' : 'códigos no están'} en este control y se ignoran` : ''}${fuera.length && invalidas ? ' · ' : ''}${invalidas ? `${invalidas} ${invalidas === 1 ? 'fila sin cantidad válida' : 'filas sin cantidad válida'}` : ''}.</p>` : ''}<div style="display:flex;gap:10px;margin-top:12px;flex:none"><button class="btn" data-r="1" style="flex:2">Descontar</button><button class="btn sec" data-r="0" style="flex:1">Cancelar</button></div>`, true);
-    el.addEventListener('click', async ev => {
-      const b = ev.target.closest('[data-r]'); if (ev.target === el || (b && b.dataset.r === '0')) return el.remove(); if (!b) return;
-      try { await api('PUT', 'p/controles/' + c.id, { archivos: buenos.map(a => ({ nombre: a.nombre, filas: a.filas })) }); el.remove(); toast('Cargados descontados ✓'); alTerminar(); } catch (er) { toast(er.message); }
-    });
-  };
-  inp.click();
+/* descontar cargados: del stock de un control se restan las unidades de los pedidos ya cargados de un día (por ejemplo los de mañana, cuando se controló antes de cargarlos) */
+function descontarCargados(c, alTerminar) {
+  const man = (() => { const d = new Date(hoy() + 'T12:00'); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); })();
+  const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px"><b>Descontar pedidos cargados</b></p><p class="mut" style="margin:0 0 10px">Se restan del stock de este control las unidades de los pedidos <b>ya cargados</b> del día que elijas (sin los rechazados).</p><label>Día de los pedidos</label><div style="display:flex;gap:8px"><button type="button" class="btn sec" id="dcPrev" style="width:44px;padding:0;flex:none">‹</button><input id="dcDia" type="date" value="${man}" style="flex:1 1 0;min-width:0"><button type="button" class="btn sec" id="dcSig" style="width:44px;padding:0;flex:none">›</button></div><label>Turno</label><select id="dcTurno" style="width:100%"><option value="">Todos los turnos</option><option value="manana">Mañana</option><option value="tarde">Tarde</option></select><button class="btn" data-r="ver" style="margin-top:14px">Ver pedidos de ese día</button><button class="btn sec" data-r="0" style="margin-top:10px">Cancelar</button>`);
+  const mover = n => { const d = new Date(($('#dcDia').value || man) + 'T12:00'); d.setDate(d.getDate() + n); $('#dcDia').value = d.toISOString().slice(0, 10); };
+  $('#dcPrev').onclick = () => mover(-1); $('#dcSig').onclick = () => mover(1);
+  el.addEventListener('click', async ev => {
+    const b = ev.target.closest('[data-r]'); if (ev.target === el || (b && b.dataset.r === '0')) return el.remove(); if (!b) return;
+    const dia = $('#dcDia').value, turno = $('#dcTurno').value; if (!dia) return toast('Elegí el día');
+    try {
+      const r = await api('PUT', 'p/controles/' + c.id, { accion: 'pedidos', dia, turno, simular: true });
+      el.remove();
+      const el2 = dlgProv(`<p style="font-size:18px;margin:0 0 4px;flex:none"><b>Descontar pedidos cargados</b></p><p class="mut" style="margin:0 0 8px;flex:none">${esc(diaTxt(dia))}${turno ? ' · ' + esc(TURNOS[turno]) : ' · todos los turnos'} · ${r.pedidos} ${r.pedidos === 1 ? 'pedido cargado' : 'pedidos cargados'} · ${r.n} ${r.n === 1 ? 'producto' : 'productos'} del control · ${r.unidades} u. a descontar</p><div class="card skl" style="padding:2px 12px;margin:0;flex:1 1 auto;min-height:0;overflow:auto"><div class="pvf pvh skg"><span>Cód.</span><span>Descripción</span><span class="pvs">Stock</span></div>${r.lineas.map(x => `<div class="pvf skg" style="cursor:default"><span class="pvc">${esc(x.cod)}</span><span class="pvn">${esc(x.nom)}</span><span class="pvs">${x.antes} → <b>${x.desp}</b></span></div>`).join('')}</div>${r.fuera ? `<p class="mut" style="margin:8px 0 0;flex:none;font-size:13px">${r.fuera} ${r.fuera === 1 ? 'producto de los pedidos no está' : 'productos de los pedidos no están'} en este control y se ignoran.</p>` : ''}<div style="display:flex;gap:10px;margin-top:12px;flex:none"><button class="btn" data-r="1" style="flex:2">Descontar</button><button class="btn sec" data-r="0" style="flex:1">Cancelar</button></div>`, true);
+      el2.addEventListener('click', async e2 => {
+        const b2 = e2.target.closest('[data-r]'); if (e2.target === el2 || (b2 && b2.dataset.r === '0')) return el2.remove(); if (!b2) return;
+        try { await api('PUT', 'p/controles/' + c.id, { accion: 'pedidos', dia, turno }); el2.remove(); toast('Pedidos cargados descontados ✓'); alTerminar(); } catch (er) { toast(er.message); }
+      });
+    } catch (er) { toast(er.message); }
+  });
 }
 function vStockCtl() {   // historial de controles guardados (administrador)
   $('#main').innerHTML = '<div id="skH"></div>';
@@ -978,7 +932,7 @@ function vStockCtl() {   // historial de controles guardados (administrador)
   const abrir = async id => {
     try {
       const c = await api('GET', 'p/controles/' + id);
-      const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px;flex:none"><b>Control del ${esc(fechaControl(c.en).txt)}</b></p><p class="mut" style="margin:0 0 8px;flex:none">Responsable: ${esc(c.responsable || c.por || '')}${c.proveedor ? ' · ' + esc(c.proveedor) : ''} · ${c.items.length} productos</p><div class="card skl" style="padding:2px 12px;margin:0;flex:1 1 auto;min-height:0;overflow:auto"><div class="pvf pvh skg"><span>Cód.</span><span>Descripción</span><span class="pvs">Stock</span></div>${c.items.map(([, cod, nom, cant]) => `<div class="pvf skg" style="cursor:default"><span class="pvc">${esc(cod)}</span><span class="pvn">${esc(nom)}</span><span class="pvs">${cant}</span></div>`).join('')}</div>${(c.descuentos || []).length ? `<p class="mut" style="margin:8px 0 0;flex:none;font-size:13px">${c.descuentos.map(d => `➖ ${esc(fechaControl(d.en).txt)} · ${esc(d.por)} · ${d.n} productos, ${d.unidades} u.${d.archivo ? ' · ' + esc(d.archivo) : ''}`).join('<br>')}</p>` : ''}<button class="btn sec" data-r="d" style="margin-top:12px;flex:none">➖ Descontar cargados (importar Excel)</button><div style="display:flex;gap:10px;margin-top:10px;flex:none"><button class="btn" data-r="x" style="flex:2">📊 Descargar planilla</button><button class="btn sec" data-r="0" style="flex:1">Volver</button></div>`, true);
+      const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px;flex:none"><b>Control del ${esc(fechaControl(c.en).txt)}</b></p><p class="mut" style="margin:0 0 8px;flex:none">Responsable: ${esc(c.responsable || c.por || '')}${c.proveedor ? ' · ' + esc(c.proveedor) : ''} · ${c.items.length} productos</p><div class="card skl" style="padding:2px 12px;margin:0;flex:1 1 auto;min-height:0;overflow:auto"><div class="pvf pvh skg"><span>Cód.</span><span>Descripción</span><span class="pvs">Stock</span></div>${c.items.map(([, cod, nom, cant]) => `<div class="pvf skg" style="cursor:default"><span class="pvc">${esc(cod)}</span><span class="pvn">${esc(nom)}</span><span class="pvs">${cant}</span></div>`).join('')}</div>${(c.descuentos || []).length ? `<p class="mut" style="margin:8px 0 0;flex:none;font-size:13px">${c.descuentos.map(d => `➖ ${esc(fechaControl(d.en).txt)} · ${esc(d.por)} · ${d.dia ? 'pedidos del ' + esc(diaTxt(d.dia)) + (d.turno ? ' (' + esc(TURNOS[d.turno]) + ')' : '') + ' · ' : ''}${d.n} productos, ${d.unidades} u.`).join('<br>')}</p>` : ''}<button class="btn sec" data-r="d" style="margin-top:12px;flex:none">➖ Descontar pedidos cargados</button><div style="display:flex;gap:10px;margin-top:10px;flex:none"><button class="btn" data-r="x" style="flex:2">📊 Descargar planilla</button><button class="btn sec" data-r="0" style="flex:1">Volver</button></div>`, true);
       el.addEventListener('click', ev => { const b = ev.target.closest('[data-r]'); if (b && b.dataset.r === 'x') return planillaControl(c); if (b && b.dataset.r === 'd') return descontarCargados(c, () => { el.remove(); abrir(id); }); if (ev.target === el || b) el.remove(); });
     } catch (er) { toast(er.message); }
   };
