@@ -45,6 +45,22 @@ async function load(pool) {
   state.seq.k = state.seq.k || 1;
   state.migraciones = state.migraciones || {};
   if (!state.migraciones.notasNuevas) { const hoy = new Date().toISOString().slice(0, 10); for (const p of state.pedidos) if (p.nota && !p.entrega && (p.dia || '') >= hoy) p.notaNueva = true; state.migraciones.notasNuevas = true; }   // una sola vez: las notas de pedidos de hoy en adelante pasan a Notificaciones
+  if (!state.migraciones.ctlVisual) {   // una sola vez: lo contado vuelve a ser lo que se contó (los descuentos anteriores pasan a ser una capa aparte)
+    for (const c of state.controles) {
+      const ds = c.descuentos || [];
+      if (ds.some(d => d.pedidos !== undefined && !d.cambios)) {   // descuento hecho antes de guardar el detalle: se reconstruye con lo anotado en los pedidos aplicados
+        const tot = new Map(), idDe = new Map(state.productos.map(p => [p.id, codCtl(p.codigo)]));
+        for (const it of c.items) idDe.set(it[0], codCtl(it[1]));
+        for (const ap of Object.values(c.pedAplicados || {})) for (const [k, q] of Object.entries(ap)) { const kk = /^\d+$/.test(k) && idDe.has(+k) ? idDe.get(+k) : k; tot.set(kk, (tot.get(kk) || 0) + q); }
+        const cambios = [];
+        for (const it of c.items) { const q = tot.get(codCtl(it[1])); if (q) { it[3] += q; cambios.push([it[1], q]); const p = state.productos.find(x => x.id === it[0]); if (p && p.existenciaEn === c.en) p.existencia = it[3]; } }
+        const ped = ds.filter(d => d.pedidos !== undefined), ap = Object.fromEntries(Object.keys(c.pedAplicados || {}).map(id => [id, null]));
+        c.descuentos = [...ds.filter(d => d.pedidos === undefined), ...ped.map((d, i) => i === ped.length - 1 ? { ...d, cambios, ap } : { ...d, cambios: [], ap: {} })];   // el total queda en el último descuento: al revertirlo vuelve todo
+      }
+      for (const it of c.items) if (it[4] != null) { it[3] = it[4]; it.length = 4; }   // formato intermedio: el 5º dato era lo contado
+    }
+    state.migraciones.ctlVisual = true;
+  }
   if (!state.migraciones.sinStock) { for (const p of state.productos) if (p.usaStock) p.usaStock = false; state.migraciones.sinStock = true; }   // una sola vez: los productos no se trabajan con stock (la importación los había dejado controlando stock y como agotados)
   for (const c of state.combos) if (c.tipo === 'precio' && !c.precios) { c.precios = {}; for (const g of c.grupos) for (const pid of g.pids) c.precios[pid] = c.precio; delete c.precio; }
   for (const o of state.pedidos) if (o.clienteId && o.clienteCodigo === undefined) { const c = state.clientes.find(x => x.id === o.clienteId); if (c) o.clienteCodigo = c.codigo; }
@@ -313,6 +329,12 @@ function cleanCliente(b, prev, admin, yo) {
 }
 
 // Stock (opcional por producto): cada pedido descuenta lo que lleva; al editarlo, eliminarlo o rechazarlo se ajusta o se repone.
+const codCtl = v => String(v ?? '').trim().toLowerCase().replace(/^0+(?=\d)/, '');
+function actualDe(c) {   // stock actual de cada producto del control = lo que se contó menos lo descontado (solo visual: lo contado queda guardado tal cual)
+  const m = new Map(c.items.map(it => [codCtl(it[1]), it[3]]));
+  for (const d of c.descuentos || []) for (const [k, q] of d.cambios || []) m.set(codCtl(k), Math.max(0, (m.get(codCtl(k)) ?? 0) - q));
+  return m;
+}
 const cantsStock = o => new Map(o && !o.stockRepuesto ? o.items.map(i => [i.pid, i.cant]) : []);
 function ajustarStock(viejo, nuevo) {
   const a = cantsStock(viejo), b = cantsStock(nuevo);
@@ -632,7 +654,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       if (!admin && !esStock) throw { code: 403, msg: 'No autorizado' };
       if (esStock && req.method !== 'POST') throw { code: 403, msg: 'El usuario de stock solo puede cargar controles nuevos' };   // el historial lo ve el administrador
       if (!id && req.method === 'GET') return send(res, 200, { controles: [...s.controles].reverse().map(c => ({ id: c.id, en: c.en, por: c.por, responsable: c.responsable || '', proveedor: c.proveedor || '', n: c.items.length })) });
-      if (id && req.method === 'GET') { const c = s.controles.find(x => x.id === id); if (!c) throw { code: 404, msg: 'No existe' }; return send(res, 200, c); }
+      if (id && req.method === 'GET') { const c = s.controles.find(x => x.id === id); if (!c) throw { code: 404, msg: 'No existe' }; const act = actualDe(c); return send(res, 200, { ...c, items: c.items.map(it => { const a = act.get(codCtl(it[1])); return a !== it[3] ? [it[0], it[1], it[2], it[3], a] : [it[0], it[1], it[2], it[3]]; }) }); }   // items: [id, código, descripción, contado, stock actual (solo si cambió por descuentos)]
       if (!id && req.method === 'POST') {
         const b = await body(req, 5e6), ahora = new Date().toISOString(), items = [];
         const uid = String(b.uid || '').slice(0, 60);
@@ -659,21 +681,31 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         if (b.accion === 'pedidos') {
         const dia = String(b.dia || ''), turno = ['manana', 'tarde'].includes(b.turno) ? b.turno : '';   // '' = todos los turnos
         if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) throw { code: 400, msg: 'Elegí el día' };
-        const aplicados = c.pedAplicados || {}, total = new Map(), nuevos = {};
+        const aplicados = c.pedAplicados || {}, total = new Map(), nuevos = {}, cod = v => String(v ?? '').trim().toLowerCase().replace(/^0+(?=\d)/, '');   // se compara por CÓDIGO: si la lista se reemplazó, el producto tiene otro id pero el mismo código
         const peds = s.pedidos.filter(o => o.dia === dia && (!turno || o.turno === turno) && o.estado === 'cargado' && !(o.entrega && o.entrega.estado === 'rechazado'));
-        for (const o of peds) for (const i of o.items) { const ya = (aplicados[o.id] || {})[i.pid] || 0, d = i.cant - ya; if (d > 0) { total.set(i.pid, (total.get(i.pid) || 0) + d); (nuevos[o.id] = nuevos[o.id] || { ...(aplicados[o.id] || {}) })[i.pid] = i.cant; } }   // solo lo que todavía no se descontó (un pedido que crece o uno nuevo del mismo día)
+        for (const o of peds) for (const i of o.items) { const k = cod(i.codigo), ap = aplicados[o.id] || {}, ya = ap[k] ?? ap[i.pid] ?? 0, d = i.cant - ya; if (d > 0) { total.set(k, (total.get(k) || 0) + d); (nuevos[o.id] = nuevos[o.id] || { ...ap })[k] = i.cant; } }   // solo lo que todavía no se descontó (un pedido que crece o uno nuevo del mismo día)
         if (!peds.length) throw { code: 400, msg: 'No hay pedidos cargados para ese día' };
         if (!total.size) throw { code: 409, msg: 'Todo lo cargado de ese día ya está descontado de este control' };
-        const lineas = []; let unidades = 0; const enControl = new Set(c.items.map(it => it[0]));
-        for (const it of c.items) { const q = total.get(it[0]); if (!q) continue; lineas.push({ cod: it[1], nom: it[2], antes: it[3], desp: Math.max(0, it[3] - q), n: q }); unidades += q; }
-        const fuera = [...total.keys()].filter(pid => !enControl.has(pid)).length;
+        const actual = actualDe(c), lineas = []; let unidades = 0; const enControl = new Set(c.items.map(it => cod(it[1])));   // lo contado (c.items) nunca se modifica: el descuento es una capa aparte
+        for (const it of c.items) { const q = total.get(cod(it[1])); if (!q) continue; const antes = actual.get(cod(it[1])); lineas.push({ cod: it[1], nom: it[2], antes, desp: Math.max(0, antes - q), n: q }); unidades += q; }
+        const fuera = [...total.keys()].filter(k => !enControl.has(k)).length;
         if (!lineas.length) throw { code: 400, msg: 'Ningún producto de esos pedidos está en este control' };
         if (b.simular) return send(res, 200, { pedidos: peds.length, n: lineas.length, unidades, fuera, lineas });
-        for (const it of c.items) { const q = total.get(it[0]); if (!q) continue; it[3] = Math.max(0, it[3] - q); const p = s.productos.find(x => x.id === it[0]); if (p && p.existenciaEn === c.en) p.existencia = it[3]; }   // la existencia del producto solo cambia si este es su último control
+        const cambios = lineas.map(l => [l.cod, l.antes - l.desp]);   // lo que realmente se restó (nunca baja de 0)
+        const ap = {}; for (const id of Object.keys(nuevos)) ap[id] = c.pedAplicados && c.pedAplicados[id] ? c.pedAplicados[id] : null;   // cómo estaba cada pedido antes, para poder revertir
         c.pedAplicados = { ...aplicados, ...nuevos };
-        c.descuentos = [...(c.descuentos || []), { en: new Date().toISOString(), por: yo.nombre, dia, ...(turno ? { turno } : {}), pedidos: peds.length, n: lineas.length, unidades }];
+        c.descuentos = [...(c.descuentos || []), { en: new Date().toISOString(), por: yo.nombre, dia, ...(turno ? { turno } : {}), pedidos: peds.length, n: lineas.length, unidades: cambios.reduce((a, x) => a + x[1], 0), cambios, ap }];
         await save(pool);
         return send(res, 200, { id: c.id, n: lineas.length, unidades });
+        }
+        if (b.accion === 'revertir') {   // quita el último descuento: lo contado no se toca
+          const ds = c.descuentos || [], ult = ds[ds.length - 1];
+          if (!ult || ult.pedidos === undefined) throw { code: 400, msg: 'Este control no tiene descuentos para revertir' };
+          for (const [id, antes] of Object.entries(ult.ap || {})) { if (antes === null) delete c.pedAplicados[id]; else c.pedAplicados[id] = antes; }
+          c.descuentos = ds.slice(0, -1);
+          if (!c.descuentos.length) delete c.pedAplicados;
+          await save(pool);
+          return send(res, 200, { id: c.id, restantes: c.descuentos.length });
         }
         throw { code: 400, msg: 'Acción inválida' };
       }

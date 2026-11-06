@@ -737,8 +737,8 @@ const fechaControl = iso => { const f = new Date(iso), p = n => String(n).padSta
 function planillaControl(c) {
   if (!window.XLSX) return toast('No cargó el generador de Excel (revisá la conexión)');
   const f = fechaControl(c.en);
-  const filas = [['Control de stock'], ['Fecha', f.txt], ['Responsable', c.responsable || c.por || ''], ...(c.proveedor ? [['Proveedor', c.proveedor]] : []), [], ['Código', 'Descripción', 'Stock'], ...c.items.map(([, cod, nom, cant]) => [cod, nom, cant])];
-  const ws = XLSX.utils.aoa_to_sheet(filas); ws['!cols'] = [{ wch: 16 }, { wch: 60 }, { wch: 10 }];
+  const filas = [['Control de stock'], ['Fecha', f.txt], ['Responsable', c.responsable || c.por || ''], ...(c.proveedor ? [['Proveedor', c.proveedor]] : []), [], ...(c.items.some(x => x[4] != null) ? [['Código', 'Descripción', 'Contado', 'Stock actual'], ...c.items.map(([, cod, nom, cant, act]) => [cod, nom, cant, act ?? cant])] : [['Código', 'Descripción', 'Stock'], ...c.items.map(([, cod, nom, cant]) => [cod, nom, cant])])];
+  const ws = XLSX.utils.aoa_to_sheet(filas); ws['!cols'] = [{ wch: 16 }, { wch: 60 }, { wch: 10 }, { wch: 12 }];
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Control');
   XLSX.writeFile(wb, ('CONTROL DE STOCK ' + (c.proveedor ? c.proveedor + ' ' : '') + f.arch).toUpperCase() + '.xlsx');
 }
@@ -924,6 +924,11 @@ function descontarCargados(c, alTerminar) {
     } catch (er) { toast(er.message); }
   });
 }
+async function revertirDescuento(c, alTerminar) {   // deshace el último descuento aplicado al control
+  const u = c.descuentos[c.descuentos.length - 1], que = u.pedidos === undefined ? '' : u.cambios ? `pedidos del ${diaTxt(u.dia)}${u.turno ? ' (' + TURNOS[u.turno] + ')' : ''}` : 'todo lo descontado por pedidos';
+  if (!await confirmar(`¿Revertir el descuento de ${que}? Las cantidades vuelven a como estaban antes.`, 'Sí, revertir')) return;
+  try { await api('PUT', 'p/controles/' + c.id, { accion: 'revertir' }); toast('Descuento revertido ✓'); alTerminar(); } catch (er) { toast(er.message); }
+}
 function vStockCtl() {   // historial de controles guardados (administrador)
   $('#main').innerHTML = '<div id="skH"></div>';
   if (esStock()) { $('#main').onclick = e => { if (e.target.closest('[data-skact="nuevo"]')) go('stocknuevo'); }; return; }   // el usuario de stock solo ve el botón; el historial lo ve el administrador
@@ -932,8 +937,8 @@ function vStockCtl() {   // historial de controles guardados (administrador)
   const abrir = async id => {
     try {
       const c = await api('GET', 'p/controles/' + id);
-      const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px;flex:none"><b>Control del ${esc(fechaControl(c.en).txt)}</b></p><p class="mut" style="margin:0 0 8px;flex:none">Responsable: ${esc(c.responsable || c.por || '')}${c.proveedor ? ' · ' + esc(c.proveedor) : ''} · ${c.items.length} productos</p><div class="card skl" style="padding:2px 12px;margin:0;flex:1 1 auto;min-height:0;overflow:auto"><div class="pvf pvh skg"><span>Cód.</span><span>Descripción</span><span class="pvs">Stock</span></div>${c.items.map(([, cod, nom, cant]) => `<div class="pvf skg" style="cursor:default"><span class="pvc">${esc(cod)}</span><span class="pvn">${esc(nom)}</span><span class="pvs">${cant}</span></div>`).join('')}</div>${(c.descuentos || []).length ? `<p class="mut" style="margin:8px 0 0;flex:none;font-size:13px">${c.descuentos.map(d => `➖ ${esc(fechaControl(d.en).txt)} · ${esc(d.por)} · ${d.dia ? 'pedidos del ' + esc(diaTxt(d.dia)) + (d.turno ? ' (' + esc(TURNOS[d.turno]) + ')' : '') + ' · ' : ''}${d.n} productos, ${d.unidades} u.`).join('<br>')}</p>` : ''}<button class="btn sec" data-r="d" style="margin-top:12px;flex:none">➖ Descontar pedidos cargados</button><div style="display:flex;gap:10px;margin-top:10px;flex:none"><button class="btn" data-r="x" style="flex:2">📊 Descargar planilla</button><button class="btn sec" data-r="0" style="flex:1">Volver</button></div>`, true);
-      el.addEventListener('click', ev => { const b = ev.target.closest('[data-r]'); if (b && b.dataset.r === 'x') return planillaControl(c); if (b && b.dataset.r === 'd') return descontarCargados(c, () => { el.remove(); abrir(id); }); if (ev.target === el || b) el.remove(); });
+      const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px;flex:none"><b>Control del ${esc(fechaControl(c.en).txt)}</b></p><p class="mut" style="margin:0 0 8px;flex:none">Responsable: ${esc(c.responsable || c.por || '')}${c.proveedor ? ' · ' + esc(c.proveedor) : ''} · ${c.items.length} productos</p>${c.items.some(x => x[4] != null && x[4] !== x[3]) ? '<p class="mut" style="margin:0 0 6px;flex:none;font-size:13px">Lo que contaste queda guardado tal cual. Los descuentos de pedidos son solo visuales: lo que contaste → lo actual.</p>' : ''}<div class="card skl" style="padding:2px 12px;margin:0;flex:1 1 auto;min-height:0;overflow:auto"><div class="pvf pvh skg"><span>Cód.</span><span>Descripción</span><span class="pvs">Stock</span></div>${c.items.map(([, cod, nom, cant, act]) => `<div class="pvf skg" style="cursor:default"><span class="pvc">${esc(cod)}</span><span class="pvn">${esc(nom)}</span><span class="pvs">${act != null && act !== cant ? `<span class="mut">${cant}</span> → <b>${act}</b>` : cant}</span></div>`).join('')}</div>${(c.descuentos || []).length ? `<p class="mut" style="margin:8px 0 0;flex:none;font-size:13px">${c.descuentos.map(d => `➖ ${esc(fechaControl(d.en).txt)} · ${esc(d.por)} · ${d.dia ? 'pedidos del ' + esc(diaTxt(d.dia)) + (d.turno ? ' (' + esc(TURNOS[d.turno]) + ')' : '') + ' · ' : ''}${d.n} productos, ${d.unidades} u.`).join('<br>')}</p>${c.descuentos.some(d => d.pedidos !== undefined) ? '<button class="btn sec" data-r="rev" style="margin-top:8px;flex:none;color:var(--bad)">↩ Revertir el último descuento</button>' : ''}` : ''}<button class="btn sec" data-r="d" style="margin-top:12px;flex:none">➖ Descontar pedidos cargados</button><div style="display:flex;gap:10px;margin-top:10px;flex:none"><button class="btn" data-r="x" style="flex:2">📊 Descargar planilla</button><button class="btn sec" data-r="0" style="flex:1">Volver</button></div>`, true);
+      el.addEventListener('click', ev => { const b = ev.target.closest('[data-r]'); if (b && b.dataset.r === 'x') return planillaControl(c); if (b && b.dataset.r === 'd') return descontarCargados(c, () => { el.remove(); abrir(id); }); if (b && b.dataset.r === 'rev') return revertirDescuento(c, () => { el.remove(); abrir(id); }); if (ev.target === el || b) el.remove(); });
     } catch (er) { toast(er.message); }
   };
   $('#main').onclick = e => { const r = e.target.closest('[data-ctl]'); if (r) abrir(r.dataset.ctl); };
