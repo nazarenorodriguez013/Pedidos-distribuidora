@@ -653,6 +653,26 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         await save(pool);
         return send(res, 200, { id: c.id, en: c.en, n: items.length });
       }
+      if (id && req.method === 'PUT') {   // descontar cargados: se resta del stock de este control lo que traen uno o varios archivos (código y cantidad); solo administrador
+        const c = s.controles.find(x => x.id === id); if (!c) throw { code: 404, msg: 'No existe' };
+        const b = await body(req, 2e7), sc = v => String(v ?? '').trim().toLowerCase().replace(/^0+(?=\d)/, ''), total = new Map(), firmas = [], nombres = [], repetidos = [];
+        for (const a of Array.isArray(b.archivos) ? b.archivos : []) {
+          const m = new Map();
+          for (const f of Array.isArray(a.filas) ? a.filas : []) { const k = sc(f.codigo), n = Math.floor(Number(String(f.cant).replace(',', '.'))); if (k && n > 0) m.set(k, (m.get(k) || 0) + n); }
+          if (!m.size) continue;
+          const firma = [...m.entries()].sort().map(([k, n]) => k + ':' + n).join('|'), nombre = String(a.nombre || '').slice(0, 120);
+          if ((c.descuentos || []).some(d => (d.firmas || [d.firma]).includes(firma)) || firmas.includes(firma)) { repetidos.push(nombre || 'archivo'); continue; }   // el mismo archivo no se descuenta dos veces
+          firmas.push(firma); nombres.push(nombre); for (const [k, n] of m) total.set(k, (total.get(k) || 0) + n);
+        }
+        if (repetidos.length) throw { code: 409, msg: `Ya se descontó de este control: ${repetidos.join(', ')}` };
+        if (!total.size) throw { code: 400, msg: 'Los archivos no traen cantidades para descontar' };
+        let n = 0, unidades = 0;
+        for (const it of c.items) { const k = sc(it[1]), q = total.get(k); if (!q) continue; it[3] = Math.max(0, it[3] - q); n++; unidades += q; const p = s.productos.find(x => x.id === it[0]); if (p && p.existenciaEn === c.en) p.existencia = it[3]; }   // la existencia del producto solo cambia si este es su último control
+        if (!n) throw { code: 400, msg: 'Ningún código está en este control' };
+        c.descuentos = [...(c.descuentos || []), { en: new Date().toISOString(), por: yo.nombre, archivo: nombres.join(', '), firmas, n, unidades }];
+        await save(pool);
+        return send(res, 200, { id: c.id, n, unidades });
+      }
       throw { code: 405, msg: 'Método no permitido' };
     }
     if (rec === 'yo' && req.method === 'GET') return send(res, 200, { ...pub(yo), db: !!pool });
