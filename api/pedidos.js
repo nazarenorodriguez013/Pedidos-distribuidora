@@ -773,7 +773,8 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         o.cargadoItems = o.items.map(i => ({ pid: i.pid, nombre: i.nombre, cant: i.cant }));
         delete o.agregadoEn;
       } else if (accion === 'pendiente') {
-        o.estado = 'pendiente'; delete o.cargadoEn; delete o.cargadoPor; delete o.agregadoEn; delete o.cargadoItems; delete o.sumar; o.agregar = false;
+        const sum = sumarDe(o);   // lo que el vendedor agregó y todavía no se armó se conserva al volver a pendiente
+        o.estado = 'pendiente'; delete o.cargadoEn; delete o.cargadoPor; delete o.agregadoEn; delete o.cargadoItems; delete o.sumar; o.agregar = false; if (sum) o.sumar = sum;
         for (const i of o.items) delete i.cantCargada;
       } else if (accion === 'sumarListo') delete o.sumar;
       else throw { code: 400, msg: 'Acción inválida' };
