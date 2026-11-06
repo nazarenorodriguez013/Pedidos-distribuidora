@@ -274,11 +274,14 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); retu
 const cacheDatos = () => lsSet('pd_cache', { productos, clientes, combos, novedades, pedidos: pedidos.slice(0, 200) });
 const leerCola = () => lsGet('pd_cola', []);
 const colaMia = () => leerCola().filter(x => x.u === user.id);
+const leerColaCtl = () => lsGet('pd_cola_ctl', []);   // controles de stock guardados sin señal, esperando para enviarse
+const colaCtl = () => leerColaCtl().filter(x => x.u === user.id);
 function usarCache() { const c = lsGet('pd_cache', null); if (c) { productos = c.productos; pedidos = c.pedidos; clientes = c.clientes || []; combos = c.combos || []; novedades = c.novedades || []; } else toast('Sin señal y sin datos guardados todavía'); }
 function estado() {
   const el = $('#estado'); if (!el) return;
   const n = colaMia().filter(x => !x.error).length, rech = colaMia().filter(x => x.error).length;
-  const t = [!navigator.onLine ? 'Sin señal: los pedidos se guardan y se envían cuando vuelva' : '', n ? `${n} pedido(s) esperando para enviarse` : '', rech ? `${rech} pedido(s) rechazado(s), revisalos en Pedidos` : ''].filter(Boolean).join(' · ');
+  const nc = colaCtl().filter(x => !x.error).length, rc = colaCtl().filter(x => x.error).length;
+  const t = [!navigator.onLine ? 'Sin señal: lo que cargues se guarda y se envía cuando vuelva' : '', n ? `${n} pedido(s) esperando para enviarse` : '', rech ? `${rech} pedido(s) rechazado(s), revisalos en Pedidos` : '', nc ? `${nc} control(es) de stock esperando para enviarse` : '', rc ? `${rc} control(es) de stock rechazado(s) por el servidor` : ''].filter(Boolean).join(' · ');
   el.hidden = !t; el.textContent = t;
 }
 let sincronizando = false;
@@ -294,6 +297,16 @@ async function sincronizar() {
         lsSet('pd_cola', leerCola().map(x => x.uid === it.uid ? { ...x, error: e.message } : x)); rechazados++;
       }
     }
+    let enviadosC = 0, rechazadosC = 0;
+    for (const it of colaCtl().filter(x => !x.error)) {   // controles de stock hechos sin señal: se mandan con su fecha y responsable originales
+      try { await api('POST', 'p/controles', { items: it.items, responsable: it.responsable, proveedor: it.proveedor, en: it.en, uid: it.uid }); lsSet('pd_cola_ctl', leerColaCtl().filter(x => x.uid !== it.uid)); enviadosC++; }
+      catch (e) {
+        if (e.offline || /Sesión/.test(e.message)) break;
+        lsSet('pd_cola_ctl', leerColaCtl().map(x => x.uid === it.uid ? { ...x, error: e.message } : x)); rechazadosC++;
+      }
+    }
+    if (enviadosC) toast(`${enviadosC} control(es) de stock enviado(s) ✓`);
+    if (rechazadosC) toast(`${rechazadosC} control(es) de stock rechazado(s) por el servidor`);
     if (enviados) { try { await cargar(); } catch {} toast(`${enviados} pedido(s) enviado(s)`); }
     if (rechazados) toast(`${rechazados} pedido(s) rechazado(s) por el servidor`);
     if (enviados || rechazados) { if (view === 'pedidos' || view === 'menu') render(); }
@@ -304,7 +317,7 @@ window.addEventListener('offline', estado);
 setInterval(sincronizar, 30000);
 
 async function cargar() {
-  if (esStock()) { const r = await api('GET', 'p/productos'); productos = r.productos.sort((x, y) => x.nombre.localeCompare(y.nombre)); clientes = []; combos = []; novedades = []; pedidos = []; usuarios = []; dbOk = true; return; }
+  if (esStock()) { const r = await api('GET', 'p/productos'); productos = r.productos.sort((x, y) => x.nombre.localeCompare(y.nombre)); clientes = []; combos = []; novedades = []; pedidos = []; usuarios = []; dbOk = true; cacheDatos(); return; }
   const [a, b, c, y, cl, cb, nv] = await Promise.all([api('GET', 'p/productos'), api('GET', 'p/pedidos'), esAdmin() ? api('GET', 'p/usuarios') : { usuarios: [] }, api('GET', 'p/yo'), api('GET', 'p/clientes'), api('GET', 'p/combos'), api('GET', 'p/novedades')]);
   clientes = cl.clientes; combos = cb.combos; novedades = nv.novedades;
   dbOk = y.db;
@@ -856,15 +869,24 @@ function vStockNuevo() {
     if (b.dataset.skact === 'cancelar') { if (nCargados() && !await confirmar('¿Cancelar el control? Se pierden las cantidades cargadas.', 'Sí, cancelar')) return; return volverA('stock'); }
     const items = lista().filter(p => String(valor(p)).trim() !== '').map(p => ({ pid: p.id, existencia: valor(p) })), provNom = skProv === '' ? '' : PROV_PDF[+skProv][0];
     const responsable = await pedirResponsable(); if (!responsable) return;
-    try {
-      const r = await api('POST', 'p/controles', { items, responsable, proveedor: provNom });
-      const ctl = { en: r.en, responsable, proveedor: provNom, items: items.map(it => { const p = productos.find(x => x.id === it.pid) || {}; return [it.pid, p.codigo, p.nombre, Number(it.existencia)]; }) };   // para la planilla (se descarga solo si se pide)
-      items.forEach(it => { const p = productos.find(x => x.id === it.pid); if (p) p.existencia = Number(it.existencia); });
+    const uid = crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2);   // el mismo control no se guarda dos veces aunque se reintente
+    const terminar = (en, pendiente) => {
+      const ctl = { en, responsable, proveedor: provNom, items: items.map(it => { const p = productos.find(x => x.id === it.pid) || {}; return [it.pid, p.codigo, p.nombre, Number(it.existencia)]; }) };   // para la planilla (se descarga solo si se pide)
+      items.forEach(it => { const p = productos.find(x => x.id === it.pid); if (p) { p.existencia = Number(it.existencia); p.existenciaEn = en; } });
       for (const k of Object.keys(borr)) delete borr[k]; guardarStockBorr(borr);   // el control quedó guardado: el próximo empieza de cero
-      
-      const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px"><b>Control guardado ✓</b></p><p class="mut" style="margin:0 0 14px">${esc(fechaControl(r.en).txt)} · ${esc(responsable)}${provNom ? ' · ' + esc(provNom) : ''} · ${r.n} ${r.n === 1 ? 'producto' : 'productos'}</p><button class="btn" data-r="x">📊 Descargar planilla (Excel)</button><button class="btn sec" data-r="0" style="margin-top:10px">Cerrar</button>`);
+      cacheDatos(); estado();
+      const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px"><b>${pendiente ? 'Guardado en el teléfono ✓' : 'Control guardado ✓'}</b></p><p class="mut" style="margin:0 0 ${pendiente ? 6 : 14}px">${esc(fechaControl(en).txt)} · ${esc(responsable)}${provNom ? ' · ' + esc(provNom) : ''} · ${items.length} ${items.length === 1 ? 'producto' : 'productos'}</p>${pendiente ? '<p style="margin:0 0 14px">No hay señal: el control se envía solo cuando vuelva internet.</p>' : ''}<button class="btn" data-r="x">📊 Descargar planilla (Excel)</button><button class="btn sec" data-r="0" style="margin-top:10px">Cerrar</button>`);
       el.addEventListener('click', ev => { const b = ev.target.closest('[data-r]'); if (b && b.dataset.r === 'x') return planillaControl(ctl); if (ev.target === el || b) { el.remove(); volverA('stock'); } });   // la planilla es una opción: no se descarga sola
-    } catch (er) { toast(er.message); }
+    };
+    try {
+      const r = await api('POST', 'p/controles', { items, responsable, proveedor: provNom, uid });
+      terminar(r.en, false);
+    } catch (er) {
+      if (!er.offline) return toast(er.message);
+      const en = new Date().toISOString();   // sin señal: queda en el teléfono con la fecha de ahora y se envía cuando vuelva internet
+      if (!lsSet('pd_cola_ctl', [...leerColaCtl(), { u: user.id, uid, en, responsable, proveedor: provNom, items }])) return toast('No se pudo guardar en el teléfono');
+      terminar(en, true);
+    }
   };
   pintar();
 }

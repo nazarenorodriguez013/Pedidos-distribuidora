@@ -635,6 +635,9 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       if (id && req.method === 'GET') { const c = s.controles.find(x => x.id === id); if (!c) throw { code: 404, msg: 'No existe' }; return send(res, 200, c); }
       if (!id && req.method === 'POST') {
         const b = await body(req, 5e6), ahora = new Date().toISOString(), items = [];
+        const uid = String(b.uid || '').slice(0, 60);
+        if (uid) { const dup = s.controles.find(x => x.uid === uid); if (dup) return send(res, 200, { id: dup.id, en: dup.en, n: dup.items.length, repetido: true }); }   // un control hecho sin señal que ya llegó no se guarda dos veces
+        const t = Date.parse(b.en), en = !Number.isNaN(t) && t <= Date.now() + 5 * 60e3 && t >= Date.now() - 90 * 864e5 ? new Date(t).toISOString() : ahora;   // controles hechos sin señal: conservan su fecha real
         for (const it of Array.isArray(b.items) ? b.items : []) {
           const p = s.productos.find(x => x.id === Number(it.pid)); if (!p) continue;
           const v = it.existencia === '' || it.existencia === null || it.existencia === undefined ? null : parseNum(it.existencia);
@@ -644,9 +647,9 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         const responsable = String(b.responsable || '').trim().slice(0, 80);
         if (!responsable) throw { code: 400, msg: 'Poné el nombre del responsable del control' };
         if (!items.length) throw { code: 400, msg: 'No hay cantidades para guardar' };
-        for (const [pid, , , cant] of items) { const p = s.productos.find(x => x.id === pid); p.existencia = cant; p.existenciaEn = ahora; }
-        const c = { id: s.seq.s++, en: ahora, por: yo.nombre, responsable, proveedor: String(b.proveedor || '').trim().slice(0, 60), items };
-        s.controles.push(c); if (s.controles.length > 300) s.controles.splice(0, s.controles.length - 300);
+        for (const [pid, , , cant] of items) { const p = s.productos.find(x => x.id === pid); if (!p.existenciaEn || en >= p.existenciaEn) { p.existencia = cant; p.existenciaEn = en; } }   // un control viejo que llega tarde no pisa a uno más nuevo
+        const c = { id: s.seq.s++, en, por: yo.nombre, responsable, proveedor: String(b.proveedor || '').trim().slice(0, 60), items, ...(uid ? { uid } : {}) };
+        s.controles.push(c); s.controles.sort((x, y) => (x.en < y.en ? -1 : x.en > y.en ? 1 : x.id - y.id)); if (s.controles.length > 300) s.controles.splice(0, s.controles.length - 300);
         await save(pool);
         return send(res, 200, { id: c.id, en: c.en, n: items.length });
       }
