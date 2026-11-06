@@ -49,7 +49,7 @@ async function load(pool) {
   for (const c of state.combos) if (c.tipo === 'precio' && !c.precios) { c.precios = {}; for (const g of c.grupos) for (const pid of g.pids) c.precios[pid] = c.precio; delete c.precio; }
   for (const o of state.pedidos) if (o.clienteId && o.clienteCodigo === undefined) { const c = state.clientes.find(x => x.id === o.clienteId); if (c) o.clienteCodigo = c.codigo; }
   for (const c of state.clientes) if (c.apellido) { c.nombre = [c.nombre, c.apellido].filter(Boolean).join(' '); c.apellido = ''; }   // un solo campo: nombre y apellido
-  for (const p of state.productos) { delete p.stock; if (p.multiplo > 1 && p.multiploSet === undefined) p.multiploSet = true; }   // ya no se maneja stock
+  for (const p of state.productos) { if (p.multiplo > 1 && p.multiploSet === undefined) p.multiploSet = true; }
   for (const o of state.pedidos) if (o.subtotal === undefined) {   // pedidos anteriores al redondeo: se les aplica solo
     o.subtotal = o.total; o.total = redondear(o.subtotal); o.redondeo = Math.round((o.total - o.subtotal) * 100) / 100;
   }
@@ -228,7 +228,7 @@ function cleanProducto(b, prev = {}) {
     promoCant: Math.max(1, Math.floor(num(b.promoCant, prev.promoCant ?? 1))),
     promoPct: Math.min(100, num(b.promoPct, prev.promoPct ?? 0)),
     usaStock: b.usaStock === undefined ? !!prev.usaStock : !!b.usaStock,   // stock opcional por producto: se descuenta con cada pedido
-    stock: Math.max(0, Math.floor(num(b.stock, prev.stock ?? 0))),
+    ...(b.stock !== undefined && b.stock !== '' && b.stock !== null ? { stock: Math.floor(num(b.stock, prev.stock ?? 0)) } : prev.stock !== undefined ? { stock: prev.stock } : {}),   // el stock se lleva siempre en segundo plano (la lista lo trae y cada venta lo descuenta); solo se muestra y se controla si usaStock está activo
   };
 }
 
@@ -318,7 +318,7 @@ function ajustarStock(viejo, nuevo) {
   const a = cantsStock(viejo), b = cantsStock(nuevo);
   for (const pid of new Set([...a.keys(), ...b.keys()])) {
     const p = state.productos.find(x => x.id === pid);
-    if (p && p.usaStock) p.stock = Math.max(0, (p.stock || 0) - ((b.get(pid) || 0) - (a.get(pid) || 0)));
+    if (p && typeof p.stock === 'number') p.stock -= (b.get(pid) || 0) - (a.get(pid) || 0);   // se descuenta siempre (aunque no se controle); puede quedar en negativo
   }
 }
 function reponerStock(o, reponer) {   // pedido rechazado: la mercadería vuelve al stock; si se quita el rechazo, se descuenta de nuevo
@@ -389,7 +389,7 @@ function armarPedido(b, viejo, quien, admin) {
   const antes = cantsStock(viejo);
   for (const i of items) {
     const p = state.productos.find(x => x.id === i.pid);
-    if (p && p.usaStock && i.cant - (antes.get(i.pid) || 0) > (p.stock || 0)) throw { code: 409, msg: `Stock insuficiente de "${p.nombre}": quedan ${p.stock || 0}` };
+    if (p && p.usaStock && i.cant - (antes.get(i.pid) || 0) > (p.stock || 0)) throw { code: 409, msg: `Stock insuficiente de "${p.nombre}": quedan ${Math.max(0, p.stock || 0)}` };
   }
   // Pedido ya cargado por administración: si lo edita el vendedor queda marcado "agregar" para que el admin lo vea
   let extra = {};
@@ -494,7 +494,7 @@ function importar(b) {
     if (!p) {
       const nombre = String(f.nombre ?? '').trim();
       if (!nombre || precio === null) return r.errores.push(`Fila ${fila} (${codigo}): producto nuevo necesita nombre y precio`);
-      const nuevoProd = { id: state.seq.p++, codigo, nombre, precio, altaEn: estampa, ...(String(f.proveedor ?? '').trim() ? { proveedor: String(f.proveedor).trim().slice(0, 80) } : {}), multiplo: mult ? Math.floor(mult) : 1, multiploSet: !!mult, ...(stk !== null ? { usaStock: true, stock: Math.floor(stk) } : {}), activo: sinPrecio ? false : f.activo === undefined || f.activo === '' ? true : truthy(f.activo), promo: false, precioPromo: 0 };
+      const nuevoProd = { id: state.seq.p++, codigo, nombre, precio, altaEn: estampa, ...(String(f.proveedor ?? '').trim() ? { proveedor: String(f.proveedor).trim().slice(0, 80) } : {}), multiplo: mult ? Math.floor(mult) : 1, multiploSet: !!mult, ...(stk !== null ? { stock: Math.floor(stk) } : {}), activo: sinPrecio ? false : f.activo === undefined || f.activo === '' ? true : truthy(f.activo), promo: false, precioPromo: 0 };
       state.productos.push(nuevoProd); restaurarProducto(nuevoProd);
       r.nuevos.push({ codigo, nombre, precio });
       return r.creados++;
@@ -505,7 +505,7 @@ function importar(b) {
     if (precio !== null && !(p.precio > 0) && precio > 0) p.altaEn = estampa;   // estaba en $0 y vuelve a tener precio: cuenta como alta
     if (precio !== null) p.precio = precio;   // precio 0: queda en 0 (y desactivado)
     if (mult && !p.multiploSet) { p.multiplo = Math.floor(mult); p.multiploSet = true; }   // la unidad de venta solo se carga si todavía no estaba definida
-    if (stk !== null) { p.usaStock = true; p.stock = Math.floor(stk); }   // la planilla trae stock: el producto pasa a controlar stock
+    if (stk !== null) p.stock = Math.floor(stk);   // la planilla trae stock: reemplaza el número guardado (no activa el control de stock del producto)
     if (sinPrecio) p.activo = false;
     else if (f.activo !== undefined && f.activo !== '') p.activo = truthy(f.activo);
     else if (precio !== null) p.activo = true;   // lista nueva: precio 0 queda desactivado y con precio queda activo
@@ -960,7 +960,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     if (!id && req.method === 'GET') {
       const l = list.filter(visible);
       if (rec === 'productos' && esStock) return send(res, 200, { productos: l.map(p => ({ id: p.id, codigo: p.codigo, nombre: p.nombre, proveedor: p.proveedor || '', barras: p.barras || '', existencia: p.existencia ?? null, existenciaEn: p.existenciaEn || null })) });   // el usuario de stock no ve precios ni nada más
-      return send(res, 200, { [rec]: rec === 'pedidos' ? [...l].reverse() : rec === 'productos' && !admin ? l.map(({ existencia, existenciaEn, existenciaPor, barras, ...p }) => p) : l });   // el proveedor del producto viaja con el producto (no se muestra: solo filtra el PDF); el stock lo ven el administrador y el usuario de stock
+      return send(res, 200, { [rec]: rec === 'pedidos' ? [...l].reverse() : rec === 'productos' && !admin ? l.map(({ existencia, existenciaEn, existenciaPor, barras, ...p }) => p.usaStock ? p : (({ stock, ...q }) => q)(p)) : l });   // el proveedor del producto viaja con el producto (no se muestra: solo filtra el PDF); el stock lo ven el administrador y el usuario de stock
     }
     if (rec === 'productos' && req.method !== 'GET') soloAdmin();
     if (!id && req.method === 'POST') {

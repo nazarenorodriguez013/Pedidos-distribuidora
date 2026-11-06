@@ -249,7 +249,14 @@ const esAdmin = () => user && user.rol === 'admin';
 const esStock = () => user && user.rol === 'stock';   // usuario que solo ve y carga el stock
 let view = 'menu', draft = null, q = '', filtro = 'todos';
 
-function toast(t) { const el = $('#toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => el.style.display = 'none', 2800); }
+function avisoStock(nombre, disp) {   // ventanita: no se puede pedir más de lo que hay (se cierra con Aceptar)
+  if (document.getElementById('dlgStock')) return;
+  const el = dlgProv(`<p style="font-size:19px;margin:0 0 6px"><b>⚠ Stock insuficiente</b></p><p class="mut" style="margin:0 0 10px">${esc(nombre)}</p><p style="font-size:18px;margin:0 0 16px">Stock disponible: <b>${disp}</b></p><button class="btn" data-r="1">Aceptar</button>`);
+  el.id = 'dlgStock'; el.addEventListener('click', e => { if (e.target.closest('[data-r]')) el.remove(); });
+}
+function toast(t) {
+  const m = /^Stock insuficiente de "(.*)": quedan (-?\d+)$/.exec(String(t)); if (m) return avisoStock(m[1], m[2]);   // el aviso del servidor también sale como ventanita
+  const el = $('#toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => el.style.display = 'none', 2800); }
 
 async function api(method, url, data) {
   let r;
@@ -1226,7 +1233,7 @@ function cambiarCant(pid, d, fijo) {
   const m = multiploDe(p), cur = draft.items[pid] || 0;
   let c = fijo !== undefined ? Math.ceil(fijo / m) * m : d > 0 ? Math.floor(cur / m) * m + m : Math.ceil(cur / m) * m - m;   // de a múltiplos de m
   c = Math.max(0, Math.min(c, 99999));
-  if (p.usaStock && c > cur && c > stockDisp(p)) { const tope = Math.floor(stockDisp(p) / m) * m; toast(`Stock disponible de ${p.nombre}: ${stockDisp(p)}`); c = Math.max(cur, tope); }   // no se pide más de lo que hay
+  if (p.usaStock && c > cur && c > stockDisp(p)) { const tope = Math.floor(stockDisp(p) / m) * m; avisoStock(p.nombre, Math.max(0, stockDisp(p))); c = Math.max(cur, tope); }   // no se pide más de lo que hay
   if (c) draft.items[pid] = c; else delete draft.items[pid];
   const y = window.scrollY; pintarPedido(); window.scrollTo(0, y);
 }
@@ -1637,8 +1644,8 @@ function formProducto(p) {
       <div><label>Unidad de venta</label><input name="multiplo" inputmode="numeric" value="${p.multiplo || 1}" placeholder="1"></div></div>
     <p class="mut" style="margin:4px 0 0">Unidad de venta: 1 = por unidad suelta. Con 5, las cantidades del pedido van de 5 en 5 (5, 10, 15…).</p>
     <div class="row" style="border:0"><div class="nm"><b>Activo</b><span class="mut">Apagado: no se puede pedir ni sale en el PDF</span></div><label class="sw" style="margin:0"><input type="checkbox" name="activo" ${p.activo !== false ? 'checked' : ''}><i></i></label></div>
-    <div class="row" style="border:0"><div class="nm"><b>Trabajar con stock</b><span class="mut">Encendido: cada pedido descuenta del stock y no se puede pedir más de lo que hay</span></div><label class="sw" style="margin:0"><input type="checkbox" name="usaStock" ${p.usaStock ? 'checked' : ''}><i></i></label></div>
-    <div id="stockBox" ${p.usaStock ? '' : 'hidden'}><label>Stock actual (unidades)</label><input name="stock" inputmode="numeric" value="${p.stock || 0}" placeholder="0"></div>
+    <div class="row" style="border:0"><div class="nm"><b>Trabajar con stock</b><span class="mut">El stock de la lista y las ventas se llevan siempre en segundo plano. Encendido: se muestra el stock real y no se puede pedir más de lo que hay</span></div><label class="sw" style="margin:0"><input type="checkbox" name="usaStock" ${p.usaStock ? 'checked' : ''}><i></i></label></div>
+    <div id="stockBox" ${p.usaStock ? '' : 'hidden'}><label>Stock actual (unidades)</label><input name="stock" inputmode="numeric" value="${p.stock ?? ''}" placeholder="0"></div>
     <div class="row" style="border:0"><div class="nm"><b>En promoción</b></div><label class="sw" style="margin:0"><input type="checkbox" name="promo" ${p.promo ? 'checked' : ''}><i></i></label></div>
     <div class="card" style="margin:6px 0 0;background:var(--bg)"><b>Promoción</b>
       <label>Cantidad mínima</label><input name="promoCant" inputmode="numeric" value="${p.promoCant || 1}" placeholder="1">
@@ -1648,8 +1655,9 @@ function formProducto(p) {
     <div style="height:14px"></div><button class="btn">Guardar</button>
     <div class="row" style="border:0;padding:10px 0 0"><button type="button" class="btn sec" data-modal="cerrar">Cancelar</button>${p.id ? '<button type="button" class="btn bad" data-act="borrarProd">Eliminar</button>' : ''}</div></form>`;
 }
-function abrirProducto(p) {
+async function abrirProducto(p) {
   if (!esAdmin()) return;
+  if (p && p.id) { try { const f = await api('GET', 'p/productos/' + p.id); p = { ...p, stock: f.stock, usaStock: f.usaStock }; } catch {} }   // el stock cambia con cada venta: se muestra el actual, no el de cuando se abrió la app
   editando = { ...p };
   const el = document.createElement('div'); el.id = 'modal'; el.className = 'modal';
   el.innerHTML = `<div class="modal-card"><div class="row" style="border:0;padding:0 0 4px"><h2 style="flex:1;margin:0;font-size:19px">${p.id ? 'Editar producto' : 'Nuevo producto'}</h2><button class="btn sec" data-modal="cerrar" aria-label="Cerrar" style="width:40px;min-height:40px;padding:0;flex:none">✕</button></div>${formProducto(editando)}</div>`;
@@ -1660,7 +1668,7 @@ function abrirProducto(p) {
   $('#fp').onsubmit = async e => {
     e.preventDefault();
     const f = new FormData(e.target), d = Object.fromEntries(f);
-    d.activo = !!f.get('activo'); d.promo = !!f.get('promo'); d.usaStock = !!f.get('usaStock');
+    d.activo = !!f.get('activo'); d.promo = !!f.get('promo'); d.usaStock = !!f.get('usaStock'); if (!d.usaStock) delete d.stock;   // sin control de stock el número oculto lo lleva el sistema: no se pisa con el que se vio al abrir
     try {
       if (editando.id) await api('PUT', 'p/productos/' + editando.id, d); else await api('POST', 'p/productos', d);
       await cargar(); toast('Guardado'); cerrarModal();
@@ -1866,7 +1874,7 @@ let importFilas = null, importIgnoradas = [];
 const IGNORADOS_IMP = { '9999': 'redondeo', '7040': 'servicio de reparto' };   // renglones de la lista que no son productos (también los ignora el servidor)
 const ignoradoImp = f => { const c = String(f.codigo ?? '').trim().replace(/^0+(?=\d)/, ''); return IGNORADOS_IMP[c] ? c + ' (' + IGNORADOS_IMP[c] + ')' : ['redondeo', 'servicio de reparto'].includes(norm(String(f.nombre ?? '')).trim()) ? String(f.nombre).trim() : null; };
 const COLS = { codigo: ['cod barra', 'cod barras', 'codigo de barra', 'codigo de barras', 'codigo barra', 'codigo barras'],   // el código del producto es «Cod. barra»; la columna «Código» se ignora
-   nombre: ['articulo', 'nombre', 'descripcion', 'producto', 'detalle'], precio: ['lista 1', 'precio', 'price', 'importe', 'pvp', 'lista'], proveedor: ['proveedor'] };   // solo se leen estas cuatro columnas: Cod. barra (código), Artículo, Lista 1 y Proveedor; el resto del Excel (stock, activo, unidad de venta…) se ignora
+   nombre: ['articulo', 'nombre', 'descripcion', 'producto', 'detalle'], precio: ['lista 1', 'precio', 'price', 'importe', 'pvp', 'lista'], proveedor: ['proveedor'], stock: ['stock'] };   // solo se leen estas columnas: Cod. barra (código), Artículo, Lista 1, Proveedor y Stock (se guarda en segundo plano); el resto del Excel (activo, unidad de venta…) se ignora
 function leerHoja(rows) {
   rows = rows.filter(r => r.some(c => String(c ?? '').trim() !== ''));
   // el encabezado puede no estar en la primera fila (títulos arriba): se busca en las primeras filas la que tenga código y nombre/precio
@@ -1905,7 +1913,7 @@ async function filasDePdf(file) {
 }
 function vImportar() {
   $('#main').innerHTML = `<div class="card"><h3 style="margin:0 0 6px">Importar lista</h3>
-    <p class="mut">Subí el <b>PDF de la lista de precios</b> del proveedor (código, artículo, IVA, precio; los de precio 0 quedan desactivados), o un archivo Excel (.xlsx) / CSV con las columnas <b>Cod. barra</b>, <b>Artículo</b>, <b>Lista 1</b> y <b>Proveedor</b>; las demás se ignoran.</p>
+    <p class="mut">Subí el <b>PDF de la lista de precios</b> del proveedor (código, artículo, IVA, precio; los de precio 0 quedan desactivados), o un archivo Excel (.xlsx) / CSV con las columnas <b>Cod. barra</b>, <b>Artículo</b>, <b>Lista 1</b>, <b>Proveedor</b> y <b>Stock</b>; las demás se ignoran.</p>
     <input id="arch" type="file" accept=".pdf,.xlsx,.xls,.csv"><div id="prev"></div></div>
     <div class="card"><h3 style="margin:0 0 6px">Exportar</h3><p class="mut">Descarga el listado actual en Excel; podés editarlo y volver a importarlo.</p><button class="btn sec" data-act="exportarExcel">Descargar Excel</button></div>`;
   $('#arch').onchange = async e => {
@@ -2456,7 +2464,7 @@ document.addEventListener('change', e => {
   if (e.target.dataset && e.target.dataset.qin) {
     const pid = +e.target.dataset.qin, p = productos.find(x => x.id === pid), m = p ? multiploDe(p) : 1;
     if (draft.items[pid] % m) draft.items[pid] = Math.ceil(draft.items[pid] / m) * m;
-    if (p && p.usaStock && draft.items[pid] > stockDisp(p)) { const t = Math.floor(stockDisp(p) / m) * m; toast(`Stock disponible de ${p.nombre}: ${stockDisp(p)}`); if (t > 0) draft.items[pid] = t; else delete draft.items[pid]; }   // no se pide más de lo que hay
+    if (p && p.usaStock && draft.items[pid] > stockDisp(p)) { const t = Math.floor(stockDisp(p) / m) * m; avisoStock(p.nombre, Math.max(0, stockDisp(p))); if (t > 0) draft.items[pid] = t; else delete draft.items[pid]; }   // no se pide más de lo que hay
     const y = window.scrollY; pintarPedido(); window.scrollTo(0, y);
   }
 });
