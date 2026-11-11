@@ -291,7 +291,7 @@ async function sincronizar() {
   let enviados = 0, rechazados = 0;
   try {
     for (const it of colaMia().filter(x => !x.error)) {
-      try { await api('POST', 'p/pedidos', { ...it.body, uid: it.uid }); lsSet('pd_cola', leerCola().filter(x => x.uid !== it.uid)); enviados++; }
+      try { await api('POST', 'p/pedidos', { ...it.body, uid: it.uid, armadoEn: it.t }); lsSet('pd_cola', leerCola().filter(x => x.uid !== it.uid)); enviados++; }
       catch (e) {
         if (e.offline || /Sesión/.test(e.message)) break;
         lsSet('pd_cola', leerCola().map(x => x.uid === it.uid ? { ...x, error: e.message } : x)); rechazados++;
@@ -1080,7 +1080,7 @@ const etiquetaBoton = () => !draft.id ? 'Guardar pedido' : !esAdmin() ? 'Guardar
 function actualizarBoton() { guardarNav(); guardarBorrador(); const b = $('#btnGuardar'); if (b) { b.textContent = etiquetaBoton(); b.disabled = (esAdmin() && draft.id && !hayCambios() && draft.estado === 'cargado' && !draft.agregar) || (!esAdmin() && !!draft.id && !!draft.entrega); } }
 function nuevoDraft(ped) {
   if (ped) for (const i of ped.items) if (!productos.some(p => p.id === i.pid)) productos.push({ id: i.pid, codigo: i.codigo, nombre: i.nombre, precio: i.precioLista ?? i.precio, activo: false, multiplo: 1, promo: false, borrado: true });   // producto que ya no está en la lista
-  draft = ped ? { id: ped.id, entrega: ped.entrega, notaCredito: ped.notaCredito, orden: ped.items.map(i => i.pid), clienteCodigo: ped.clienteCodigo ?? (clientes.find(c => c.id === ped.clienteId) || {}).codigo, combos: Object.fromEntries(ped.items.filter(i => i.comboId).map(i => [i.comboId, 'si'])), avisadoC: {}, cargadoPor: ped.cargadoPor, agregar: !!ped.agregar, sumar: esAdmin() ? Object.fromEntries((ped.sumar || []).map(x => [x.pid, x.cant])) : {}, cambios: cambiosDe(ped), cargadoItems: ped.cargadoItems || [], estado: ped.estado || 'pendiente', cargada: Object.fromEntries(ped.items.map(i => [i.pid, i.cantCargada ?? i.cant])), promos: Object.fromEntries(ped.items.filter(i => i.promo).map(i => [i.pid, 'si'])), avisado: {}, dia: ped.dia || diaSesion(), turno: ped.turno || '', clienteId: ped.clienteId || null, legacy: !ped.clienteId, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])), manual: Object.fromEntries(ped.items.filter(i => i.manual).map(i => [i.pid, i.precio])) }
+  draft = ped ? { id: ped.id, entrega: ped.entrega, notaCredito: ped.notaCredito, orden: ped.items.map(i => i.pid), clienteCodigo: ped.clienteCodigo ?? (clientes.find(c => c.id === ped.clienteId) || {}).codigo, combos: Object.fromEntries(ped.items.filter(i => i.comboId).map(i => [i.comboId, 'si'])), avisadoC: {}, cargadoPor: ped.cargadoPor, armadoEn: ped.armadoEn || ped.creado, creadoPor: ped.creadoPor, agregar: !!ped.agregar, sumar: esAdmin() ? Object.fromEntries((ped.sumar || []).map(x => [x.pid, x.cant])) : {}, cambios: cambiosDe(ped), cargadoItems: ped.cargadoItems || [], estado: ped.estado || 'pendiente', cargada: Object.fromEntries(ped.items.map(i => [i.pid, i.cantCargada ?? i.cant])), promos: Object.fromEntries(ped.items.filter(i => i.promo).map(i => [i.pid, 'si'])), avisado: {}, dia: ped.dia || diaSesion(), turno: ped.turno || '', clienteId: ped.clienteId || null, legacy: !ped.clienteId, cliente: ped.cliente, nota: ped.nota || '', items: Object.fromEntries(ped.items.map(i => [i.pid, i.cant])), orig: Object.fromEntries(ped.items.map(i => [i.pid, i])), manual: Object.fromEntries(ped.items.filter(i => i.manual).map(i => [i.pid, i.precio])) }
               : { id: null, orden: [], combos: {}, avisadoC: {}, estado: 'pendiente', cargada: {}, promos: {}, avisado: {}, dia: diaSesion(), turno: ss('pd_turno') || '', clienteId: null, uid: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)), cliente: '', nota: '', items: {}, orig: {}, manual: {} };
   if (ped) draft.snap = snapDraft();
 }
@@ -1275,7 +1275,8 @@ function pintarEntrega() {   // estado de entrega y nota de crédito del pedido 
   const e = draft.entrega, nc = draft.notaCredito;
   const info = e && ENTREGAS[e.estado] ? `<div class="card" style="border-color:var(--${ENTREGAS[e.estado][1]})"><span class="tag ${ENTREGAS[e.estado][1]}">${ENTREGAS[e.estado][0]}</span> <span class="mut">${esc(fechaHora(e.en))} · ${esc(e.por)}</span>${e.motivo ? `<br><b>Motivo:</b> ${esc(e.motivo)}` : ''}</div>` : '<div class="card"><span class="tag">📦 En preparación</span> <span class="mut">todavía no figura como entregado</span></div>';
   const infoNc = nc ? `<div class="card" style="border-color:var(--warn)"><span class="tag warn">📄 Nota de crédito</span> <b>${esc(nc.numero)}</b>${nc.monto ? ` · ${money(nc.monto)}` : ''}<br><span class="mut">${esc(fechaHora(nc.en))} · ${esc(nc.por)}</span></div>` : '';
-  box.innerHTML = info + infoNc;
+  const cuando = esAdmin() && draft.armadoEn ? `<div class="mut" style="margin:0 2px 8px">🕒 ${draft.creadoPor ? 'Cargado por <b>' + esc(draft.creadoPor) + '</b>' : 'Ingresado'} · ${esc(fechaHora(draft.armadoEn))}</div>` : '';   // solo el administrador
+  box.innerHTML = info + infoNc + cuando;
 }
 function pintarNota() {
   const box = $('#notaBox'); if (!box) return;
@@ -1319,7 +1320,7 @@ async function guardarPedido() {
   if (!draft.turno) return toast('Elegí el turno: mañana o tarde');
   if (!items.length) return toast('El pedido no tiene productos');
   try {
-    if (draft.id) await api('PUT', 'p/pedidos/' + draft.id, body); else await api('POST', 'p/pedidos', { ...body, uid: draft.uid });
+    if (draft.id) await api('PUT', 'p/pedidos/' + draft.id, body); else await api('POST', 'p/pedidos', { ...body, uid: draft.uid, armadoEn: new Date().toISOString() });
     await cargar();
     if (draft.id && esAdmin()) { nuevoDraft(pedidos.find(x => x.id === draft.id)); render(); toast('Cambios guardados. Ahora podés cargarlo.'); return; }   // el admin se queda en el pedido para cargarlo
     if (!draft.id) descartarBorrador();

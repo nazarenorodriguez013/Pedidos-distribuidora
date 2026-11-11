@@ -329,6 +329,7 @@ function cleanCliente(b, prev, admin, yo) {
 }
 
 // Stock (opcional por producto): cada pedido descuenta lo que lleva; al editarlo, eliminarlo o rechazarlo se ajusta o se repone.
+const sinInterno = ({ armadoEn, creadoPor, ...o }) => o;   // cuándo y quién cargó el pedido lo ve solo el administrador
 const codCtl = v => String(v ?? '').trim().toLowerCase().replace(/^0+(?=\d)/, '');
 function actualDe(c) {   // stock actual de cada producto del control = lo que se contó menos lo descontado (solo visual: lo contado queda guardado tal cual)
   const m = new Map(c.items.map(it => [codCtl(it[1]), it[3]]));
@@ -1020,7 +1021,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     if (!id && req.method === 'GET') {
       const l = list.filter(visible);
       if (rec === 'productos' && esStock) return send(res, 200, { productos: l.map(p => ({ id: p.id, codigo: p.codigo, nombre: p.nombre, proveedor: p.proveedor || '', barras: p.barras || '', existencia: p.existencia ?? null, existenciaEn: p.existenciaEn || null })) });   // el usuario de stock no ve precios ni nada más
-      return send(res, 200, { [rec]: rec === 'pedidos' ? [...l].reverse() : rec === 'productos' && !admin ? l.map(({ existencia, existenciaEn, existenciaPor, barras, ...p }) => p.usaStock ? p : (({ stock, ...q }) => q)(p)) : l });   // el proveedor del producto viaja con el producto (no se muestra: solo filtra el PDF); el stock lo ven el administrador y el usuario de stock
+      return send(res, 200, { [rec]: rec === 'pedidos' ? [...l].reverse().map(o => admin ? o : sinInterno(o)) : rec === 'productos' && !admin ? l.map(({ existencia, existenciaEn, existenciaPor, barras, ...p }) => p.usaStock ? p : (({ stock, ...q }) => q)(p)) : l });   // el proveedor del producto viaja con el producto (no se muestra: solo filtra el PDF); el stock lo ven el administrador y el usuario de stock
     }
     if (rec === 'productos' && req.method !== 'GET') soloAdmin();
     if (!id && req.method === 'POST') {
@@ -1033,12 +1034,14 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       } else {
         const uid = String(b.uid || '').slice(0, 64);
         const dup = uid && list.find(x => x.uid === uid && x.vendedorId === yo.id);
-        if (dup) return send(res, 200, dup);   // reenvío de un pedido que ya había llegado
+        if (dup) return send(res, 200, admin ? dup : sinInterno(dup));   // reenvío de un pedido que ya había llegado
         obj = armarPedido(b, null, yo, admin);
         if (uid) obj.uid = uid;
         obj.id = s.seq.o++;
         obj.estado = 'pendiente';
         obj.creado = obj.editado = new Date().toISOString();
+        const ta = Date.parse(b.armadoEn); obj.armadoEn = !Number.isNaN(ta) && ta <= Date.now() + 5 * 60e3 && ta >= Date.now() - 90 * 864e5 ? new Date(ta).toISOString() : obj.creado;   // cuándo lo cargó quien lo armó (si estaba sin señal, no es cuando llegó al servidor)
+        obj.creadoPor = yo.nombre;
         if (!admin && obj.nota) obj.notaNueva = true;   // nota sin leer por el administrador (queda en la campanita)
         ajustarStock(null, obj);
       }
@@ -1046,11 +1049,11 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       if (rec === 'productos') restaurarProducto(obj);
       await save(pool);
       if (rec === 'pedidos' && !admin && obj.nota) avisarNota(obj, yo, pool);
-      return send(res, 200, obj);
+      return send(res, 200, rec === 'pedidos' && !admin ? sinInterno(obj) : obj);
     }
     const idx = list.findIndex(x => x.id === id && visible(x));
     if (idx < 0) return send(res, 404, { error: 'No existe' });
-    if (req.method === 'GET') return send(res, 200, list[idx]);
+    if (req.method === 'GET') return send(res, 200, rec === 'pedidos' && !admin ? sinInterno(list[idx]) : list[idx]);
     if (rec === 'pedidos' && !admin && list[idx].entrega && req.method !== 'GET') throw { code: 403, msg: 'El pedido ya fue cerrado por administración (en reparto, entregado, con devoluciones o rechazado)' };
     if (req.method === 'PUT') {
       const b = await body(req); let antesAgregado, notaAntes;
@@ -1077,7 +1080,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       if (rec === 'pedidos' && !admin && n.estado === 'cargado' && n.agregar && n.agregadoEn !== antesAgregado) {   // el vendedor modificó un pedido ya cargado: se avisa a los administradores
         notificar(adminsActivos().map(u => u.id), { titulo: '⚠️ Pedido modificado · Distribuidora Don Luis', cuerpo: `${yo.nombre} modificó el pedido #${n.id} (${n.cliente}), que ya estaba cargado`, tag: 'agregar-' + n.id }, pool);
       }
-      return send(res, 200, n);
+      return send(res, 200, rec === 'pedidos' && !admin ? sinInterno(n) : n);
     }
     if (req.method === 'DELETE') {
       if (rec === 'pedidos' && !admin && list[idx].estado === 'cargado') throw { code: 403, msg: 'El pedido ya fue cargado por administración' };
