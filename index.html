@@ -1907,11 +1907,12 @@ async function generarPdf(lista, nombreProv = '') {
   doc.text('Dirección: Moulins 47', 46, 27); doc.text('Instagram: @distribuidora.donluis', 46, 32); doc.text('Cel: 3454079079', 46, 37);
   doc.setFontSize(10); doc.text(hoy, 196, 14, { align: 'right' });
   doc.setDrawColor(15, 118, 110); doc.setLineWidth(0.6); doc.line(14, 42, 196, 42);
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text('Lista de precios', 14, 51); doc.setFont('helvetica', 'normal');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text('Lista de precios actualizada (' + hoy + ')', 14, 51);
+  doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(90, 90, 90); doc.text('Sujeta a cambios sin previo aviso.', 14, 56); doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'normal');
   const refs = [[l.some(esAlta), [205, 238, 208], 'Altas'], [l.some(cambiado), [255, 240, 170], 'Cambios de precios']].filter(x => x[0]); let rx = 196;   // referencias de color, de derecha a izquierda
   doc.setFontSize(9); for (const [, col, txt] of refs.reverse()) { const w = doc.getTextWidth(txt); rx -= w; doc.setTextColor(0, 0, 0); doc.text(txt, rx, 50.6); doc.setFillColor(...col); doc.rect(rx - 7, 47.2, 5, 4.2, 'F'); rx -= 12; }
   doc.autoTable({
-    startY: 55, head: [['Código', 'Producto', 'Precio']],
+    startY: 60, head: [['Código', 'Producto', 'Precio']],
     body: l.map(p => [p.codigo, p.nombre + (!faltante(p) && hayPromo(p) ? '  (PROMO: ' + promoDesc(p) + ')' : ''), faltante(p) ? money(0) : money(efectivo(p))]),
     headStyles: { fillColor: [15, 118, 110] }, columnStyles: { 0: { cellWidth: 26 }, 2: { halign: 'right', cellWidth: 34, overflow: 'visible' } }, styles: { fontSize: 10 }, rowPageBreak: 'avoid',   // el precio tiene un ancho fijo para que no se corte en dos renglones
     didParseCell: h => { if (h.section === 'body' && esAlta(l[h.row.index])) h.cell.styles.fillColor = [205, 238, 208]; else if (h.section === 'body' && cambiado(l[h.row.index])) h.cell.styles.fillColor = [255, 240, 170]; if (h.column.index === 2) h.cell.styles.halign = 'right'; if (h.section === 'body' && !faltante(l[h.row.index]) && hayPromo(l[h.row.index])) h.cell.styles.fontStyle = 'bold'; },   // el título Precio también a la derecha, sobre los números
