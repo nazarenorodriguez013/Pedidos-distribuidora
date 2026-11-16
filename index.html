@@ -945,13 +945,18 @@ function vStockCtl() {   // historial de controles guardados (administrador)
   $('#main').onclick = e => { const r = e.target.closest('[data-ctl]'); if (r) abrir(r.dataset.ctl); };
 }
 /* notificaciones del administrador: notas nuevas de los vendedores y pedidos que modificaron después de cargados */
+let avDia = '';   // día de las notas que se muestran en Notificaciones
 function vAvisos() {
-  const notas = pedidos.filter(p => p.notaNueva), mods = pedidos.filter(hayAgregados);
+  if (!avDia) avDia = hoy();
+  const notas = pedidos.filter(p => p.nota && p.dia === avDia).sort((x, y) => (x.turno === 'tarde') - (y.turno === 'tarde') || x.id - y.id), mods = pedidos.filter(hayAgregados);
   const titulo = (t, n) => `<div style="margin-top:12px;padding:6px 2px;border-bottom:2px solid var(--bd)"><b>${t}</b> <span class="mut">· <b>${n}</b></span></div>`;
-  const quien = p => `<div style="font-weight:700">${vendCol(p.vendedor)} · ${esc(p.cliente)}</div>`;
-  $('#main').innerHTML = `<div id="lista">${notas.length ? titulo('📝 Notas', notas.length) + notas.map(p => `<div class="card" data-ped="${p.id}" style="margin-top:8px;display:flex;gap:10px;align-items:flex-start"><div style="flex:1 1 0;min-width:0">${quien(p)}<div style="margin-top:4px;white-space:pre-wrap">${esc(p.nota)}</div></div><button class="btn sec" data-notax="${p.id}" aria-label="Cerrar la nota" title="Cerrar la nota" style="flex:none;width:36px;min-height:36px;padding:0;font-size:16px">✕</button></div>`).join('') : ''}
-    ${mods.length ? titulo('⚠️ Pedidos modificados', mods.length) + mods.map(p => `<div class="card" data-ped="${p.id}" style="margin-top:8px">${quien(p)}<div class="mut" style="margin-top:4px">Modificó el pedido después de cargarlo</div></div>`).join('') : ''}
-    ${notas.length || mods.length ? '' : vacio('No hay notificaciones')}</div>`;
+  const quien = p => `<div style="font-weight:700">${vendCol(p.vendedor)} · ${esc(p.cliente)}${TURNOS[p.turno] ? ` <span class="mut" style="font-weight:400">· ${esc(TURNOS[p.turno])}</span>` : ''}${p.notaNueva ? ' <span class="tag bad">Nueva</span>' : ''}</div>`;
+  $('#main').innerHTML = `<div class="row" style="border:0;padding:0 0 4px;gap:8px"><button class="btn sec" id="avPrev" style="width:44px;padding:0;flex:none" aria-label="Día anterior">‹</button><input id="avDia" type="date" value="${avDia}" style="flex:1 1 0;min-width:0"><button class="btn sec" id="avSig" style="width:44px;padding:0;flex:none" aria-label="Día siguiente">›</button></div>
+    <div class="mut" style="margin:0 2px 4px;text-align:center">Notas de los pedidos del ${esc(diaTxt(avDia))}${avDia === hoy() ? ' (hoy)' : ''}</div>
+    <div id="lista">${titulo('📝 Notas', notas.length)}${notas.length ? notas.map(p => `<div class="card${p.notaNueva ? ' agr' : ''}" data-ped="${p.id}" style="margin-top:8px;display:flex;gap:10px;align-items:flex-start"><div style="flex:1 1 0;min-width:0">${quien(p)}<div style="margin-top:4px;white-space:pre-wrap">${esc(p.nota)}</div></div>${p.notaNueva ? `<button class="btn sec" data-notax="${p.id}" aria-label="Cerrar la nota" title="Cerrar la nota" style="flex:none;width:36px;min-height:36px;padding:0;font-size:16px">✕</button>` : ''}</div>`).join('') : `<p class="mut" style="margin:10px 2px">No hay notas en los pedidos de ese día.</p>`}
+    ${mods.length ? titulo('⚠️ Pedidos modificados', mods.length) + mods.map(p => `<div class="card" data-ped="${p.id}" style="margin-top:8px">${quien(p)}<div class="mut" style="margin-top:4px">Modificó el pedido después de cargarlo</div></div>`).join('') : ''}</div>`;
+  const ir = d => { if (d) { avDia = d; vAvisos(); } }, mover = n => { const f = new Date((avDia || hoy()) + 'T12:00'); f.setDate(f.getDate() + n); ir(f.toISOString().slice(0, 10)); };
+  $('#avPrev').onclick = () => mover(-1); $('#avSig').onclick = () => mover(1); $('#avDia').onchange = e => ir(e.target.value);
 }
 const nAvisos = () => esAdmin() ? pedidos.filter(p => hayAgregados(p) || p.notaNueva).length : nNuevas();   // campanita: vendedor = novedades sin leer; admin = pedidos modificados después de cargados
 const campana = () => { const n = nAvisos(); return `<button class="campana" data-act="campana" aria-label="Notificaciones${n ? ': ' + n : ''}" title="${esAdmin() ? 'Pedidos modificados y notas nuevas' : 'Novedades'}">🔔${n ? `<b>${n > 9 ? '9+' : n}</b>` : ''}</button>`; };
@@ -2418,7 +2423,7 @@ document.addEventListener('click', async e => {
   else if (d.act === 'guardarPedido') guardarPedido();
   else if (d.modal) cerrarModal();
   else if (d.act === 'nuevoCombo') abrirCombo(null);
-  else if (d.act === 'campana') { if (esAdmin()) { if (view === 'avisos') { render(); window.scrollTo(0, 0); } else go('avisos'); } else go('novedades'); }   // el administrador ve sus notificaciones en su propia pantalla
+  else if (d.act === 'campana') { if (esAdmin()) { avDia = ''; if (view === 'avisos') { render(); window.scrollTo(0, 0); } else go('avisos'); } else go('novedades'); }   // el administrador ve sus notificaciones en su propia pantalla
   else if (d.act === 'abrirRestaurar') abrirRestaurar();
   else if (d.act === 'restDesdeArchivo') { if (!restDatos) toast('Elegí primero el archivo de la copia'); else restaurar({ origen: 'archivo', datos: restDatos }); }
   else if (d.act === 'restDesdeCopia') { const f = ($('#restCopia') || {}).value; if (!f) toast('Elegí una copia automática'); else restaurar({ origen: 'copia', fecha: f }); }
