@@ -26,6 +26,10 @@ async function load(pool) {
   state.provs = Array.isArray(state.provs) ? state.provs : [];   // lista de lo que se le compra a cada proveedor (solo la ve el administrador)
   state.provContacto = state.provContacto && typeof state.provContacto === 'object' ? state.provContacto : {};   // mail y WhatsApp de cada proveedor, por nombre en minúsculas
   state.provPedidos = Array.isArray(state.provPedidos) ? state.provPedidos : [];   // historial de pedidos hechos a cada proveedor
+  state.vencimientos = Array.isArray(state.vencimientos) ? state.vencimientos : [];   // productos por vencer o con fecha corta, cargados a mano por administración y stock
+  state.seq.q = state.seq.q || state.vencimientos.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1;
+  state.asignaciones = Array.isArray(state.asignaciones) ? state.asignaciones : [];   // controles de stock que el administrador asigna a un usuario de stock (qué productos y quién)
+  state.seq.a = state.seq.a || state.asignaciones.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1;
   state.controles = Array.isArray(state.controles) ? state.controles : [];   // controles de stock guardados (fecha, quién y cantidades)
   state.provTextos = state.provTextos && typeof state.provTextos === 'object' ? state.provTextos : {};   // texto de arriba y de cierre del pedido a proveedores
   state.cambios = state.cambios || [];   // registro de lo que el administrador modifica en los pedidos (quitó, bajó, agregó, cambió el precio)
@@ -177,6 +181,8 @@ function restaurarDatos(d) {   // reemplaza pedidos, clientes, productos, promos
   state.productos = d.productos; state.pedidos = d.pedidos; state.clientes = d.clientes;
   state.combos = Array.isArray(d.combos) ? d.combos : []; state.novedades = Array.isArray(d.novedades) ? d.novedades : []; state.cambios = Array.isArray(d.cambios) ? d.cambios : []; state.seq.x = Math.max(state.seq.x || 1, state.cambios.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
   state.provPedidos = Array.isArray(d.provPedidos) ? d.provPedidos : state.provPedidos; state.seq.w = Math.max(state.seq.w || 1, state.provPedidos.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
+  state.asignaciones = Array.isArray(d.asignaciones) ? d.asignaciones : state.asignaciones;
+  state.vencimientos = Array.isArray(d.vencimientos) ? d.vencimientos : state.vencimientos; state.seq.q = Math.max(state.seq.q || 1, state.vencimientos.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
   state.controles = Array.isArray(d.controles) ? d.controles : state.controles; state.seq.s = Math.max(state.seq.s || 1, state.controles.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
   state.provTextos = d.provTextos && typeof d.provTextos === 'object' ? d.provTextos : state.provTextos; state.provContacto = d.provContacto && typeof d.provContacto === 'object' ? d.provContacto : state.provContacto; state.provs = Array.isArray(d.provs) ? d.provs : state.provs; state.seq.v = Math.max(state.seq.v || 1, state.provs.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1);
   state.configPorCodigo = d.configPorCodigo && typeof d.configPorCodigo === 'object' ? d.configPorCodigo : {};
@@ -599,6 +605,24 @@ function notificar(userIds, payload, pool) {
   });
 }
 
+const hoyAR = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);   // día en Argentina (UTC−3)
+const diasHasta = f => Math.round((Date.parse(f + 'T12:00:00Z') - Date.parse(hoyAR() + 'T12:00:00Z')) / 864e5);
+async function avisarVencimientos(pool) {   // resumen para los administradores: lo vencido y lo que vence en los próximos 30 días
+  const l = (state.vencimientos || []).filter(x => x.estado === 'activo' && diasHasta(x.fecha) <= 30).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const venc = l.filter(x => diasHasta(x.fecha) < 0).length, prox = l.length - venc;
+  if (!l.length) return { enviado: false, n: 0 };
+  const cuando = d => d < 0 ? `vencido hace ${-d} d` : d === 0 ? 'vence hoy' : `${d} d`;
+  const cuerpo = [venc ? `${venc} ${venc === 1 ? 'vencido' : 'vencidos'}` : '', prox ? `${prox} por vencer (30 días)` : ''].filter(Boolean).join(' · ') + ': ' + l.slice(0, 3).map(x => `${x.nombre} ${x.cant} u. (${cuando(diasHasta(x.fecha))})`).join(', ') + (l.length > 3 ? ` y ${l.length - 3} más` : '');
+  notificar(adminsActivos().map(u => u.id), { titulo: '📅 Vencimientos · Distribuidora Don Luis', cuerpo: cuerpo.slice(0, 220), tag: 'venc-semanal' }, pool);
+  return { enviado: true, n: l.length, vencidos: venc, porVencer: prox, texto: cuerpo };
+}
+async function revisarVencimientos(pool) {   // se llama cada tanto: una vez por semana, desde el lunes a las 9 (hora de Argentina), avisa a los administradores
+  const s = await load(pool), ar = new Date(Date.now() - 3 * 3600e3), dif = (ar.getUTCDay() + 6) % 7, lunes = new Date(ar.getTime() - dif * 864e5).toISOString().slice(0, 10);
+  if (dif === 0 && ar.getUTCHours() < 9) return;   // el lunes antes de las 9 todavía no
+  if (s.vencAviso === lunes) return;   // esta semana ya se avisó (si el servidor estaba apagado el lunes, se avisa al volver)
+  s.vencAviso = lunes; await save(pool);
+  await avisarVencimientos(pool);
+}
 module.exports = async function (req, res, url, body, send, pool, secret) {
   const s = await load(pool);
   const m = /^\/api\/p\/([a-z]+)(?:\/(\d+))?$/.exec(url);
@@ -629,7 +653,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     const admin = yo.rol === 'admin';
     const soloAdmin = () => { if (!admin) throw { code: 403, msg: 'Solo el administrador puede hacer esto' }; };
     const esStock = yo.rol === 'stock';   // usuario que solo ve y carga el stock: nada más
-    if (esStock && !['yo', 'productos', 'controles', 'barras'].includes(rec)) throw { code: 403, msg: 'Este usuario solo puede ver el stock' };
+    if (esStock && !['yo', 'productos', 'controles', 'barras', 'asignaciones', 'vencimientos'].includes(rec)) throw { code: 403, msg: 'Este usuario solo puede ver el stock' };
     if (esStock && rec === 'productos' && req.method !== 'GET') throw { code: 403, msg: 'Este usuario solo puede ver el stock' };
     if (rec === 'barras' && req.method === 'PUT') {   // asocia o cambia el código de barras de un producto (administrador y usuario de stock)
       if (!admin && !esStock) throw { code: 403, msg: 'No autorizado' };
@@ -651,6 +675,54 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       for (const c of s.controles) { const it = c.items.find(x => x[0] === id); if (it) historial.push({ id: c.id, en: c.en, responsable: c.responsable || c.por || '', proveedor: c.proveedor || '', cant: it[3] }); }
       return send(res, 200, { historial: historial.reverse() });
     }
+    if (rec === 'vencimientosaviso' && req.method === 'POST') {   // el administrador pide el resumen semanal ahora
+      soloAdmin();
+      return send(res, 200, await avisarVencimientos(pool));
+    }
+    if (rec === 'vencimientos') {   // vencimientos cargados a mano: los ven y cargan administración y usuarios de stock
+      if (!admin && !esStock) throw { code: 403, msg: 'No autorizado' };
+      const valida = b => {
+        const f = String(b.fecha || ''), t = Date.parse(f + 'T12:00:00Z'), cant = Math.floor(Number(String(b.cant).replace(',', '.')));
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(f) || Number.isNaN(t) || new Date(t).toISOString().slice(0, 10) !== f || f < '2000-01-01' || f > '2100-12-31') throw { code: 400, msg: 'Poné la fecha de vencimiento' };
+        if (!(cant >= 1 && cant <= 99999)) throw { code: 400, msg: 'Poné la cantidad (1 o más)' };
+        return { fecha: f, cant, nota: String(b.nota || '').trim().slice(0, 200) };
+      };
+      if (req.method === 'GET' && !id) {
+        const act = s.vencimientos.filter(x => x.estado === 'activo').sort((a, b) => a.fecha.localeCompare(b.fecha) || a.id - b.id), res_ = s.vencimientos.filter(x => x.estado !== 'activo').sort((a, b) => String(b.resueltoEn).localeCompare(String(a.resueltoEn))).slice(0, 100);
+        return send(res, 200, { hoy: hoyAR(), vencimientos: [...act, ...res_] });
+      }
+      if (req.method === 'POST' && !id) {
+        const b = await body(req, 1e5), p = s.productos.find(x => x.id === Number(b.pid) && !x.borrado); if (!p) throw { code: 400, msg: 'Elegí el producto' };
+        const v = { id: s.seq.q++, pid: p.id, codigo: p.codigo, nombre: p.nombre, ...valida(b), creado: new Date().toISOString(), por: yo.nombre, estado: 'activo' };
+        s.vencimientos.push(v); await save(pool); return send(res, 200, v);
+      }
+      const v = id ? s.vencimientos.find(x => x.id === id) : null; if (!v) throw { code: 404, msg: 'No existe' };
+      if (req.method === 'PUT') {
+        const b = await body(req, 1e5);
+        if (b.accion === 'resuelto') { v.estado = 'resuelto'; v.resueltoEn = new Date().toISOString(); v.resueltoPor = yo.nombre; }
+        else if (b.accion === 'reabrir') { v.estado = 'activo'; delete v.resueltoEn; delete v.resueltoPor; }
+        else Object.assign(v, valida(b));
+        await save(pool); return send(res, 200, v);
+      }
+      if (req.method === 'DELETE') { soloAdmin(); s.vencimientos.splice(s.vencimientos.indexOf(v), 1); await save(pool); return send(res, 200, { ok: true }); }
+      throw { code: 405, msg: 'Método no permitido' };
+    }
+    if (rec === 'asignaciones') {   // el administrador asigna un control: a quién y qué productos; el usuario de stock ve los suyos pendientes
+      if (req.method === 'GET' && !id) return send(res, 200, { asignaciones: [...s.asignaciones].filter(a => admin || (a.para === yo.id && a.estado === 'pendiente')).reverse() });
+      soloAdmin();
+      if (req.method === 'POST' && !id) {
+        const b = await body(req, 1e6), u = s.usuarios.find(x => x.id === Number(b.para));
+        if (!u || u.rol !== 'stock' || u.activo === false) throw { code: 400, msg: 'Elegí a quién se le asigna el control (un usuario de stock)' };
+        const pids = [...new Set((Array.isArray(b.pids) ? b.pids : []).map(Number))].filter(pid => s.productos.some(p => p.id === pid));
+        if (!pids.length) throw { code: 400, msg: 'Elegí al menos un producto para controlar' };
+        const a = { id: s.seq.a++, creado: new Date().toISOString(), por: yo.nombre, para: u.id, paraNombre: u.nombre, pids, nota: String(b.nota || '').trim().slice(0, 200), estado: 'pendiente' };
+        s.asignaciones.push(a); await save(pool);
+        notificar([u.id], { titulo: '📋 Control asignado · Distribuidora Don Luis', cuerpo: `${yo.nombre} te asignó un control de ${pids.length} ${pids.length === 1 ? 'producto' : 'productos'}${a.nota ? ': ' + a.nota : ''}`, tag: 'asig-' + a.id }, pool);
+        return send(res, 200, a);
+      }
+      if (req.method === 'DELETE' && id) { const i = s.asignaciones.findIndex(x => x.id === id); if (i < 0) throw { code: 404, msg: 'No existe' }; s.asignaciones.splice(i, 1); await save(pool); return send(res, 200, { ok: true }); }
+      throw { code: 405, msg: 'Método no permitido' };
+    }
     if (rec === 'controles') {   // controles de stock: cada vez que se guarda, queda registrado (administrador y usuario de stock)
       if (!admin && !esStock) throw { code: 403, msg: 'No autorizado' };
       if (esStock && req.method !== 'POST') throw { code: 403, msg: 'El usuario de stock solo puede cargar controles nuevos' };   // el historial lo ve el administrador
@@ -658,11 +730,12 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
       if (id && req.method === 'GET') { const c = s.controles.find(x => x.id === id); if (!c) throw { code: 404, msg: 'No existe' }; const act = actualDe(c); return send(res, 200, { ...c, items: c.items.map(it => { const a = act.get(codCtl(it[1])); return a !== it[3] ? [it[0], it[1], it[2], it[3], a] : [it[0], it[1], it[2], it[3]]; }) }); }   // items: [id, código, descripción, contado, stock actual (solo si cambió por descuentos)]
       if (!id && req.method === 'POST') {
         const b = await body(req, 5e6), ahora = new Date().toISOString(), items = [];
-        const uid = String(b.uid || '').slice(0, 60);
+        const uid = String(b.uid || '').slice(0, 60), asig = b.asignacionId ? s.asignaciones.find(x => x.id === Number(b.asignacionId) && (admin || x.para === yo.id)) : null;
         if (uid) { const dup = s.controles.find(x => x.uid === uid); if (dup) return send(res, 200, { id: dup.id, en: dup.en, n: dup.items.length, repetido: true }); }   // un control hecho sin señal que ya llegó no se guarda dos veces
         const t = Date.parse(b.en), en = !Number.isNaN(t) && t <= Date.now() + 5 * 60e3 && t >= Date.now() - 90 * 864e5 ? new Date(t).toISOString() : ahora;   // controles hechos sin señal: conservan su fecha real
         for (const it of Array.isArray(b.items) ? b.items : []) {
           const p = s.productos.find(x => x.id === Number(it.pid)); if (!p) continue;
+          if (asig && !asig.pids.includes(p.id)) continue;   // un control asignado solo lleva los productos asignados
           const v = it.existencia === '' || it.existencia === null || it.existencia === undefined ? null : parseNum(it.existencia);
           if (v === null) continue; if (v < 0) throw { code: 400, msg: 'El stock no puede ser negativo' };
           items.push([p.id, p.codigo, p.nombre, Math.floor(v)]);
@@ -671,10 +744,22 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
         if (!responsable) throw { code: 400, msg: 'Poné el nombre del responsable del control' };
         if (!items.length) throw { code: 400, msg: 'No hay cantidades para guardar' };
         for (const [pid, , , cant] of items) { const p = s.productos.find(x => x.id === pid); if (!p.existenciaEn || en >= p.existenciaEn) { p.existencia = cant; p.existenciaEn = en; } }   // un control viejo que llega tarde no pisa a uno más nuevo
-        const c = { id: s.seq.s++, en, por: yo.nombre, responsable, proveedor: String(b.proveedor || '').trim().slice(0, 60), items, ...(uid ? { uid } : {}) };
+        const c = { id: s.seq.s++, en, por: yo.nombre, responsable, proveedor: String(b.proveedor || '').trim().slice(0, 60), items, ...(uid ? { uid } : {}), ...(asig ? { asignacion: asig.id } : {}) };
+        if (asig && asig.estado === 'pendiente') { asig.estado = 'hecho'; asig.hechoEn = en; asig.controlId = c.id; }
         s.controles.push(c); s.controles.sort((x, y) => (x.en < y.en ? -1 : x.en > y.en ? 1 : x.id - y.id)); if (s.controles.length > 300) s.controles.splice(0, s.controles.length - 300);
         await save(pool);
         return send(res, 200, { id: c.id, en: c.en, n: items.length });
+      }
+      if (id && req.method === 'DELETE') {   // eliminar un control (administrador): la existencia de cada producto vuelve a ser la del último control que quede
+        const i = s.controles.findIndex(x => x.id === id); if (i < 0) throw { code: 404, msg: 'No existe' };
+        const [c] = s.controles.splice(i, 1);
+        for (const it of c.items) {
+          const p = s.productos.find(x => x.id === it[0]); if (!p) continue;
+          const ult = [...s.controles].reverse().find(x => x.items.some(y => y[0] === p.id));
+          if (ult) { p.existencia = ult.items.find(y => y[0] === p.id)[3]; p.existenciaEn = ult.en; } else { delete p.existencia; delete p.existenciaEn; delete p.existenciaPor; }
+        }
+        await save(pool);
+        return send(res, 200, { ok: true });
       }
       if (id && req.method === 'PUT') {   // descontar cargados: se resta del stock de este control lo que llevan los pedidos ya cargados de un día; solo administrador
         const c = s.controles.find(x => x.id === id); if (!c) throw { code: 404, msg: 'No existe' };
@@ -890,7 +975,7 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     }
     if (rec === 'respaldo' && req.method === 'GET') {   // el administrador descarga todos los datos (sin contraseñas ni claves)
       soloAdmin();
-      return send(res, 200, { fecha: new Date().toISOString(), version: 1, productos: s.productos, pedidos: s.pedidos, clientes: s.clientes, combos: s.combos, novedades: s.novedades, cambios: s.cambios, provs: s.provs, provContacto: s.provContacto, provTextos: s.provTextos, provPedidos: s.provPedidos, controles: s.controles, seq: s.seq, configPorCodigo: s.configPorCodigo || {}, usuarios: s.usuarios.map(pub) });
+      return send(res, 200, { fecha: new Date().toISOString(), version: 1, productos: s.productos, pedidos: s.pedidos, clientes: s.clientes, combos: s.combos, novedades: s.novedades, cambios: s.cambios, provs: s.provs, provContacto: s.provContacto, provTextos: s.provTextos, provPedidos: s.provPedidos, controles: s.controles, asignaciones: s.asignaciones, vencimientos: s.vencimientos, seq: s.seq, configPorCodigo: s.configPorCodigo || {}, usuarios: s.usuarios.map(pub) });
     }
     if (rec === 'pushkey' && req.method === 'GET') return send(res, 200, { key: webpush && s.vapid ? s.vapid.publica : null });
     if (rec === 'pushsub') {   // el dispositivo se suscribe / se da de baja para recibir notificaciones
@@ -1094,3 +1179,5 @@ module.exports = async function (req, res, url, body, send, pool, secret) {
     throw e;
   }
 };
+
+module.exports.revisarVencimientos = revisarVencimientos;

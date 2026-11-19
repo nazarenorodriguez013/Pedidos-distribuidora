@@ -300,7 +300,7 @@ async function sincronizar() {
     }
     let enviadosC = 0, rechazadosC = 0;
     for (const it of colaCtl().filter(x => !x.error)) {   // controles de stock hechos sin señal: se mandan con su fecha y responsable originales
-      try { await api('POST', 'p/controles', { items: it.items, responsable: it.responsable, proveedor: it.proveedor, en: it.en, uid: it.uid }); lsSet('pd_cola_ctl', leerColaCtl().filter(x => x.uid !== it.uid)); enviadosC++; }
+      try { await api('POST', 'p/controles', { items: it.items, responsable: it.responsable, proveedor: it.proveedor, en: it.en, uid: it.uid, ...(it.asignacionId ? { asignacionId: it.asignacionId } : {}) }); lsSet('pd_cola_ctl', leerColaCtl().filter(x => x.uid !== it.uid)); enviadosC++; }
       catch (e) {
         if (e.offline || /Sesión/.test(e.message)) break;
         lsSet('pd_cola_ctl', leerColaCtl().map(x => x.uid === it.uid ? { ...x, error: e.message } : x)); rechazadosC++;
@@ -398,27 +398,27 @@ window.addEventListener('popstate', async e => {
 });
 
 /* ---------- vistas ---------- */
-const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', manual: 'Manual de uso', cambios: 'Registro de cambios', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', seguimiento: 'Seguimiento', comisiones: 'Comisiones', comision: 'Comisión', avisos: 'Notificaciones', stock: 'Stock', stocknuevo: 'Nuevo control', stockctl: 'Controles guardados', proveedores: 'Proveedores', proveedor: 'Proveedor', pedprov: 'Pedido al proveedor', pedhist: 'Historial de pedidos', novedades: 'Novedades', hoja: 'Pedidos sin cargar' };
+const TITULOS = { menu: 'Distribuidora Don Luis', pedido: 'Cargar pedido', pedidos: 'Pedidos', clientes: 'Clientes', importarc: 'Importar clientes', cliente: 'Cliente', elegir: 'Elegir cliente', productos: 'Productos', usuarios: 'Usuarios', usuario: 'Usuario', importar: 'Importar Excel', manual: 'Manual de uso', cambios: 'Registro de cambios', config: 'Configuración', promos: 'Promociones', precios: 'Listado', faltantes: 'Faltantes', seguimiento: 'Seguimiento', venc: 'Vencimientos', comisiones: 'Comisiones', comision: 'Comisión', avisos: 'Notificaciones', stock: 'Stock', stocknuevo: 'Nuevo control', stockctl: 'Controles guardados', proveedores: 'Proveedores', proveedor: 'Proveedor', pedprov: 'Pedido al proveedor', pedhist: 'Historial de pedidos', novedades: 'Novedades', hoja: 'Pedidos sin cargar' };
 const escritorio = () => window.matchMedia('(min-width:900px)').matches;
 const TABS = ['menu', 'pedidos', 'clientes', 'precios', 'faltantes', 'config'];   // pantallas con barra de botones abajo
 let vistaPrev = '';
 function render() {
   document.body.classList.remove('login-pg');
   if (!token) return login();
-  if (vistaPrev === 'stocknuevo' && view !== 'stocknuevo') { try { localStorage.removeItem(claveStock()); } catch {} }   // salir de un control sin guardarlo (atrás o cancelar) descarta lo cargado
-  if (esStock() && view !== 'stocknuevo') view = 'stock';   // el usuario de stock no ve otra cosa
+  if (vistaPrev === 'stocknuevo' && view !== 'stocknuevo') { try { localStorage.removeItem(claveStock()); } catch {} skAsig = null; }   // salir de un control sin guardarlo (atrás o cancelar) descarta lo cargado
+  if (esStock() && view !== 'stocknuevo' && view !== 'venc') view = 'stock';   // el usuario de stock no ve otra cosa
   if ((view === 'stock' || view === 'stocknuevo' || view === 'stockctl') && !esAdmin() && !(esStock() && view !== 'stockctl')) view = 'menu';
   if (view === 'avisos' && vistaPrev !== 'avisos') avDia = '';   // cada vez que se entra a Notificaciones arranca en el día de hoy
   vistaPrev = view;
-  if (!esAdmin() && ['productos','usuarios','usuario','importar','importarc','hoja','manual','cambios','proveedores','proveedor','pedprov','pedhist','seguimiento','comisiones','comision','avisos'].includes(view)) view = 'menu';
+  if (!esAdmin() && !(esStock() && view === 'venc') && ['venc','productos','usuarios','usuario','importar','importarc','hoja','manual','cambios','proveedores','proveedor','pedprov','pedhist','seguimiento','comisiones','comision','avisos'].includes(view)) view = 'menu';
   if (view !== 'pedido') document.body.classList.remove('bloq-ped');
   if (view !== 'hoja') hojaEd = null;
   if (view !== 'pedidos' && view !== 'pedido' && view !== 'hoja') { fdiaInit = false; selMode = false; selPeds = new Set(); }   // al volver a Pedidos desde otra sección arranca en el día de hoy
   const tab = TABS.includes(view), desk = escritorio();
   document.body.classList.toggle('hay-tabs', !esStock() && (desk || tab));
-  $('#app').innerHTML = `<header>${!tab && (!esStock() || view === 'stocknuevo') ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1>${esStock() ? '<button class="campana" data-act="salir" aria-label="Cerrar sesión" title="Cerrar sesión">🚪</button>' : campana()}<span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : esStock() ? 'Stock' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${!esStock() && (tab || desk) ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ...(desk && esAdmin() ? [['seguimiento', '📈', 'Seguimiento']] : []), ['precios', '📦', 'Listado'], ...(desk && esAdmin() ? [['stock', '🗃️', 'Stock']] : []), ...(desk ? [['promos', '🏷️', 'Promociones'], ['novedades', '📣', 'Novedades' + (nNuevas() ? ' (' + nNuevas() + ')' : '')]] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk && esAdmin() ? [['proveedores', '🏭', 'Proveedores']] : []), ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v || (v === 'stock' && (view === 'stocknuevo' || view === 'stockctl')) || (v === 'proveedores' && (view === 'proveedor' || view === 'pedprov' || view === 'pedhist')) ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo">${esAdmin() ? `<button data-go="manual" class="${view === 'manual' ? 'on' : ''}"><span>📖</span>Manual de uso</button>` : ''}<button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
+  $('#app').innerHTML = `<header>${!tab && (!esStock() || view === 'stocknuevo' || view === 'venc') ? '<button data-act="atras">←</button>' : '<img class="marca" src="/logo-marca.png" alt="">'}<h1>${TITULOS[view]}</h1>${esStock() ? '<button class="campana" data-act="salir" aria-label="Cerrar sesión" title="Cerrar sesión">🚪</button>' : campana()}<span class="quien" title="Usuario con sesión iniciada">👤 ${esc(user.nombre)}<small> · ${user.rol === 'admin' ? 'Admin' : esStock() ? 'Stock' : 'Vendedor'}</small></span></header><div id="estado" class="estado" hidden></div><main id="main"></main>${!esStock() && (tab || desk) ? `<nav class="tabs">${[['menu', '🏠', 'Inicio'], ['pedidos', '📋', 'Pedidos'], ['clientes', '👤', 'Clientes'], ...(desk && esAdmin() ? [['seguimiento', '📈', 'Seguimiento']] : []), ['precios', '📦', 'Listado'], ...(desk && esAdmin() ? [['stock', '🗃️', 'Stock']] : []), ...(desk ? [['promos', '🏷️', 'Promociones'], ['novedades', '📣', 'Novedades' + (nNuevas() ? ' (' + nNuevas() + ')' : '')]] : []), ['faltantes', '⛔', 'Faltantes'], ...(desk && esAdmin() ? [['proveedores', '🏭', 'Proveedores']] : []), ...(desk ? [] : [['config', '⚙️', 'Config']])].map(([v, i, t]) => `<button data-tab="${v}" class="${view === v || (v === 'stock' && (view === 'stocknuevo' || view === 'stockctl')) || (v === 'proveedores' && (view === 'proveedor' || view === 'pedprov' || view === 'pedhist')) ? 'on' : ''}"><span>${i}</span>${t}</button>`).join('')}${desk ? `<div class="abajo">${esAdmin() ? `<button data-go="manual" class="${view === 'manual' ? 'on' : ''}"><span>📖</span>Manual de uso</button>` : ''}<button data-tab="config" class="${view === 'config' ? 'on' : ''}"><span>⚙️</span>Configuración</button><button data-act="salir"><span>🚪</span>Cerrar sesión</button></div>` : ''}</nav>` : ''}`;
   estado();
-  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, manual: vManual, cambios: vCambios, novedades: vNovedades, hoja: vHoja, proveedores: vProveedores, proveedor: vProveedores, pedprov: vPedProv, pedhist: vPedHist, seguimiento: vSeguimiento, comisiones: vComisiones, comision: vComision, avisos: vAvisos, stock: vStock, stocknuevo: vStockNuevo, stockctl: vStockCtl })[view]();
+  ({ menu: vMenu, pedido: vPedido, pedidos: vPedidos, clientes: vClientes, importarc: vImportarC, cliente: vCliente, elegir: vElegir, productos: vProductos, usuarios: vUsuarios, usuario: vUsuario, importar: vImportar, config: vConfig, promos: vPromos, precios: vPrecios, faltantes: vFaltantes, manual: vManual, cambios: vCambios, novedades: vNovedades, hoja: vHoja, proveedores: vProveedores, proveedor: vProveedores, pedprov: vPedProv, pedhist: vPedHist, seguimiento: vSeguimiento, venc: vVenc, comisiones: vComisiones, comision: vComision, avisos: vAvisos, stock: vStock, stocknuevo: vStockNuevo, stockctl: vStockCtl })[view]();
   avisoNovedades();
 }
 function login() {
@@ -731,7 +731,8 @@ async function pintarPush() {
 const nNuevas = () => esAdmin() ? 0 : novedades.filter(n => !n.leida).length;
 /* stock: se cuentan todos los productos (también los faltantes) y cada control queda guardado. Lo usan el administrador y el usuario de stock */
 let stockQ = '';
-const claveStock = () => 'pd_stock_' + (user ? user.id : '');
+let skAsig = null;   // control asignado que se está haciendo (qué productos controlar)
+const claveStock = () => 'pd_stock_' + (user ? user.id : '') + (skAsig ? '_a' + skAsig.id : '');
 const leerStockBorr = () => { try { return JSON.parse(localStorage.getItem(claveStock()) || '{}') || {}; } catch { return {}; } };
 const guardarStockBorr = o => { try { Object.keys(o).length ? localStorage.setItem(claveStock(), JSON.stringify(o)) : localStorage.removeItem(claveStock()); } catch {} };
 const fechaControl = iso => { const f = new Date(iso), p = n => String(n).padStart(2, '0'); return { txt: `${p(f.getDate())}/${p(f.getMonth() + 1)}/${f.getFullYear()} ${p(f.getHours())}:${p(f.getMinutes())}`, arch: `${p(f.getDate())}.${p(f.getMonth() + 1)}.${f.getFullYear()} ${p(f.getHours())}.${p(f.getMinutes())}` }; };
@@ -814,14 +815,98 @@ function asociarBarras(p, alAsociar) {   // asocia un código de barras al produ
   pedir();
 }
 let skProv = '';   // proveedor que se está controlando ('' = todos)
+/* vencimientos: productos por vencer o con fecha corta, cargados a mano; el administrador recibe un aviso semanal (lunes 9 h) con lo vencido y lo que vence en 30 días */
+let vencHoy = '', vencLista = [], vencVerRes = false;
+const vencDias = f => Math.round((Date.parse(f + 'T12:00:00Z') - Date.parse((vencHoy || hoy()) + 'T12:00:00Z')) / 864e5);
+const vencColor = d => d < 0 ? 'var(--bad)' : d <= 15 ? '#ea580c' : d <= 30 ? '#ca8a04' : 'var(--bd)';
+const vencTxt = d => d < 0 ? `Vencido hace ${-d} ${-d === 1 ? 'día' : 'días'}` : d === 0 ? 'Vence hoy' : `Vence en ${d} ${d === 1 ? 'día' : 'días'}`;
+const fechaLarga = f => f.slice(8) + '/' + f.slice(5, 7) + '/' + f.slice(0, 4);
+function vVenc() {
+  $('#main').innerHTML = `<button class="btn" id="vnNuevo" style="min-height:52px">➕ Cargar vencimiento</button>${esAdmin() ? '<button class="btn sec" id="vnAviso" style="margin-top:8px">🔔 Enviar el resumen ahora</button>' : ''}<p class="mut" style="margin:10px 2px 4px;font-size:13px">Cargá lo que está por vencer o tiene fecha corta. ${esAdmin() ? 'Todos los lunes a las 9 te llega un aviso con lo vencido y lo que vence en los próximos 30 días.' : 'El administrador recibe un aviso semanal con lo que vence en los próximos 30 días.'}</p><div id="vnL"></div>`;
+  const pintar = () => {
+    const act = vencLista.filter(x => x.estado === 'activo'), res = vencLista.filter(x => x.estado !== 'activo');
+    const fila = x => { const d = vencDias(x.fecha), r = x.estado !== 'activo'; return `<div class="card" data-vn="${x.id}" style="margin-top:8px;border-left:6px solid ${r ? 'var(--bd)' : vencColor(d)};cursor:pointer${r ? ';opacity:.7' : ''}"><div style="display:flex;gap:10px;align-items:baseline"><b style="flex:1 1 0;min-width:0">${esc(x.nombre)}</b><b style="flex:none">${x.cant} u.</b></div><div class="mut" style="font-size:13px">${esc(x.codigo)} · ${esc(fechaLarga(x.fecha))}${x.nota ? ' · ' + esc(x.nota) : ''}</div>${r ? `<div class="mut" style="font-size:13px">✓ Resuelto${x.resueltoPor ? ' por ' + esc(x.resueltoPor) : ''}</div>` : `<div style="font-weight:700;color:${d < 0 ? 'var(--bad)' : d <= 15 ? '#ea580c' : d <= 30 ? '#ca8a04' : 'var(--mut)'}">${vencTxt(d)}</div>`}</div>`; };
+    $('#vnL').innerHTML = (act.length ? act.map(fila).join('') : vacio('No hay vencimientos cargados')) + (res.length ? `<button class="btn sec" id="vnRes" style="margin-top:14px">${vencVerRes ? 'Ocultar' : 'Ver'} resueltos (${res.length})</button>${vencVerRes ? res.map(fila).join('') : ''}` : '');
+  };
+  const cargar = () => api('GET', 'p/vencimientos').then(r => { vencHoy = r.hoy; vencLista = r.vencimientos; pintar(); }).catch(e => toast(e.message));
+  cargar();
+  $('#vnNuevo').onclick = () => editarVenc(null, cargar);
+  if ($('#vnAviso')) $('#vnAviso').onclick = async () => { try { const r = await api('POST', 'p/vencimientosaviso'); toast(r.enviado ? `Resumen enviado (${r.n} ${r.n === 1 ? 'producto' : 'productos'})` : 'No hay nada vencido ni por vencer en 30 días'); } catch (e) { toast(e.message); } };
+  $('#main').onclick = e => {
+    if (e.target.closest('#vnRes')) { vencVerRes = !vencVerRes; return pintar(); }
+    const r = e.target.closest('[data-vn]'); if (!r) return; const x = vencLista.find(v => v.id === +r.dataset.vn); if (!x) return;
+    const act = x.estado === 'activo', el = dlgProv(`<p style="font-size:18px;margin:0 0 2px"><b>${esc(x.nombre)}</b></p><p class="mut" style="margin:0 0 12px">${esc(x.codigo)} · ${x.cant} u. · ${esc(fechaLarga(x.fecha))}${act ? ' · ' + vencTxt(vencDias(x.fecha)) : ''}</p>${act ? '<button class="btn" data-r="ok">✓ Resuelto (se vendió o se descartó)</button>' : '<button class="btn" data-r="re">↩ Volver a activo</button>'}<button class="btn sec" data-r="ed" style="margin-top:10px">✏ Editar fecha, cantidad o nota</button>${esAdmin() ? '<button class="btn sec" data-r="del" style="margin-top:10px;color:var(--bad)">🗑 Eliminar</button>' : ''}<button class="btn sec" data-r="0" style="margin-top:10px">Cerrar</button>`);
+    el.addEventListener('click', async ev => {
+      const b = ev.target.closest('[data-r]'); if (ev.target === el || (b && b.dataset.r === '0')) return el.remove(); if (!b) return;
+      try {
+        if (b.dataset.r === 'ed') { el.remove(); return editarVenc(x, cargar); }
+        if (b.dataset.r === 'del') { if (!await confirmar(`¿Eliminar el vencimiento de ${x.nombre} (${x.cant} u., ${fechaLarga(x.fecha)})? No se puede deshacer.`, 'Sí, eliminar')) return; await api('DELETE', 'p/vencimientos/' + x.id); toast('Eliminado'); }
+        else { await api('PUT', 'p/vencimientos/' + x.id, { accion: b.dataset.r === 'ok' ? 'resuelto' : 'reabrir' }); toast(b.dataset.r === 'ok' ? 'Marcado como resuelto ✓' : 'Vuelve a la lista'); }
+        el.remove(); cargar();
+      } catch (er) { toast(er.message); }
+    });
+  };
+}
+function editarVenc(x, alTerminar) {   // cargar o editar un vencimiento
+  let pid = x ? x.pid : 0;
+  const el = dlgProv(`<p style="font-size:18px;margin:0 0 8px;flex:none"><b>${x ? 'Editar vencimiento' : 'Cargar vencimiento'}</b></p>${x ? `<p style="margin:0 0 8px;flex:none"><b>${esc(x.nombre)}</b><br><span class="mut">${esc(x.codigo)}</span></p>` : `<label style="flex:none">Producto</label><input id="vnQ" type="search" placeholder="Buscar por nombre o código" autocomplete="off" style="width:100%;flex:none"><div id="vnP" style="flex:1 1 auto;min-height:60px;max-height:220px;overflow:auto;margin:6px 0"></div>`}<label style="flex:none">Fecha de vencimiento</label><input id="vnF" type="date" value="${x ? x.fecha : ''}" style="width:100%;flex:none"><label style="flex:none">Cantidad (unidades)</label><input id="vnC" inputmode="numeric" value="${x ? x.cant : ''}" autocomplete="off" style="width:100%;flex:none"><label style="flex:none">Nota (opcional)</label><input id="vnN" maxlength="200" value="${x ? esc(x.nota) : ''}" autocomplete="off" placeholder="Ej: lote, ubicación" style="width:100%;flex:none"><div style="display:flex;gap:10px;margin-top:12px;flex:none"><button class="btn" data-r="1" style="flex:2">Guardar</button><button class="btn sec" data-r="0" style="flex:1">Cancelar</button></div>`, true);
+  const pintar = () => {
+    const box = $('#vnP'); if (!box) return;
+    const t = norm($('#vnQ').value).split(/\s+/).filter(Boolean), l = productos.filter(p => !p.borrado && (pid === p.id || (t.length && t.every(w => norm(p.codigo + ' ' + p.nombre).includes(w))))).slice(0, 30);
+    box.innerHTML = l.length ? l.map(p => `<div data-vp="${p.id}" style="padding:9px 8px;border:2px solid ${pid === p.id ? 'var(--pri)' : 'var(--bd)'};border-radius:10px;margin-bottom:6px;cursor:pointer"><b>${esc(p.nombre)}</b><br><span class="mut" style="font-size:12px">${esc(p.codigo)}</span></div>`).join('') : '<p class="mut" style="margin:6px 2px">Escribí para buscar el producto</p>';
+  };
+  if (!x) { $('#vnQ').oninput = pintar; pintar(); }
+  el.addEventListener('click', async e => {
+    const p = e.target.closest('[data-vp]'); if (p) { pid = +p.dataset.vp; return pintar(); }
+    const b = e.target.closest('[data-r]'); if (e.target === el || (b && b.dataset.r === '0')) return el.remove(); if (!b) return;
+    if (!pid) return toast('Elegí el producto');
+    const d = { fecha: $('#vnF').value, cant: $('#vnC').value, nota: $('#vnN').value };
+    try { if (x) await api('PUT', 'p/vencimientos/' + x.id, d); else await api('POST', 'p/vencimientos', { ...d, pid }); el.remove(); toast('Guardado ✓'); alTerminar(); } catch (er) { toast(er.message); }
+  });
+}
+function asignarControl() {   // el administrador asigna un control: a quién y qué productos
+  const us = usuarios.filter(u => u.rol === 'stock' && u.activo !== false);
+  if (!us.length) return toast('Primero creá un usuario con rol Stock (Configuración → Usuarios)');
+  const sel = new Set();
+  const el = dlgProv(`<p style="font-size:18px;margin:0 0 8px;flex:none"><b>Asignar control</b></p><label style="flex:none">¿Quién controla?</label><select id="asU" style="width:100%;flex:none">${us.map(u => `<option value="${u.id}">${esc(u.nombre)}</option>`).join('')}</select>
+    <label style="flex:none">Productos a controlar</label><select id="asProv" style="width:100%;flex:none"><option value="">Todos los artículos</option>${PROV_PDF.map(([n], i) => `<option value="${i}">${esc(n)}</option>`).join('')}</select>
+    <input id="asQ" type="search" placeholder="Buscar producto" style="width:100%;margin-top:8px;flex:none"><div style="display:flex;gap:8px;align-items:center;margin:8px 0;flex:none"><button class="btn sec" id="asTodos" style="flex:1 1 0;min-height:38px;font-size:14px"></button><button class="btn sec" id="asNada" style="flex:none;min-height:38px;font-size:14px;width:auto;padding:0 12px">Quitar</button></div><div id="asN" class="mut" style="flex:none;margin:0 0 4px"></div>
+    <div class="card" id="asL" style="padding:2px 12px;margin:0;flex:1 1 auto;min-height:120px;overflow:auto"></div>
+    <label style="flex:none">Nota para quien controla (opcional)</label><input id="asNota" maxlength="200" autocomplete="off" style="width:100%;flex:none" placeholder="Ej: controlar antes del viernes">
+    <div style="display:flex;gap:10px;margin-top:12px;flex:none"><button class="btn" data-r="1" style="flex:2">Asignar control</button><button class="btn sec" data-r="0" style="flex:1">Cancelar</button></div>`, true);
+  const vis = () => { const t = norm($('#asQ').value).split(/\s+/).filter(Boolean), pv = $('#asProv').value; return productos.filter(p => !p.borrado && (pv === '' || esDeProv(p, PROV_PDF[+pv][1])) && t.every(w => norm(p.codigo + ' ' + p.nombre).includes(w))); };
+  const pintar = () => {
+    const l = vis(), mostrar = l.slice(0, 150);
+    $('#asL').innerHTML = mostrar.length ? mostrar.map(p => `<label style="display:flex;gap:10px;align-items:center;margin:0;padding:8px 0;border-bottom:1px solid var(--bd)"><input type="checkbox" data-asp="${p.id}" ${sel.has(p.id) ? 'checked' : ''} style="width:22px;min-height:22px;height:22px;margin:0;flex:none"><span style="flex:1 1 0;min-width:0"><b>${esc(p.nombre)}</b><br><span class="mut" style="font-size:12px">${esc(p.codigo)}</span></span></label>`).join('') + (l.length > mostrar.length ? `<p class="mut" style="text-align:center;margin:8px 0">Mostrando ${mostrar.length} de ${l.length}: afiná la búsqueda</p>` : '') : vacio('Sin resultados');
+    $('#asTodos').textContent = `Marcar los ${l.length} que se ven`; $('#asN').textContent = `${sel.size} ${sel.size === 1 ? 'producto elegido' : 'productos elegidos'}`;
+  };
+  el.addEventListener('input', e => { if (e.target.id === 'asQ') pintar(); });
+  el.addEventListener('change', e => { if (e.target.id === 'asProv') return pintar(); const i = e.target.closest('[data-asp]'); if (i) { i.checked ? sel.add(+i.dataset.asp) : sel.delete(+i.dataset.asp); $('#asN').textContent = `${sel.size} ${sel.size === 1 ? 'producto elegido' : 'productos elegidos'}`; } });
+  el.addEventListener('click', async e => {
+    if (e.target.id === 'asTodos') { vis().forEach(p => sel.add(p.id)); return pintar(); }
+    if (e.target.id === 'asNada') { sel.clear(); return pintar(); }
+    const b = e.target.closest('[data-r]'); if (e.target === el || (b && b.dataset.r === '0')) return el.remove(); if (!b) return;
+    if (!sel.size) return toast('Elegí al menos un producto');
+    try { await api('POST', 'p/asignaciones', { para: +$('#asU').value, pids: [...sel], nota: $('#asNota').value }); el.remove(); toast('Control asignado ✓'); } catch (er) { toast(er.message); }
+  });
+  pintar();
+}
 function vStock() {
-  if (esStock()) {   // el usuario de stock solo ve el botón
-    $('#main').innerHTML = '<button class="btn" data-skact="nuevo" style="min-height:64px">➕ Nuevo control</button>';
-    $('#main').onclick = e => { if (e.target.closest('[data-skact="nuevo"]')) go('stocknuevo'); };
+  if (esStock()) {   // el usuario de stock ve el botón de nuevo control y los controles que le asignaron
+    $('#main').innerHTML = '<button class="btn" data-skact="nuevo" style="min-height:64px">➕ Nuevo control</button><button class="btn sec" data-skact="venc" style="margin-top:10px">📅 Vencimientos</button><div id="skA"></div>';
+    let asig = lsGet('pd_asig_' + user.id, []);
+    const pintarA = () => { $('#skA').innerHTML = asig.length ? `<div style="margin-top:14px;padding:6px 2px;border-bottom:2px solid var(--bd)"><b>📋 Controles asignados</b> <span class="mut">· <b>${asig.length}</b></span></div>${asig.map(a => `<div class="card" style="margin-top:8px"><b>${a.pids.length} ${a.pids.length === 1 ? 'producto' : 'productos'}</b>${a.nota ? ' · ' + esc(a.nota) : ''}<br><span class="mut">Asignado por ${esc(a.por)} · ${esc(fechaControl(a.creado).txt)}</span><button class="btn" data-skasig="${a.id}" style="margin-top:8px">Hacer este control</button></div>`).join('')}` : ''; };
+    pintarA();
+    api('GET', 'p/asignaciones').then(r => { asig = r.asignaciones; lsSet('pd_asig_' + user.id, asig); pintarA(); }).catch(() => {});   // sin señal se muestran los últimos que se bajaron
+    $('#main').onclick = e => {
+      if (e.target.closest('[data-skact="venc"]')) return go('venc');
+      if (e.target.closest('[data-skact="nuevo"]')) { skAsig = null; return go('stocknuevo'); }
+      const b = e.target.closest('[data-skasig]'); if (b) { skAsig = asig.find(a => a.id === +b.dataset.skasig) || null; if (skAsig) go('stocknuevo'); }
+    };
     return;
   }
   let ult = {}, q2 = '';
-  $('#main').innerHTML = `<div class="fgrid" style="margin:0 0 10px"><button class="btn" data-skact="nuevo">➕ Nuevo control</button><button class="btn sec" data-skact="ctl">🗂 Controles guardados</button></div><input id="skQ2" type="search" placeholder="Buscar producto" style="width:100%"><div id="skU" style="margin-top:8px"></div>`;
+  $('#main').innerHTML = `<div class="fgrid" style="margin:0 0 10px"><button class="btn" data-skact="nuevo">➕ Nuevo control</button><button class="btn sec" data-skact="ctl">🗂 Controles guardados</button><button class="btn sec" data-skact="asignar">📋 Asignar control</button><button class="btn sec" data-skact="venc">📅 Vencimientos</button></div><input id="skQ2" type="search" placeholder="Buscar producto" style="width:100%"><div id="skU" style="margin-top:8px"></div>`;
   const pintar = () => {
     const t = norm(q2).split(/\s+/).filter(Boolean), l = productos.filter(p => !p.borrado && t.every(w => norm(p.codigo + ' ' + p.nombre).includes(w)));
     $('#skU').innerHTML = l.length ? `<div class="card skl" style="padding:2px 10px"><div class="pvf pvh skg" style="grid-template-columns:54px 1fr 84px!important"><span>Cód.</span><span>Descripción</span><span class="pvs">Últ. control</span></div>${l.map(p => { const u = ult[p.id]; return `<div class="pvf skg" data-skp="${p.id}" style="grid-template-columns:54px 1fr 84px!important;cursor:pointer"><span class="pvc">${esc(p.codigo)}</span><span class="pvn">${esc(p.nombre)}</span><span class="pvs" style="font-weight:600;${u ? '' : 'color:var(--mut);font-weight:400'}">${u ? fechaCorta(u[0].slice(0, 10)) : 'sin control'}</span></div>`; }).join('')}</div>` : vacio('Sin resultados');
@@ -829,7 +914,7 @@ function vStock() {
   $('#skQ2').oninput = e => { q2 = e.target.value; pintar(); };
   $('#main').onclick = async e => {
     const a = e.target.closest('[data-skact]');
-    if (a) return go(a.dataset.skact === 'nuevo' ? 'stocknuevo' : 'stockctl');
+    if (a) { if (a.dataset.skact === 'asignar') return asignarControl(); if (a.dataset.skact === 'venc') return go('venc'); skAsig = null; return go(a.dataset.skact === 'nuevo' ? 'stocknuevo' : 'stockctl'); }
     const r = e.target.closest('[data-skp]'); if (!r) return; const p = productos.find(x => x.id === +r.dataset.skp); if (!p) return;
     try {
       const h = (await api('GET', 'p/stockinfo/' + p.id)).historial;
@@ -841,9 +926,9 @@ function vStock() {
   api('GET', 'p/stockinfo').then(r => { ult = r.ultimos || {}; pintar(); }).catch(() => {});
 }
 function vStockNuevo() {
-  const lista = () => productos.filter(p => !p.borrado && (skProv === '' || esDeProv(p, PROV_PDF[+skProv][1])));
+  const lista = () => productos.filter(p => !p.borrado && (skAsig ? skAsig.pids.includes(p.id) : skProv === '' || esDeProv(p, PROV_PDF[+skProv][1])));   // un control asignado solo lleva los productos asignados
   let borr = leerStockBorr();   // lo que se fue escribiendo y todavía no se guardó como control
-  $('#main').innerHTML = `<select id="skP" style="width:100%;min-height:44px;margin-bottom:8px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);padding:0 8px"><option value="">Todos los artículos</option>${[0, 3, 1, 2].map(i => `<option value="${i}" ${String(i) === skProv ? 'selected' : ''}>${PROV_PDF[i][0]}</option>`).join('')}</select><div style="display:flex;gap:8px"><input id="skQ" type="search" placeholder="Escanear o buscar" value="${esc(stockQ)}" style="flex:1 1 0;min-width:0">${hayCamara() ? `<button class="btn sec" id="skCam" aria-label="Escanear código de barras" title="Escanear código de barras" style="flex:none;width:52px;padding:0">${ICONO_BARRAS}</button>` : ''}</div><div id="skL" style="margin-top:8px"></div><div id="skBar"></div>`;
+  $('#main').innerHTML = `${skAsig ? `<div class="card" style="margin:0 0 8px;border-color:var(--pri)"><b>📋 Control asignado</b><br><span class="mut">${skAsig.pids.length} ${skAsig.pids.length === 1 ? 'producto' : 'productos'}${skAsig.nota ? ' · ' + esc(skAsig.nota) : ''}</span></div>` : ''}<select id="skP" ${skAsig ? 'hidden' : ''} style="width:100%;min-height:44px;margin-bottom:8px;font:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);padding:0 8px"><option value="">Todos los artículos</option>${[0, 3, 1, 2].map(i => `<option value="${i}" ${String(i) === skProv ? 'selected' : ''}>${PROV_PDF[i][0]}</option>`).join('')}</select><div style="display:flex;gap:8px"><input id="skQ" type="search" placeholder="Escanear o buscar" value="${esc(stockQ)}" style="flex:1 1 0;min-width:0">${hayCamara() ? `<button class="btn sec" id="skCam" aria-label="Escanear código de barras" title="Escanear código de barras" style="flex:none;width:52px;padding:0">${ICONO_BARRAS}</button>` : ''}</div><div id="skL" style="margin-top:8px"></div><div id="skBar"></div>`;
   const valor = p => borr[p.id] !== undefined ? borr[p.id] : '';   // cada control empieza vacío
   const nCargados = () => lista().filter(p => String(valor(p)).trim() !== '').length;
   const barra = () => { const n = nCargados(); $('#skBar').innerHTML = `<div style="height:90px"></div><div class="bar sel"><div class="tot" style="font-size:15px;white-space:nowrap"><b>${n}</b> de ${lista().length}<br>con stock</div><button class="btn sec" data-skact="cancelar" style="padding:12px 16px;flex:none">Cancelar</button><button class="btn" data-skact="guardar" ${n ? '' : 'disabled'} style="padding:12px 18px">Guardar control</button></div>`; };
@@ -883,7 +968,7 @@ function vStockNuevo() {
   $('#skBar').onclick = async e => {
     const b = e.target.closest('[data-skact]'); if (!b || b.disabled) return;
     if (b.dataset.skact === 'cancelar') { if (nCargados() && !await confirmar('¿Cancelar el control? Se pierden las cantidades cargadas.', 'Sí, cancelar')) return; return volverA('stock'); }
-    const items = lista().filter(p => String(valor(p)).trim() !== '').map(p => ({ pid: p.id, existencia: valor(p) })), provNom = skProv === '' ? '' : PROV_PDF[+skProv][0];
+    const items = lista().filter(p => String(valor(p)).trim() !== '').map(p => ({ pid: p.id, existencia: valor(p) })), provNom = skAsig || skProv === '' ? '' : PROV_PDF[+skProv][0];
     const responsable = await pedirResponsable(); if (!responsable) return;
     const uid = crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2);   // el mismo control no se guarda dos veces aunque se reintente
     const terminar = (en, pendiente) => {
@@ -891,16 +976,17 @@ function vStockNuevo() {
       items.forEach(it => { const p = productos.find(x => x.id === it.pid); if (p) { p.existencia = Number(it.existencia); p.existenciaEn = en; } });
       for (const k of Object.keys(borr)) delete borr[k]; guardarStockBorr(borr);   // el control quedó guardado: el próximo empieza de cero
       cacheDatos(); estado();
+      if (skAsig) { const k = 'pd_asig_' + user.id, a = skAsig.id; lsSet(k, lsGet(k, []).filter(x => x.id !== a)); }
       const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px"><b>${pendiente ? 'Guardado en el teléfono ✓' : 'Control guardado ✓'}</b></p><p class="mut" style="margin:0 0 ${pendiente ? 6 : 14}px">${esc(fechaControl(en).txt)} · ${esc(responsable)}${provNom ? ' · ' + esc(provNom) : ''} · ${items.length} ${items.length === 1 ? 'producto' : 'productos'}</p>${pendiente ? '<p style="margin:0 0 14px">No hay señal: el control se envía solo cuando vuelva internet.</p>' : ''}<button class="btn" data-r="x">📊 Descargar planilla (Excel)</button><button class="btn sec" data-r="0" style="margin-top:10px">Cerrar</button>`);
       el.addEventListener('click', ev => { const b = ev.target.closest('[data-r]'); if (b && b.dataset.r === 'x') return planillaControl(ctl); if (ev.target === el || b) { el.remove(); volverA('stock'); } });   // la planilla es una opción: no se descarga sola
     };
     try {
-      const r = await api('POST', 'p/controles', { items, responsable, proveedor: provNom, uid });
+      const r = await api('POST', 'p/controles', { items, responsable, proveedor: provNom, uid, ...(skAsig ? { asignacionId: skAsig.id } : {}) });
       terminar(r.en, false);
     } catch (er) {
       if (!er.offline) return toast(er.message);
       const en = new Date().toISOString();   // sin señal: queda en el teléfono con la fecha de ahora y se envía cuando vuelva internet
-      if (!lsSet('pd_cola_ctl', [...leerColaCtl(), { u: user.id, uid, en, responsable, proveedor: provNom, items }])) return toast('No se pudo guardar en el teléfono');
+      if (!lsSet('pd_cola_ctl', [...leerColaCtl(), { u: user.id, uid, en, responsable, proveedor: provNom, items, ...(skAsig ? { asignacionId: skAsig.id } : {}) }])) return toast('No se pudo guardar en el teléfono');
       terminar(en, true);
     }
   };
@@ -934,16 +1020,26 @@ async function revertirDescuento(c, alTerminar) {   // deshace el último descue
 function vStockCtl() {   // historial de controles guardados (administrador)
   $('#main').innerHTML = '<div id="skH"></div>';
   if (esStock()) { $('#main').onclick = e => { if (e.target.closest('[data-skact="nuevo"]')) go('stocknuevo'); }; return; }   // el usuario de stock solo ve el botón; el historial lo ve el administrador
-  const pintar = l => { $('#skH').innerHTML = l.length ? `<div class="card" style="padding:2px 12px">${l.map(c => `<div class="row" data-ctl="${c.id}" style="cursor:pointer"><div class="nm"><b>Control del ${esc(fechaControl(c.en).txt)}</b><span class="mut">Responsable: ${esc(c.responsable || c.por || '')}${c.proveedor ? ' · ' + esc(c.proveedor) : ''}</span></div><div style="flex:none;text-align:right"><b>${c.n}</b><br><span class="mut" style="font-size:13px">productos</span></div><span class="mut">›</span></div>`).join('')}</div>` : vacio('Todavía no hay controles guardados'); };
-  api('GET', 'p/controles').then(r => pintar(r.controles)).catch(e => toast(e.message));
+  let pend = [];
+  const pintar = l => { $('#skH').innerHTML = (pend.length ? `<div style="padding:6px 2px;border-bottom:2px solid var(--bd)"><b>📋 Asignados sin hacer</b> <span class="mut">· <b>${pend.length}</b></span></div>${pend.map(a => `<div class="card" style="margin-top:8px;display:flex;gap:10px;align-items:center"><div style="flex:1 1 0;min-width:0"><b>${esc(a.paraNombre)}</b> · ${a.pids.length} ${a.pids.length === 1 ? 'producto' : 'productos'}<br><span class="mut">${esc(fechaControl(a.creado).txt)}${a.nota ? ' · ' + esc(a.nota) : ''}</span></div><button class="btn sec" data-asigdel="${a.id}" style="flex:none;width:auto;min-height:38px;padding:0 12px;color:var(--bad)">Eliminar</button></div>`).join('')}<div style="height:12px"></div>` : '') + (l.length ? `<div class="card" style="padding:2px 12px">${l.map(c => `<div class="row" data-ctl="${c.id}" style="cursor:pointer"><div class="nm"><b>Control del ${esc(fechaControl(c.en).txt)}</b><span class="mut">Responsable: ${esc(c.responsable || c.por || '')}${c.proveedor ? ' · ' + esc(c.proveedor) : ''}</span></div><div style="flex:none;text-align:right"><b>${c.n}</b><br><span class="mut" style="font-size:13px">productos</span></div><span class="mut">›</span></div>`).join('')}</div>` : vacio('Todavía no hay controles guardados')); };
+  const cargarLista = () => Promise.all([api('GET', 'p/controles'), api('GET', 'p/asignaciones')]).then(([r, a]) => { pend = a.asignaciones.filter(x => x.estado === 'pendiente'); pintar(r.controles); }).catch(e => toast(e.message));
+  cargarLista();
   const abrir = async id => {
     try {
       const c = await api('GET', 'p/controles/' + id);
-      const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px;flex:none"><b>Control del ${esc(fechaControl(c.en).txt)}</b></p><p class="mut" style="margin:0 0 8px;flex:none">Responsable: ${esc(c.responsable || c.por || '')}${c.proveedor ? ' · ' + esc(c.proveedor) : ''} · ${c.items.length} productos</p>${c.items.some(x => x[4] != null && x[4] !== x[3]) ? '<p class="mut" style="margin:0 0 6px;flex:none;font-size:13px">Lo que contaste queda guardado tal cual. Los descuentos de pedidos son solo visuales: lo que contaste → lo actual.</p>' : ''}<div class="card skl" style="padding:2px 12px;margin:0;flex:1 1 auto;min-height:0;overflow:auto"><div class="pvf pvh skg"><span>Cód.</span><span>Descripción</span><span class="pvs">Stock</span></div>${c.items.map(([, cod, nom, cant, act]) => `<div class="pvf skg" style="cursor:default"><span class="pvc">${esc(cod)}</span><span class="pvn">${esc(nom)}</span><span class="pvs">${act != null && act !== cant ? `<span class="mut">${cant}</span> → <b>${act}</b>` : cant}</span></div>`).join('')}</div>${(c.descuentos || []).length ? `<p class="mut" style="margin:8px 0 0;flex:none;font-size:13px">${c.descuentos.map(d => `➖ ${esc(fechaControl(d.en).txt)} · ${esc(d.por)} · ${d.dia ? 'pedidos del ' + esc(diaTxt(d.dia)) + (d.turno ? ' (' + esc(TURNOS[d.turno]) + ')' : '') + ' · ' : ''}${d.n} productos, ${d.unidades} u.`).join('<br>')}</p>${c.descuentos.some(d => d.pedidos !== undefined) ? '<button class="btn sec" data-r="rev" style="margin-top:8px;flex:none;color:var(--bad)">↩ Revertir el último descuento</button>' : ''}` : ''}<button class="btn sec" data-r="d" style="margin-top:12px;flex:none">➖ Descontar pedidos cargados</button><div style="display:flex;gap:10px;margin-top:10px;flex:none"><button class="btn" data-r="x" style="flex:2">📊 Descargar planilla</button><button class="btn sec" data-r="0" style="flex:1">Volver</button></div>`, true);
-      el.addEventListener('click', ev => { const b = ev.target.closest('[data-r]'); if (b && b.dataset.r === 'x') return planillaControl(c); if (b && b.dataset.r === 'd') return descontarCargados(c, () => { el.remove(); abrir(id); }); if (b && b.dataset.r === 'rev') return revertirDescuento(c, () => { el.remove(); abrir(id); }); if (ev.target === el || b) el.remove(); });
+      const el = dlgProv(`<p style="font-size:18px;margin:0 0 4px;flex:none"><b>Control del ${esc(fechaControl(c.en).txt)}</b></p><p class="mut" style="margin:0 0 8px;flex:none">Responsable: ${esc(c.responsable || c.por || '')}${c.proveedor ? ' · ' + esc(c.proveedor) : ''} · ${c.items.length} productos</p>${c.items.some(x => x[4] != null && x[4] !== x[3]) ? '<p class="mut" style="margin:0 0 6px;flex:none;font-size:13px">Lo que contaste queda guardado tal cual. Los descuentos de pedidos son solo visuales: lo que contaste → lo actual.</p>' : ''}<div class="card skl" style="padding:2px 12px;margin:0;flex:1 1 auto;min-height:0;overflow:auto"><div class="pvf pvh skg"><span>Cód.</span><span>Descripción</span><span class="pvs">Stock</span></div>${c.items.map(([, cod, nom, cant, act]) => `<div class="pvf skg" style="cursor:default"><span class="pvc">${esc(cod)}</span><span class="pvn">${esc(nom)}</span><span class="pvs">${act != null && act !== cant ? `<span class="mut">${cant}</span> → <b>${act}</b>` : cant}</span></div>`).join('')}</div>${(c.descuentos || []).length ? `<p class="mut" style="margin:8px 0 0;flex:none;font-size:13px">${c.descuentos.map(d => `➖ ${esc(fechaControl(d.en).txt)} · ${esc(d.por)} · ${d.dia ? 'pedidos del ' + esc(diaTxt(d.dia)) + (d.turno ? ' (' + esc(TURNOS[d.turno]) + ')' : '') + ' · ' : ''}${d.n} productos, ${d.unidades} u.`).join('<br>')}</p>${c.descuentos.some(d => d.pedidos !== undefined) ? '<button class="btn sec" data-r="rev" style="margin-top:8px;flex:none;color:var(--bad)">↩ Revertir el último descuento</button>' : ''}` : ''}<button class="btn sec" data-r="d" style="margin-top:12px;flex:none">➖ Descontar pedidos cargados</button><button class="btn sec" data-r="del" style="margin-top:10px;flex:none;color:var(--bad)">🗑 Eliminar este control</button><div style="display:flex;gap:10px;margin-top:10px;flex:none"><button class="btn" data-r="x" style="flex:2">📊 Descargar planilla</button><button class="btn sec" data-r="0" style="flex:1">Volver</button></div>`, true);
+      el.addEventListener('click', ev => { const b = ev.target.closest('[data-r]'); if (b && b.dataset.r === 'x') return planillaControl(c); if (b && b.dataset.r === 'd') return descontarCargados(c, () => { el.remove(); abrir(id); }); if (b && b.dataset.r === 'del') return eliminarControl(c, () => { el.remove(); cargarLista(); }); if (b && b.dataset.r === 'rev') return revertirDescuento(c, () => { el.remove(); abrir(id); }); if (ev.target === el || b) el.remove(); });
     } catch (er) { toast(er.message); }
   };
-  $('#main').onclick = e => { const r = e.target.closest('[data-ctl]'); if (r) abrir(r.dataset.ctl); };
+  $('#main').onclick = async e => {
+    const d = e.target.closest('[data-asigdel]');
+    if (d) { const a = pend.find(x => x.id === +d.dataset.asigdel); if (a && await confirmar(`¿Eliminar el control asignado a ${a.paraNombre} (${a.pids.length} ${a.pids.length === 1 ? 'producto' : 'productos'})? Ya no lo va a ver.`, 'Sí, eliminar')) { try { await api('DELETE', 'p/asignaciones/' + a.id); toast('Asignación eliminada'); cargarLista(); } catch (er) { toast(er.message); } } return; }
+    const r = e.target.closest('[data-ctl]'); if (r) abrir(r.dataset.ctl);
+  };
+}
+async function eliminarControl(c, alTerminar) {   // elimina un control guardado (pide confirmar)
+  if (!await confirmar(`¿Querés eliminar el control del ${fechaControl(c.en).txt} (${c.responsable || c.por || ''}, ${c.items.length} ${c.items.length === 1 ? 'producto' : 'productos'})? No se puede deshacer.`, 'Sí, eliminar')) return;
+  try { await api('DELETE', 'p/controles/' + c.id); toast('Control eliminado'); alTerminar(); } catch (er) { toast(er.message); }
 }
 /* notificaciones del administrador: notas nuevas de los vendedores y pedidos que modificaron después de cargados */
 let avDia = '';   // día de las notas que se muestran en Notificaciones
@@ -956,6 +1052,10 @@ function vAvisos() {
     <div class="mut" style="margin:0 2px 4px;text-align:center">Notas de los pedidos del ${esc(diaTxt(avDia))}${avDia === hoy() ? ' (hoy)' : ''}</div>
     <div id="lista">${titulo('📝 Notas', notas.length)}${notas.length ? notas.map(p => `<div class="card${p.notaNueva ? ' agr' : ''}" data-ped="${p.id}" style="margin-top:8px;display:flex;gap:10px;align-items:flex-start"><div style="flex:1 1 0;min-width:0">${quien(p)}<div style="margin-top:4px;white-space:pre-wrap">${esc(p.nota)}</div></div>${p.notaNueva ? `<button class="btn sec" data-notax="${p.id}" aria-label="Cerrar la nota" title="Cerrar la nota" style="flex:none;width:36px;min-height:36px;padding:0;font-size:16px">✕</button>` : ''}</div>`).join('') : `<p class="mut" style="margin:10px 2px">No hay notas en los pedidos de ese día.</p>`}
     ${mods.length ? titulo('⚠️ Pedidos modificados', mods.length) + mods.map(p => `<div class="card" data-ped="${p.id}" style="margin-top:8px">${quien(p)}<div class="mut" style="margin-top:4px">Modificó el pedido después de cargarlo</div></div>`).join('') : ''}</div>`;
+  api('GET', 'p/vencimientos').then(r => {   // vencimientos: lo vencido y lo que vence en los próximos 30 días
+    vencHoy = r.hoy; const l = r.vencimientos.filter(x => x.estado === 'activo' && vencDias(x.fecha) <= 30), box = $('#lista'); if (!l.length || !box || view !== 'avisos') return;
+    box.insertAdjacentHTML('beforeend', `${titulo('📅 Vencimientos', l.length)}${l.slice(0, 8).map(x => { const d = vencDias(x.fecha); return `<div class="card" data-go="venc" style="margin-top:8px;border-left:6px solid ${vencColor(d)};cursor:pointer"><b>${esc(x.nombre)}</b> · ${x.cant} u.<br><span style="font-weight:700;color:${d < 0 ? 'var(--bad)' : d <= 15 ? '#ea580c' : '#ca8a04'}">${vencTxt(d)}</span> <span class="mut">· ${esc(fechaLarga(x.fecha))}</span></div>`; }).join('')}${l.length > 8 ? `<p class="mut" style="text-align:center">y ${l.length - 8} más: tocá para ver todos</p>` : ''}`);
+  }).catch(() => {});
   const ir = d => { if (d) { avDia = d; vAvisos(); } }, mover = n => { const f = new Date((avDia || hoy()) + 'T12:00'); f.setDate(f.getDate() + n); ir(f.toISOString().slice(0, 10)); };
   $('#avPrev').onclick = () => mover(-1); $('#avSig').onclick = () => mover(1); $('#avDia').onchange = e => ir(e.target.value);
 }
@@ -1010,7 +1110,7 @@ function vConfig() {
   const a = esAdmin(), fila = (v, i, t) => `<div class="row" data-go="${v}" style="cursor:pointer"><span style="font-size:22px">${i}</span><div class="nm"><b>${t}</b></div><span class="mut">›</span></div>`;
   $('#main').innerHTML = `<div class="card"><b>${esc(user.nombre)}</b><br><span class="mut">usuario: ${esc(user.usuario)} · ${a ? 'Administrador' : 'Vendedor'}</span></div>
     ${a ? `<div class="card"><h2>Mis datos</h2><form id="fp"><label>Nombre</label><input name="nombre" value="${esc(user.nombre)}" required><label>Usuario (para ingresar)</label><input name="usuario" value="${esc(user.usuario)}" autocapitalize="none" required><div style="height:14px"></div><button class="btn">Guardar mis datos</button></form></div>` : ''}
-    ${a ? `<div class="card">${fila('productos', '🗂️', `Productos (${productos.length})`)}${fila('importar', '📥', 'Importar / exportar Excel')}${fila('proveedores', '🏭', 'Proveedores')}${fila('seguimiento', '📈', 'Seguimiento de clientes')}${fila('comisiones', '💰', 'Comisiones')}${fila('stock', '🗃️', 'Stock')}${fila('usuarios', '👥', 'Usuarios')}${fila('manual', '📖', 'Manual de uso')}${fila('cambios', '📝', 'Registro de cambios en pedidos')}${fila('promos', '🏷️', 'Promociones')}</div>` : ''}
+    ${a ? `<div class="card">${fila('productos', '🗂️', `Productos (${productos.length})`)}${fila('importar', '📥', 'Importar / exportar Excel')}${fila('proveedores', '🏭', 'Proveedores')}${fila('seguimiento', '📈', 'Seguimiento de clientes')}${fila('comisiones', '💰', 'Comisiones')}${fila('venc', '📅', 'Vencimientos')}${fila('stock', '🗃️', 'Stock')}${fila('usuarios', '👥', 'Usuarios')}${fila('manual', '📖', 'Manual de uso')}${fila('cambios', '📝', 'Registro de cambios en pedidos')}${fila('promos', '🏷️', 'Promociones')}</div>` : ''}
     ${a ? `<div class="card"><h2>Copia de seguridad</h2><p class="mut" style="margin:0 0 8px">Se guarda una copia automática por día (las últimas 14) dentro de la base de datos. Además podés bajar una copia a tu computadora o el detalle de los pedidos en Excel.</p>
       <button class="btn" data-act="respaldo">💾 Descargar copia completa</button><button class="btn sec" data-act="pedidosExcel" style="margin-top:8px">📊 Descargar pedidos en Excel</button><button class="btn sec" data-act="abrirRestaurar" style="margin-top:8px">♻️ Restaurar una copia</button></div>` : ''}
     <div class="card"><h2>Notificaciones</h2><div id="pushBox"></div></div>

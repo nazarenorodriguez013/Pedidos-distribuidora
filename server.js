@@ -57,3 +57,5 @@ http.createServer(async (req, res) => {
     if (!res.headersSent) send(res, 500, { error: 'Error interno' });
   }
 }).listen(E.PORT || 3000);
+setTimeout(() => pedidos.revisarVencimientos(pool).catch(e => console.error('Vencimientos:', e.message)), 20000);   // aviso semanal de vencimientos a los administradores
+setInterval(() => pedidos.revisarVencimientos(pool).catch(e => console.error('Vencimientos:', e.message)), 15 * 60 * 1000);
