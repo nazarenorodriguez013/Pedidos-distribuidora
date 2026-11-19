@@ -867,7 +867,7 @@ function editarVenc(x, alTerminar) {   // cargar o editar un vencimiento
 function asignarControl() {   // el administrador asigna un control: a quién y qué productos
   const us = usuarios.filter(u => u.rol === 'stock' && u.activo !== false);
   if (!us.length) return toast('Primero creá un usuario con rol Stock (Configuración → Usuarios)');
-  const sel = new Set();
+  const sel = new Set(); let ult = {};   // ult: último control de cada producto
   const el = dlgProv(`<p style="font-size:18px;margin:0 0 8px;flex:none"><b>Asignar control</b></p><label style="flex:none">¿Quién controla?</label><select id="asU" style="width:100%;flex:none">${us.map(u => `<option value="${u.id}">${esc(u.nombre)}</option>`).join('')}</select>
     <label style="flex:none">Productos a controlar</label><select id="asProv" style="width:100%;flex:none"><option value="">Todos los artículos</option>${PROV_PDF.map(([n], i) => `<option value="${i}">${esc(n)}</option>`).join('')}</select>
     <input id="asQ" type="search" placeholder="Buscar producto" style="width:100%;margin-top:8px;flex:none"><div style="display:flex;gap:8px;align-items:center;margin:8px 0;flex:none"><button class="btn sec" id="asTodos" style="flex:1 1 0;min-height:38px;font-size:14px"></button><button class="btn sec" id="asNada" style="flex:none;min-height:38px;font-size:14px;width:auto;padding:0 12px">Quitar</button></div><div id="asN" class="mut" style="flex:none;margin:0 0 4px"></div>
@@ -876,11 +876,12 @@ function asignarControl() {   // el administrador asigna un control: a quién y 
     <div style="display:flex;gap:10px;margin-top:12px;flex:none"><button class="btn" data-r="1" style="flex:2">Asignar control</button><button class="btn sec" data-r="0" style="flex:1">Cancelar</button></div>`, true);
   const vis = () => { const t = norm($('#asQ').value).split(/\s+/).filter(Boolean), pv = $('#asProv').value; return productos.filter(p => !p.borrado && (pv === '' || esDeProv(p, PROV_PDF[+pv][1])) && t.every(w => norm(p.codigo + ' ' + p.nombre).includes(w))); };
   const pintar = () => {
-    const l = vis(), mostrar = l.slice(0, 150);
-    $('#asL').innerHTML = mostrar.length ? mostrar.map(p => `<label style="display:flex;gap:10px;align-items:center;margin:0;padding:8px 0;border-bottom:1px solid var(--bd)"><input type="checkbox" data-asp="${p.id}" ${sel.has(p.id) ? 'checked' : ''} style="width:22px;min-height:22px;height:22px;margin:0;flex:none"><span style="flex:1 1 0;min-width:0"><b>${esc(p.nombre)}</b><br><span class="mut" style="font-size:12px">${esc(p.codigo)}</span></span></label>`).join('') + (l.length > mostrar.length ? `<p class="mut" style="text-align:center;margin:8px 0">Mostrando ${mostrar.length} de ${l.length}: afiná la búsqueda</p>` : '') : vacio('Sin resultados');
+    const l = vis();   // se listan todos los productos (no una parte)
+    $('#asL').innerHTML = l.length ? l.map(p => `<label style="display:flex;gap:10px;align-items:center;margin:0;padding:8px 0;border-bottom:1px solid var(--bd)"><input type="checkbox" data-asp="${p.id}" ${sel.has(p.id) ? 'checked' : ''} style="width:22px;min-height:22px;height:22px;margin:0;flex:none"><span style="flex:1 1 0;min-width:0"><b>${esc(p.nombre)}</b><br><span class="mut" style="font-size:12px">${esc(p.codigo)} · ${ult[p.id] ? 'último control: ' + esc(fechaCorta(ult[p.id][0].slice(0, 10))) : 'sin control'}</span></span></label>`).join('') : vacio('Sin resultados');
     $('#asTodos').textContent = `Marcar los ${l.length} que se ven`; $('#asN').textContent = `${sel.size} ${sel.size === 1 ? 'producto elegido' : 'productos elegidos'}`;
   };
   el.addEventListener('input', e => { if (e.target.id === 'asQ') pintar(); });
+  api('GET', 'p/stockinfo').then(r => { ult = r.ultimos || {}; pintar(); }).catch(() => {});
   el.addEventListener('change', e => { if (e.target.id === 'asProv') return pintar(); const i = e.target.closest('[data-asp]'); if (i) { i.checked ? sel.add(+i.dataset.asp) : sel.delete(+i.dataset.asp); $('#asN').textContent = `${sel.size} ${sel.size === 1 ? 'producto elegido' : 'productos elegidos'}`; } });
   el.addEventListener('click', async e => {
     if (e.target.id === 'asTodos') { vis().forEach(p => sel.add(p.id)); return pintar(); }
